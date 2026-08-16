@@ -74,3 +74,19 @@ async function revertPipelineDirect(id,button){
   if(error){alert(error.message);if(button){button.disabled=false;button.textContent='Revert'}return}
   await loadData();
 }
+
+(function loadSellSideModel(){
+  if(!document.querySelector('link[href="/sell-side-model.css"]')){
+    const l=document.createElement('link');l.rel='stylesheet';l.href='/sell-side-model.css';document.head.appendChild(l);
+  }
+  if(document.querySelector('script[src="/sell-side-model.js"]'))return;
+  const s=document.createElement('script');s.src='/sell-side-model.js';s.async=false;s.onload=()=>{
+    if(document.readyState!=='loading'){
+      if(window.togglePersonSellFields){$('personSideInput').onchange=togglePersonSellFields;$('personSellKindInput').onchange=togglePersonSellFields;$('personForm').onsubmit=savePerson;}
+      if(window.toggleSellTypeModalFields){$('sellTypeKindInput').onchange=toggleSellTypeModalFields;$('sellTypeForm').onsubmit=saveSellType;$('closeSellTypeModal').onclick=()=>$('sellTypeModal').classList.add('hidden');$('cancelSellType').onclick=()=>$('sellTypeModal').classList.add('hidden');}
+      if(window.saveSourceDeal){$('sourceDealForm').onsubmit=saveSourceDeal;$('closeSourceDealModal').onclick=()=>$('sourceDealModal').classList.add('hidden');$('cancelSourceDeal').onclick=()=>$('sourceDealModal').classList.add('hidden');}
+      if(window.savePipeline)$('pipelineForm').onsubmit=savePipeline;
+      if(window.currentUser)loadData();
+    }
+  };document.body.appendChild(s);
+})();
