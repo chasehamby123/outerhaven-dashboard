@@ -14,8 +14,18 @@
     #relationshipPipelinePanel .pipelineTabs{display:flex!important;gap:4px!important;padding:4px!important;background:#f3f4f7!important;border-radius:10px!important}
     #relationshipPipelinePanel .pipelineTab{border:0!important;background:transparent!important;color:#687080!important;padding:8px 14px!important;border-radius:8px!important;font-size:12px!important;font-weight:750!important;cursor:pointer!important;box-shadow:none!important}
     #relationshipPipelinePanel .pipelineTab.active{background:#111827!important;color:#fff!important;box-shadow:0 1px 3px rgba(0,0,0,.12)!important}
+    #roleFilter{display:none!important}
   `;
   document.head.appendChild(style);
+
+  function removeLegacySidebarSelector(){
+    const role=document.getElementById('roleFilter');
+    if(!role)return;
+    role.setAttribute('aria-hidden','true');
+    role.tabIndex=-1;
+    const label=role.previousElementSibling;
+    if(label&&label.classList.contains('smallLabel')&&label.textContent.trim().toUpperCase()==='VIEW AS')label.remove();
+  }
 
   function dashboardSide(){
     if(typeof pipelineSide!=='undefined'&&(pipelineSide==='Buy Side'||pipelineSide==='Sell Side'))return pipelineSide;
@@ -24,6 +34,7 @@
   }
 
   function tidyDashboardSwitch(){
+    removeLegacySidebarSelector();
     const duplicate=document.querySelector('#dashboardView > .sectionSideToolbar');
     if(duplicate)duplicate.remove();
     const side=dashboardSide();
@@ -50,5 +61,6 @@
     renderAll=function(){baseRenderAll();tidyDashboardSwitch()};
   }
 
+  removeLegacySidebarSelector();
   tidyDashboardSwitch();
 })();
