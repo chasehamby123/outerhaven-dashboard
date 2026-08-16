@@ -86,7 +86,7 @@ async function revertPipelineDirect(id,button){
       if(window.toggleSellTypeModalFields){$('sellTypeKindInput').onchange=toggleSellTypeModalFields;$('sellTypeForm').onsubmit=saveSellType;$('closeSellTypeModal').onclick=()=>$('sellTypeModal').classList.add('hidden');$('cancelSellType').onclick=()=>$('sellTypeModal').classList.add('hidden');}
       if(window.saveSourceDeal){$('sourceDealForm').onsubmit=saveSourceDeal;$('closeSourceDealModal').onclick=()=>$('sourceDealModal').classList.add('hidden');$('cancelSourceDeal').onclick=()=>$('sourceDealModal').classList.add('hidden');}
       if(window.savePipeline)$('pipelineForm').onsubmit=savePipeline;
-      if(window.currentUser)loadData();
+      if(typeof currentUser!=='undefined'&&currentUser)loadData();
     }
   };document.body.appendChild(s);
 })();
