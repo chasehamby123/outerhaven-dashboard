@@ -12,6 +12,11 @@
     .opportunityStageCurrent{margin:0 0 12px;padding:10px 12px;border:1px solid #e4e7ec;background:#f8f9fb;border-radius:9px;font-size:11px;color:#697180;line-height:1.45}
     .opportunityStageCurrent strong{display:block;color:#252b35;font-size:12px;margin-top:2px}
     .profileStageFocus{outline:2px solid #d6a1a1;outline-offset:3px;transition:outline-color .4s ease}
+    .drawerPipelineStatus{margin-bottom:16px;padding:14px;border:1px solid #e3e6eb;background:#f8f9fb;border-radius:11px}
+    .drawerPipelineStatusLabel{font-size:10px;font-weight:800;letter-spacing:.08em;color:#777f8d;margin-bottom:7px}
+    .drawerPipelineStatusSelect{width:100%;border:1px solid #cfd4dc;background:#fff;color:#252b35;border-radius:8px;padding:9px 10px;font-size:12px;font-weight:700;outline:none;cursor:pointer}
+    .drawerPipelineStatusSelect:focus{border-color:#9ea6b3;box-shadow:0 0 0 2px rgba(31,41,55,.06)}
+    .drawerPipelineStatusMeta{margin-top:6px;font-size:10px;color:#7a8190}
   `;
   document.head.appendChild(style);
 
@@ -21,10 +26,25 @@
   function isDirect(p){return !!p&&typeof isDirectSponsor==='function'&&isDirectSponsor(p)}
   function directOpportunity(p){return p?(state.opportunities||[]).find(o=>o.contactId===p.id&&o.side==='Sell Side'&&o.pipelineActive)||null:null}
   function opportunityStages(o){
+    if(o?.side==='Buy Side')return typeof BUY_PIPELINE!=='undefined'?[...BUY_PIPELINE]:['New Relationship','Diligence Call Complete','NDA Signed + Thesis Captured','Relevant Deal Identified','Interest Meeting Held','Engagement Active','Buyer Interest Confirmed','Closed'];
     const p=opportunityPerson(o);
     if(isDirect(p))return [...SELL_PIPELINE];
     const start=SELL_PIPELINE.indexOf(OPPORTUNITY_START);
     return start>=0?SELL_PIPELINE.slice(start):[OPPORTUNITY_START,INITIAL_INTEREST,'Buy-Side Interest Confirmed','Engagement Active','Closed'];
+  }
+
+  async function applyOpportunityStage(id,target){
+    const o=opportunity(id),p=opportunityPerson(o);if(!o||!target)return{error:new Error('Opportunity not found')};
+    const {error}=await sb.from('opportunities').update({pipeline_stage:target,stage:target,pipeline_active:true}).eq('id',id);
+    if(error)return{error};
+
+    if(o.side==='Sell Side'&&isDirect(p)){
+      const payload={pipeline_stage:target};
+      if(SELL_PIPELINE.indexOf(target)<SELL_PIPELINE.indexOf(INITIAL_INTEREST))payload.interest_opportunity=null;
+      const personUpdate=await sb.from('people').update(payload).eq('id',p.id);
+      if(personUpdate.error)return{error:personUpdate.error};
+    }
+    return{error:null};
   }
 
   function installModal(){
@@ -76,19 +96,10 @@
     e.preventDefault();
     const id=document.getElementById('opportunityStageId').value;
     const target=document.getElementById('opportunityStageSelect').value;
-    const o=opportunity(id),p=opportunityPerson(o);if(!o||!target)return;
+    if(!id||!target)return;
     const submit=e.submitter;if(submit){submit.disabled=true;submit.textContent='Moving...'}
-
-    const {error}=await sb.from('opportunities').update({pipeline_stage:target,stage:target,pipeline_active:true}).eq('id',id);
-    if(error){alert(error.message);if(submit){submit.disabled=false;submit.textContent='Move Opportunity'}return}
-
-    if(isDirect(p)){
-      const payload={pipeline_stage:target};
-      if(SELL_PIPELINE.indexOf(target)<SELL_PIPELINE.indexOf(INITIAL_INTEREST))payload.interest_opportunity=null;
-      const personUpdate=await sb.from('people').update(payload).eq('id',p.id);
-      if(personUpdate.error){alert(personUpdate.error.message);if(submit){submit.disabled=false;submit.textContent='Move Opportunity'}return}
-    }
-
+    const result=await applyOpportunityStage(id,target);
+    if(result.error){alert(result.error.message);if(submit){submit.disabled=false;submit.textContent='Move Opportunity'}return}
     closeStageModal();
     await loadData();
   }
@@ -122,6 +133,27 @@
       const actions=card.querySelector('.pipelinePersonActions');if(!actions)return;
       if(!actions.querySelector(`[data-move-opportunity-stage="${o.id}"]`))actions.insertBefore(makeMoveButton(o.id),actions.firstChild);
     });
+  }
+
+  function enhanceOpportunityDrawer(id){
+    const o=opportunity(id),body=document.getElementById('drawerBody');
+    if(!o||!body)return;
+    body.querySelector('.drawerPipelineStatus')?.remove();
+    const current=o.pipelineStage||o.stage||(o.side==='Sell Side'?OPPORTUNITY_START:'New Relationship');
+    const stages=opportunityStages(o);
+    const section=document.createElement('section');
+    section.className='drawerPipelineStatus';
+    section.innerHTML=`<div class="drawerPipelineStatusLabel">PIPELINE STATUS</div><select class="drawerPipelineStatusSelect" data-drawer-pipeline-status="${esc(o.id)}">${stages.map(stage=>`<option value="${esc(stage)}" ${stage===current?'selected':''}>${esc(stageLabel(stage))}</option>`).join('')}</select><div class="drawerPipelineStatusMeta">Change this to move the opportunity directly to another pipeline stage.</div>`;
+    body.prepend(section);
+    const select=section.querySelector('[data-drawer-pipeline-status]');
+    select.onchange=async()=>{
+      const target=select.value,previous=current;
+      select.disabled=true;
+      const result=await applyOpportunityStage(o.id,target);
+      if(result.error){alert(result.error.message);select.value=previous;select.disabled=false;return}
+      await loadData();
+      if(typeof openDetail==='function')openDetail(o.id);
+    };
   }
 
   function focusOpportunityInProfile(id){
@@ -170,6 +202,14 @@
       if(o){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();openOpportunityProfile(o.id)}
     }
   },true);
+
+  if(typeof openDetail==='function'){
+    const baseOpenDetail=openDetail;
+    openDetail=function(id){
+      baseOpenDetail(id);
+      enhanceOpportunityDrawer(id);
+    };
+  }
 
   if(typeof renderPipeline==='function'){
     const baseRenderPipeline=renderPipeline;
