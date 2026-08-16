@@ -69,6 +69,15 @@
     const ctx=window.__outerhavenProfileStageContext;
     if(!overlay||!body||overlay.classList.contains('hidden')||!ctx)return;
 
+    const record=ctx.kind==='opportunity'?opportunity(ctx.id):person(ctx.id);
+    const profileOwner=ctx.kind==='opportunity'?person(record?.contactId):record;
+    const shownName=document.getElementById('relationshipProfileName')?.textContent?.trim();
+    if(!record||!profileOwner)return;
+    if(shownName&&shownName!==profileOwner.name){
+      window.__outerhavenProfileStageContext=null;
+      return;
+    }
+
     const box=body.querySelector('.profileSummaryBox');
     if(!box)return;
     const key=`${ctx.kind}:${ctx.id}`;
@@ -76,13 +85,13 @@
 
     let current='',stages=[],side='Sell Side',label='Pipeline Stage';
     if(ctx.kind==='opportunity'){
-      const o=opportunity(ctx.id);if(!o)return;
+      const o=record;
       side=o.side||'Sell Side';
       current=o.pipelineStage||o.stage||OPPORTUNITY_START;
       stages=opportunityStages(o);
       label='Opportunity Stage';
     }else{
-      const p=person(ctx.id);if(!p)return;
+      const p=record;
       side=p.side==='Buy Side'?'Buy Side':'Sell Side';
       current=side==='Sell Side'&&typeof personSellStage==='function'?personSellStage(p):normalizedStage(p,side);
       stages=personStages(p);
