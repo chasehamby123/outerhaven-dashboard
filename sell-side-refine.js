@@ -6,9 +6,13 @@ openSourceDealModal=function(personId){const p=person(personId);if(!p)return;$('
 saveSourceDeal=async function(e){e.preventDefault();const personId=$('sourceDealPersonId').value,p=person(personId),name=$('sourceDealName').value.trim(),size=$('sourceDealSize').value.trim();if(!p||!name||!size)return;const payload={person_id:personId,title:name,side:'Sell Side',owner_name:userOwnerName(),stage:'Initial Interest Identified',priority:'Medium',opportunity_size:size,sector:'',next_step:'',next_step_owner:userOwnerName(),notes:`Sourced by ${p.name}`,pipeline_stage:'Initial Interest Identified',pipeline_active:true,created_by:currentUser?.id||null};const {error}=await sb.from('opportunities').insert(payload);if(error){alert(error.message);return}$('sourceDealModal').classList.add('hidden');await loadData()};
 if(document.readyState!=='loading'){$('sourceDealForm').onsubmit=saveSourceDeal;if(typeof currentUser!=='undefined'&&currentUser)renderAll();}
 (function(){
+  const loadPipelineFix=()=>{
+    if(document.querySelector('script[src="/pipeline-display-fix.js"]'))return;
+    const f=document.createElement('script');f.src='/pipeline-display-fix.js';f.async=false;document.body.appendChild(f);
+  };
   const loadSwitches=()=>{
-    if(document.querySelector('script[src="/section-side-switches.js"]'))return;
-    const v=document.createElement('script');v.src='/section-side-switches.js';v.async=false;v.onload=()=>{if(typeof currentUser!=='undefined'&&currentUser)renderAll();};document.body.appendChild(v);
+    if(document.querySelector('script[src="/section-side-switches.js"]')){loadPipelineFix();return;}
+    const v=document.createElement('script');v.src='/section-side-switches.js';v.async=false;v.onload=()=>{if(typeof currentUser!=='undefined'&&currentUser)renderAll();loadPipelineFix();};document.body.appendChild(v);
   };
   if(document.querySelector('script[src="/next-step-sync.js"]')){loadSwitches();return;}
   const s=document.createElement('script');s.src='/next-step-sync.js';s.async=false;s.onload=()=>{if(typeof currentUser!=='undefined'&&currentUser)renderAll();loadSwitches();};document.body.appendChild(s);
