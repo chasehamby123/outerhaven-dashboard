@@ -6,10 +6,14 @@ openSourceDealModal=function(personId){const p=person(personId);if(!p)return;$('
 saveSourceDeal=async function(e){e.preventDefault();const personId=$('sourceDealPersonId').value,p=person(personId),name=$('sourceDealName').value.trim(),size=$('sourceDealSize').value.trim();if(!p||!name||!size)return;const payload={person_id:personId,title:name,side:'Sell Side',owner_name:userOwnerName(),stage:'Opportunity Received',priority:'Medium',opportunity_size:size,sector:'',next_step:'',next_step_owner:userOwnerName(),notes:`Sourced by ${p.name}`,pipeline_stage:'Opportunity Received',pipeline_active:true,created_by:currentUser?.id||null};const {error}=await sb.from('opportunities').insert(payload);if(error){alert(error.message);return}$('sourceDealModal').classList.add('hidden');await loadData()};
 if(document.readyState!=='loading'){$('sourceDealForm').onsubmit=saveSourceDeal;if(typeof currentUser!=='undefined'&&currentUser)renderAll();}
 (function(){
+  const loadRefinements=()=>{
+    if(document.querySelector('script[src="/pipeline-refinements.js"]'))return;
+    const x=document.createElement('script');x.src='/pipeline-refinements.js';x.async=false;x.onload=()=>{if(typeof currentUser!=='undefined'&&currentUser)renderAll();};document.body.appendChild(x);
+  };
   const loadDocumentProfiles=()=>{
     if(!document.querySelector('link[href="/document-profiles.css"]')){const l=document.createElement('link');l.rel='stylesheet';l.href='/document-profiles.css';document.head.appendChild(l)}
-    if(document.querySelector('script[src="/document-profiles.js"]'))return;
-    const d=document.createElement('script');d.src='/document-profiles.js';d.async=false;d.onload=()=>{if(typeof currentUser!=='undefined'&&currentUser)loadData();};document.body.appendChild(d);
+    if(document.querySelector('script[src="/document-profiles.js"]')){loadRefinements();return;}
+    const d=document.createElement('script');d.src='/document-profiles.js';d.async=false;d.onload=()=>{if(typeof currentUser!=='undefined'&&currentUser)loadData();loadRefinements();};document.body.appendChild(d);
   };
   const loadPipelineFix=()=>{
     if(document.querySelector('script[src="/pipeline-display-fix.js"]')){loadDocumentProfiles();return;}
