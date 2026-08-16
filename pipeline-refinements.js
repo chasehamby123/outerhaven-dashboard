@@ -65,6 +65,7 @@
     $('sourceAdvancePersonId').value=personId;
     $('sourceAdvanceTitle').textContent=`Select Opportunity · ${p.name}`;
     $('sourceAdvanceOpportunity').innerHTML=deals.map(o=>`<option value="${o.id}">${esc(o.company)}${o.size?` · ${esc(o.size)}`:''}</option>`).join('');
+    const submit=$('sourceAdvanceForm').querySelector('button[type="submit"]');if(submit){submit.disabled=false;submit.textContent='Advance Selected Opportunity'}
     updateSourceAdvancePreview();
     $('sourceAdvanceModal').classList.remove('hidden');
   }
