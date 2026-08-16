@@ -77,6 +77,22 @@
     await loadData();
   }
 
+  function openPersonProfile(id){
+    const p=person(id);if(!p)return;
+    window.__outerhavenProfileStageContext={kind:'person',id:p.id};
+    if(typeof window.openRelationshipProfile==='function')window.openRelationshipProfile(p.id);
+    else if(typeof openPipelineModal==='function')openPipelineModal(p.id);
+    setTimeout(()=>window.__outerhavenRefreshProfileInlineStage?.(),0);
+  }
+
+  function openOpportunityProfile(id){
+    const o=opportunity(id);if(!o)return;
+    window.__outerhavenProfileStageContext={kind:'opportunity',id:o.id};
+    if(typeof window.openRelationshipProfile==='function')window.openRelationshipProfile(o.contactId,'profileOpportunitiesSection');
+    else if(typeof openDetail==='function')openDetail(o.id);
+    setTimeout(()=>window.__outerhavenRefreshProfileInlineStage?.(),0);
+  }
+
   window.addEventListener('click',function(e){
     const waiting=e.target.closest('[data-waiting-kind][data-waiting-id]');
     if(waiting){
@@ -92,16 +108,14 @@
     const deal=e.target.closest('[data-pipeline-deal]');
     if(deal){
       e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();
-      const move=deal.querySelector('[data-move-opportunity-stage]');
-      if(move){move.click();return}
-      const open=deal.querySelector('[data-open-deal]');
-      if(open){open.click();return}
+      openOpportunityProfile(deal.dataset.pipelineDeal);
+      return;
     }
 
     const personCard=e.target.closest('[data-pipeline-person]');
     if(personCard){
       e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();
-      if(typeof openPipelineModal==='function')openPipelineModal(personCard.dataset.pipelinePerson);
+      openPersonProfile(personCard.dataset.pipelinePerson);
     }
   },true);
 
@@ -110,11 +124,20 @@
     renderPipeline=function(){baseRenderPipeline();enhanceWaitingControls()};
   }
 
+  function loadProfileInlineStage(){
+    if(document.querySelector('script[src="/profile-inline-stage.js"]'))return;
+    const s=document.createElement('script');
+    s.src='/profile-inline-stage.js';
+    s.async=false;
+    document.body.appendChild(s);
+  }
+
   const observer=new MutationObserver(()=>enhanceWaitingControls());
   function install(){
     const board=document.getElementById('relationshipPipeline');
     if(board)observer.observe(board,{childList:true,subtree:true});
     enhanceWaitingControls();
+    loadProfileInlineStage();
     if(typeof currentUser!=='undefined'&&currentUser&&typeof loadData==='function')loadData();
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
