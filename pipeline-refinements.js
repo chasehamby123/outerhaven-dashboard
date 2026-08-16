@@ -7,7 +7,7 @@
 
   const style=document.createElement('style');
   style.textContent=`
-    .pipelineProfileAction{
+    .pipelineProfileAction,.profileRedBtn{
       border:1px solid #efc3c3!important;
       background:#fff1f1!important;
       color:#a32121!important;
@@ -17,7 +17,7 @@
       font-weight:750!important;
       cursor:pointer!important;
     }
-    .pipelineProfileAction:hover{background:#ffe5e5!important}
+    .pipelineProfileAction:hover,.profileRedBtn:hover{background:#ffe5e5!important}
     .sourceSelectNote{font-size:11px;color:#737b88;line-height:1.5;margin:0 0 4px}
     .sourceSelectPreview{margin-top:8px;padding:10px 11px;border:1px solid #e5e7eb;border-radius:10px;background:#fafbfc}
     .sourceSelectPreview strong{font-size:12px}.sourceSelectPreview span{display:block;font-size:10px;color:#7a8190;margin-top:3px}
