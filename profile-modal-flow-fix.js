@@ -84,4 +84,11 @@
   removeLegacySidebarSelector();
   tidyDashboardSwitch();
   if(typeof currentUser!=='undefined'&&currentUser&&typeof renderPeople==='function')renderPeople();
+
+  if(!document.querySelector('script[src="/opportunity-stage-manager.js"]')){
+    const stageManager=document.createElement('script');
+    stageManager.src='/opportunity-stage-manager.js';
+    stageManager.async=false;
+    document.body.appendChild(stageManager);
+  }
 })();
