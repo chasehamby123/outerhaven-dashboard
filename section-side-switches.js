@@ -35,7 +35,7 @@
 
   function toolbarHtml(){return `<div class="sectionSideToolbar"><div class="sectionSideToolbarLabel">PIPELINE SIDE</div><div class="sectionSideTabs"><button type="button" class="sectionSideTab" data-section-side="Buy Side">Buy Side</button><button type="button" class="sectionSideTab" data-section-side="Sell Side">Sell Side</button></div></div>`}
   function installToolbars(){
-    ['opportunitiesView','nextstepsView','peopleView'].forEach(id=>{const view=$(id);if(view&&!view.querySelector('.sectionSideToolbar'))view.insertAdjacentHTML('afterbegin',toolbarHtml())});
+    ['dashboardView','opportunitiesView','nextstepsView','peopleView'].forEach(id=>{const view=$(id);if(view&&!view.querySelector('.sectionSideToolbar'))view.insertAdjacentHTML('afterbegin',toolbarHtml())});
     const sideSelect=$('sideFilter');if(sideSelect?.closest('label'))sideSelect.closest('label').style.display='none';
     bindSideButtons();syncSideButtons();
   }
@@ -48,8 +48,16 @@
   }
   function setSectionSide(side){
     if(side!=='Buy Side'&&side!=='Sell Side')return;
-    sectionSide=side;localStorage.setItem('outerhaven-section-side',side);syncSideButtons();
-    populateFilters();renderOps();renderNext();renderPeople();updateNavCounts();
+    sectionSide=side;
+    localStorage.setItem('outerhaven-section-side',side);
+    if(typeof pipelineSide!=='undefined')pipelineSide=side;
+    syncSideButtons();
+    renderDashboard();
+    populateFilters();
+    renderOps();
+    renderNext();
+    renderPeople();
+    updateNavCounts();
   }
 
   populateFilters=function(){
@@ -95,21 +103,47 @@
 
   const underlyingRenderDashboard=renderDashboard;
   renderDashboard=function(){
+    const role=$('roleFilter'),old=role?.value;
+    if(role)role.value=sectionSide;
+    if(typeof pipelineSide!=='undefined')pipelineSide=sectionSide;
     underlyingRenderDashboard();
-    const role=$('roleFilter')?.value||'All';
-    const d=state.opportunities.filter(o=>role==='All'||o.side===role);
+    if(role)role.value=old;
+
+    const d=sideOpportunities();
     const counts={};d.forEach(o=>{const s=opportunityStage(o);counts[s]=(counts[s]||0)+1});
     const stages=Object.keys(counts);
     const mx=Math.max(1,...Object.values(counts));
-    if($('stageSummary'))$('stageSummary').innerHTML=stages.length?stages.map(s=>`<div class="stageBox"><div class="stageName">${esc(s)}</div><div class="stageCount">${counts[s]}</div><div class="stageBar"><div class="stageFill" style="width:${Math.round(counts[s]/mx*100)}%"></div></div></div>`).join(''):'<div class="compactMeta">No opportunity records yet.</div>';
+    if($('stageSummary'))$('stageSummary').innerHTML=stages.length?stages.map(s=>`<div class="stageBox"><div class="stageName">${esc(s)}</div><div class="stageCount">${counts[s]}</div><div class="stageBar"><div class="stageFill" style="width:${Math.round(counts[s]/mx*100)}%"></div></div></div>`).join(''):`<div class="compactMeta">No ${sectionSide.toLowerCase()} opportunity records yet.</div>`;
+    syncSideButtons();
   };
 
   const underlyingRenderAll=renderAll;
-  renderAll=function(){underlyingRenderAll();installToolbars();syncSideButtons();updateNavCounts()};
+  renderAll=function(){
+    underlyingRenderAll();
+    installToolbars();
+    if(typeof pipelineSide!=='undefined')pipelineSide=sectionSide;
+    syncSideButtons();
+    updateNavCounts();
+  };
 
   const roleFilter=$('roleFilter');
-  if(roleFilter)roleFilter.addEventListener('change',()=>{if(roleFilter.value==='Buy Side'||roleFilter.value==='Sell Side'){sectionSide=roleFilter.value;localStorage.setItem('outerhaven-section-side',sectionSide);syncSideButtons();}});
+  if(roleFilter)roleFilter.addEventListener('change',()=>{
+    if(roleFilter.value==='Buy Side'||roleFilter.value==='Sell Side'){
+      sectionSide=roleFilter.value;
+      localStorage.setItem('outerhaven-section-side',sectionSide);
+      if(typeof pipelineSide!=='undefined')pipelineSide=sectionSide;
+      syncSideButtons();
+    }
+  });
 
   installToolbars();
-  if(typeof currentUser!=='undefined'&&currentUser){populateFilters();renderOps();renderNext();renderPeople();updateNavCounts();}
+  if(typeof currentUser!=='undefined'&&currentUser){
+    if(typeof pipelineSide!=='undefined')pipelineSide=sectionSide;
+    renderDashboard();
+    populateFilters();
+    renderOps();
+    renderNext();
+    renderPeople();
+    updateNavCounts();
+  }
 })();
