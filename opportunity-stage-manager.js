@@ -7,8 +7,8 @@
 
   const style=document.createElement('style');
   style.textContent=`
-    .profileMoveStageBtn{border:1px solid #d8dce3;background:#fff;color:#394150;border-radius:7px;padding:6px 9px;font-size:10px;font-weight:750;cursor:pointer}
-    .profileMoveStageBtn:hover{background:#f5f6f8}
+    .profileMoveStageBtn,.pipelineMoveStageBtn{border:1px solid #d8dce3;background:#fff;color:#394150;border-radius:7px;padding:6px 9px;font-size:10px;font-weight:750;cursor:pointer}
+    .profileMoveStageBtn:hover,.pipelineMoveStageBtn:hover{background:#f5f6f8}
     .opportunityStageCurrent{margin:0 0 12px;padding:10px 12px;border:1px solid #e4e7ec;background:#f8f9fb;border-radius:9px;font-size:11px;color:#697180;line-height:1.45}
     .opportunityStageCurrent strong{display:block;color:#252b35;font-size:12px;margin-top:2px}
     .profileStageFocus{outline:2px solid #d6a1a1;outline-offset:3px;transition:outline-color .4s ease}
@@ -19,6 +19,7 @@
   function opportunity(id){return (state.opportunities||[]).find(o=>o.id===id)}
   function opportunityPerson(o){return o?person(o.contactId):null}
   function isDirect(p){return !!p&&typeof isDirectSponsor==='function'&&isDirectSponsor(p)}
+  function directOpportunity(p){return p?(state.opportunities||[]).find(o=>o.contactId===p.id&&o.side==='Sell Side'&&o.pipelineActive)||null:null}
   function opportunityStages(o){
     const p=opportunityPerson(o);
     if(isDirect(p))return [...SELL_PIPELINE];
@@ -92,17 +93,34 @@
     await loadData();
   }
 
+  function makeMoveButton(id,className='pipelineMoveStageBtn'){
+    const btn=document.createElement('button');
+    btn.type='button';btn.className=className;btn.dataset.moveOpportunityStage=id;btn.textContent='Move Stage';
+    return btn;
+  }
+
   function enhanceProfileOpportunityCards(){
     document.querySelectorAll('#relationshipProfileBody .profileItemCard [data-open-deal]').forEach(open=>{
       const card=open.closest('.profileItemCard');if(!card)return;
       const id=open.dataset.openDeal;
       card.dataset.profileOpportunityId=id;
       const actions=card.querySelector('.profileItemActions');if(!actions)return;
-      if(!actions.querySelector(`[data-move-opportunity-stage="${id}"]`)){
-        const btn=document.createElement('button');
-        btn.type='button';btn.className='profileMoveStageBtn';btn.dataset.moveOpportunityStage=id;btn.textContent='Move Stage';
-        actions.appendChild(btn);
-      }
+      if(!actions.querySelector(`[data-move-opportunity-stage="${id}"]`))actions.appendChild(makeMoveButton(id,'profileMoveStageBtn'));
+    });
+  }
+
+  function enhancePipelineOpportunityCards(){
+    document.querySelectorAll('#relationshipPipeline [data-pipeline-deal]').forEach(card=>{
+      const id=card.dataset.pipelineDeal;if(!id)return;
+      const actions=card.querySelector('.pipelineDealActions')||card.querySelector('.pipelinePersonActions');if(!actions)return;
+      if(!actions.querySelector(`[data-move-opportunity-stage="${id}"]`))actions.insertBefore(makeMoveButton(id),actions.firstChild);
+    });
+
+    document.querySelectorAll('#relationshipPipeline [data-pipeline-person]').forEach(card=>{
+      const p=person(card.dataset.pipelinePerson);if(!p||!isDirect(p))return;
+      const o=directOpportunity(p);if(!o)return;
+      const actions=card.querySelector('.pipelinePersonActions');if(!actions)return;
+      if(!actions.querySelector(`[data-move-opportunity-stage="${o.id}"]`))actions.insertBefore(makeMoveButton(o.id),actions.firstChild);
     });
   }
 
@@ -134,7 +152,7 @@
 
   document.addEventListener('click',function(e){
     const move=e.target.closest('[data-move-opportunity-stage]');
-    if(move){e.preventDefault();e.stopPropagation();openStageModal(move.dataset.moveOpportunityStage);return}
+    if(move){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();openStageModal(move.dataset.moveOpportunityStage);return}
 
     const pipelineDeal=e.target.closest('#relationshipPipeline [data-pipeline-deal]');
     const pipelineOpen=e.target.closest('#relationshipPipeline [data-open-deal]');
@@ -148,17 +166,25 @@
     if(sponsorOpportunity){
       const personCard=sponsorOpportunity.closest('[data-pipeline-person]');
       const p=personCard?person(personCard.dataset.pipelinePerson):null;
-      const o=p&&typeof window.sponsorOpportunity==='function'?window.sponsorOpportunity(p.id):(state.opportunities||[]).find(x=>x.contactId===p?.id&&x.side==='Sell Side'&&x.pipelineActive);
+      const o=directOpportunity(p);
       if(o){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();openOpportunityProfile(o.id)}
     }
   },true);
 
-  const observer=new MutationObserver(()=>enhanceProfileOpportunityCards());
+  if(typeof renderPipeline==='function'){
+    const baseRenderPipeline=renderPipeline;
+    renderPipeline=function(){baseRenderPipeline();enhancePipelineOpportunityCards()};
+  }
+
+  const observer=new MutationObserver(()=>{enhanceProfileOpportunityCards();enhancePipelineOpportunityCards()});
   const startObserver=()=>{
     installModal();
-    const body=document.getElementById('relationshipProfileBody');
-    if(body)observer.observe(body,{childList:true,subtree:true});
+    const profileBody=document.getElementById('relationshipProfileBody');
+    const pipeline=document.getElementById('relationshipPipeline');
+    if(profileBody)observer.observe(profileBody,{childList:true,subtree:true});
+    if(pipeline)observer.observe(pipeline,{childList:true,subtree:true});
     enhanceProfileOpportunityCards();
+    enhancePipelineOpportunityCards();
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',startObserver,{once:true});else startObserver();
 })();
