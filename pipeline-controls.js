@@ -89,4 +89,5 @@ async function revertPipelineDirect(id,button){
       if(typeof currentUser!=='undefined'&&currentUser)loadData();
     }
   };document.body.appendChild(s);
+  const r=document.createElement('script');r.src='/sell-side-refine.js';r.async=false;r.onload=()=>{if(document.readyState!=='loading'){if(window.saveSourceDeal)$('sourceDealForm').onsubmit=saveSourceDeal;if(typeof currentUser!=='undefined'&&currentUser)renderAll();}};document.body.appendChild(r);
 })();
