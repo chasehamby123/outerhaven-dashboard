@@ -85,10 +85,24 @@
   tidyDashboardSwitch();
   if(typeof currentUser!=='undefined'&&currentUser&&typeof renderPeople==='function')renderPeople();
 
-  if(!document.querySelector('script[src="/opportunity-stage-manager.js"]')){
+  function loadDashboardPipelineInteractions(){
+    if(document.querySelector('script[src="/dashboard-pipeline-interactions.js"]'))return;
+    const s=document.createElement('script');
+    s.src='/dashboard-pipeline-interactions.js';
+    s.async=false;
+    document.body.appendChild(s);
+  }
+
+  const existingStageManager=document.querySelector('script[src="/opportunity-stage-manager.js"]');
+  if(!existingStageManager){
     const stageManager=document.createElement('script');
     stageManager.src='/opportunity-stage-manager.js';
     stageManager.async=false;
+    stageManager.onload=loadDashboardPipelineInteractions;
     document.body.appendChild(stageManager);
+  }else if(window.__outerhavenOpportunityStageManager){
+    loadDashboardPipelineInteractions();
+  }else{
+    existingStageManager.addEventListener('load',loadDashboardPipelineInteractions,{once:true});
   }
 })();
