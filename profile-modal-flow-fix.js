@@ -27,10 +27,16 @@
     if(label&&label.classList.contains('smallLabel')&&label.textContent.trim().toUpperCase()==='VIEW AS')label.remove();
   }
 
+  function selectedPageSide(){
+    const stored=localStorage.getItem('outerhaven-section-side');
+    if(stored==='Buy Side'||stored==='Sell Side')return stored;
+    if(typeof pipelineSide!=='undefined'&&(pipelineSide==='Buy Side'||pipelineSide==='Sell Side'))return pipelineSide;
+    return 'Sell Side';
+  }
+
   function dashboardSide(){
     if(typeof pipelineSide!=='undefined'&&(pipelineSide==='Buy Side'||pipelineSide==='Sell Side'))return pipelineSide;
-    const stored=localStorage.getItem('outerhaven-section-side');
-    return stored==='Buy Side'||stored==='Sell Side'?stored:'Sell Side';
+    return selectedPageSide();
   }
 
   function tidyDashboardSwitch(){
@@ -52,6 +58,20 @@
     });
   }
 
+  if(typeof renderPeople==='function'){
+    const profileRenderPeople=renderPeople;
+    renderPeople=function(){
+      const role=document.getElementById('roleFilter');
+      const old=role?.value;
+      if(role)role.value=selectedPageSide();
+      profileRenderPeople();
+      if(role&&old!=null)role.value=old;
+      document.querySelectorAll('#peopleView .sectionSideTab').forEach(btn=>{
+        btn.classList.toggle('active',btn.dataset.sectionSide===selectedPageSide());
+      });
+    };
+  }
+
   if(typeof renderDashboard==='function'){
     const baseRenderDashboard=renderDashboard;
     renderDashboard=function(){baseRenderDashboard();tidyDashboardSwitch()};
@@ -63,4 +83,5 @@
 
   removeLegacySidebarSelector();
   tidyDashboardSwitch();
+  if(typeof currentUser!=='undefined'&&currentUser&&typeof renderPeople==='function')renderPeople();
 })();
