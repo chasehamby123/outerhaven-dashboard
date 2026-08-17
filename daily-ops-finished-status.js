@@ -50,6 +50,7 @@
     }finally{busy=false}
   }
 
+  window.__outerhavenRefreshDailyOpsFinished=refresh;
   function schedule(){clearTimeout(timer);timer=setTimeout(()=>{apply();refresh()},80)}
   function install(){
     new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true});
