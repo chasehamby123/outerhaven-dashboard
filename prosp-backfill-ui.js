@@ -40,8 +40,10 @@
   function errorDetail(data){
     const bits=[];
     if(data?.error)bits.push(data.error);
+    if(data?.message)bits.push(data.message);
     if(data?.prosp_status)bits.push(`Prosp status ${data.prosp_status}`);
-    const d=data?.prosp_details;
+    if(data?.sender_endpoint_status)bits.push(`Sender endpoint ${data.sender_endpoint_status}`);
+    const d=data?.prosp_details||data?.sender_endpoint_details;
     if(d){
       if(typeof d==='string')bits.push(d);
       else if(d.message)bits.push(d.message);
@@ -58,7 +60,7 @@
     if(!key){alert('Paste your Prosp API key first.');return}
     btn.disabled=true;btn.textContent='Scanning Prosp...';
     out.className='prospBackfillResult show';
-    out.textContent='Scanning campaigns, leads and historical LinkedIn conversations. This can take a little while.';
+    out.textContent='Scanning campaigns, sender accounts, leads and historical LinkedIn conversations. This can take a little while.';
     try{
       const {data,error}=await sb.functions.invoke('prosp-backfill-browser',{body:{api_key:key}});
       document.getElementById('prospBackfillKey').value='';
@@ -66,14 +68,19 @@
       if(!data?.ok){out.className='prospBackfillResult show error';out.textContent=errorDetail(data);return}
       const parts=[
         `${data.campaigns_scanned||0} campaigns scanned`,
-        `${data.leads_seen||0} leads checked`,
+        `${data.senders_found||0} sender accounts found`,
+        `${data.leads_seen||0} leads seen`,
+        `${data.leads_processed||0} newly checked`,
+        `${data.conversation_successes||0} conversations opened`,
+        `${data.conversation_errors||0} conversation errors`,
+        `${data.skipped_no_inbound||0} no-reply leads`,
         `${data.imported||0} historical replies imported`,
         `${data.qualified||0} qualified`,
         `${data.needs_review||0} need review`,
         `${data.rejected||0} rejected`
       ];
       out.className='prospBackfillResult show';
-      out.textContent=parts.join(' · ')+(data.hit_scan_limit?' · Scan limit reached. Run it again to continue with remaining leads.':'');
+      out.textContent=parts.join(' · ')+(data.hit_scan_limit?' · Pass limit reached. Run it again to continue with leads not yet checked.':'');
       setTimeout(()=>document.querySelector('.navBtn[data-view="leadreview"]')?.click(),700);
     }catch(e){
       out.className='prospBackfillResult show error';
