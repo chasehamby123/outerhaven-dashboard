@@ -43,4 +43,11 @@
     schedule.async=false;
     document.head.appendChild(schedule);
   }
+
+  if(!document.querySelector('script[src="/daily-ops-adspower-handoff.js"]')){
+    const adsPower=document.createElement('script');
+    adsPower.src='/daily-ops-adspower-handoff.js';
+    adsPower.async=false;
+    document.head.appendChild(adsPower);
+  }
 })();
