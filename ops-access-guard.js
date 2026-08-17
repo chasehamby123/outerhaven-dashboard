@@ -55,4 +55,4 @@
   }else loadScript('/daily-ops.js',afterDailyOps);
 })();
 
-// Production bundle marker: Daily Ops DM queue navigation + Ignore workflow.
+// Production bundle marker: Daily Ops sidebar + Ignore + direct close handler.
