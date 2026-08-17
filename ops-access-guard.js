@@ -33,7 +33,7 @@
         return;
       }
       if(adminLoadData){loadData=adminLoadData;await loadData()}
-      if(adminSubscribe){adminSubscribe();}
+      if(adminSubscribe){subscribe=adminSubscribe;subscribe()}
       loadScript('/originator-admin.js',()=>loadScript('/originator-preview-admin.js',()=>loadScript('/originator-test-admin.js')));
       return;
     }
