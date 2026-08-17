@@ -41,7 +41,6 @@
     select.classList.add('profileStageSaving');
     const {error}=await sb.from('people').update({pipeline_stage:target}).eq('id',id);
     if(error){alert(error.message);select.classList.remove('profileStageSaving');return}
-
     if(isDirect(p)){
       const linked=(state.opportunities||[]).find(o=>o.contactId===p.id&&o.side==='Sell Side'&&o.pipelineActive);
       if(linked){
@@ -58,7 +57,6 @@
     select.classList.add('profileStageSaving');
     const {error}=await sb.from('opportunities').update({pipeline_stage:target,stage:target,pipeline_active:true}).eq('id',id);
     if(error){alert(error.message);select.classList.remove('profileStageSaving');return}
-
     if(isDirect(p)){
       const res=await sb.from('people').update({pipeline_stage:target}).eq('id',p.id);
       if(res.error){alert(res.error.message);select.classList.remove('profileStageSaving');return}
@@ -91,38 +89,22 @@
     const body=document.getElementById('relationshipProfileBody');
     const ctx=window.__outerhavenProfileStageContext;
     if(!overlay||!body||overlay.classList.contains('hidden')||!ctx)return;
-
     const record=ctx.kind==='opportunity'?opportunity(ctx.id):person(ctx.id);
     const profileOwner=ctx.kind==='opportunity'?person(record?.contactId):record;
     const shownName=document.getElementById('relationshipProfileName')?.textContent?.trim();
     if(!record||!profileOwner)return;
-    if(shownName&&shownName!==profileOwner.name){
-      window.__outerhavenProfileStageContext=null;
-      return;
-    }
-
+    if(shownName&&shownName!==profileOwner.name){window.__outerhavenProfileStageContext=null;return}
     injectNextStep(body,ctx,record,profileOwner);
-
     const box=body.querySelector('.profileSummaryBox');
     if(!box)return;
     const key=`${ctx.kind}:${ctx.id}`;
     if(box.dataset.inlineStageKey===key&&box.querySelector('[data-inline-profile-stage]'))return;
-
     let current='',stages=[],side='Sell Side',label='Pipeline Stage';
     if(ctx.kind==='opportunity'){
-      const o=record;
-      side=o.side||'Sell Side';
-      current=o.pipelineStage||o.stage||OPPORTUNITY_START;
-      stages=opportunityStages(o);
-      label='Opportunity Stage';
+      const o=record;side=o.side||'Sell Side';current=o.pipelineStage||o.stage||OPPORTUNITY_START;stages=opportunityStages(o);label='Opportunity Stage';
     }else{
-      const p=record;
-      side=p.side==='Buy Side'?'Buy Side':'Sell Side';
-      current=side==='Sell Side'&&typeof personSellStage==='function'?personSellStage(p):normalizedStage(p,side);
-      stages=personStages(p);
-      label='Pipeline Stage';
+      const p=record;side=p.side==='Buy Side'?'Buy Side':'Sell Side';current=side==='Sell Side'&&typeof personSellStage==='function'?personSellStage(p):normalizedStage(p,side);stages=personStages(p);label='Pipeline Stage';
     }
-
     box.dataset.inlineStageKey=key;
     box.classList.add('stageEditable');
     box.innerHTML=`<div class="k">${label}</div><div class="v"><select class="profileStageSelect" data-inline-profile-stage>${stages.map(stage=>`<option value="${esc(stage)}" ${stage===current?'selected':''}>${esc(stageLabel(stage,side))}</option>`).join('')}</select></div>`;
@@ -130,8 +112,12 @@
     select.onchange=()=>ctx.kind==='opportunity'?moveOpportunity(ctx.id,select.value,select):movePerson(ctx.id,select.value,select);
   }
 
-  window.__outerhavenRefreshProfileInlineStage=inject;
+  function loadProspBackfillUI(){
+    if(document.querySelector('script[src="/prosp-backfill-ui.js"]'))return;
+    const s=document.createElement('script');s.src='/prosp-backfill-ui.js';s.async=false;document.body.appendChild(s);
+  }
 
+  window.__outerhavenRefreshProfileInlineStage=inject;
   const observer=new MutationObserver(()=>inject());
   function install(){
     const body=document.getElementById('relationshipProfileBody');
@@ -139,6 +125,7 @@
     const overlay=document.getElementById('relationshipProfileOverlay');
     if(overlay)observer.observe(overlay,{attributes:true,attributeFilter:['class']});
     inject();
+    loadProspBackfillUI();
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
