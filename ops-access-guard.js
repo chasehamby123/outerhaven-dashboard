@@ -54,3 +54,5 @@
     else existingDailyOps.addEventListener('load',afterDailyOps,{once:true});
   }else loadScript('/daily-ops.js',afterDailyOps);
 })();
+
+// Production bundle marker: Daily Ops DM queue navigation + Ignore workflow.
