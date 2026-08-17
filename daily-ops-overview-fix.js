@@ -66,11 +66,20 @@
     timer=setTimeout(renderOverview,60);
   }
 
+  function loadScheduleAdmin(){
+    if(document.querySelector('script[src="/daily-ops-schedule-admin.js"]'))return;
+    const s=document.createElement('script');
+    s.src='/daily-ops-schedule-admin.js';
+    s.async=false;
+    document.body.appendChild(s);
+  }
+
   const observer=new MutationObserver(()=>schedule());
   function install(){
     observer.observe(document.body,{childList:true,subtree:true,characterData:true});
     schedule();
     setInterval(renderOverview,3000);
+    loadScheduleAdmin();
   }
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
