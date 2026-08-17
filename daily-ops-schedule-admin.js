@@ -7,6 +7,7 @@
   let accounts=[];
   let activeAccount=null;
   let injecting=false;
+  let observer=null;
 
   const style=document.createElement('style');
   style.textContent=`
@@ -24,6 +25,7 @@
   `;
   document.head.appendChild(style);
 
+  function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
   function localDate(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
   function scheduleLabel(days){
     const s=[...(days||[])].sort((a,b)=>a-b);
@@ -54,6 +56,26 @@
     document.getElementById('dailyOpsScheduleModal').classList.remove('hidden');
   }
 
+  async function resolveRole(){
+    for(let i=0;i<40;i++){
+      if(window.__outerhavenDashboardRole){
+        role=window.__outerhavenDashboardRole;
+        return role;
+      }
+      if(typeof sb!=='undefined'){
+        try{
+          const {data:{session}}=await sb.auth.getSession();
+          if(session){
+            const {data,error}=await sb.rpc('dashboard_role');
+            if(!error&&data){role=data;return role}
+          }
+        }catch(e){console.debug('daily ops schedule role wait',e)}
+      }
+      await sleep(250);
+    }
+    return null;
+  }
+
   async function loadAccounts(){
     if(role!=='admin'||typeof sb==='undefined')return;
     const {data,error}=await sb.from('daily_ops_accounts').select('id,owner_name,account_name,posting_days,sort_order,created_at').eq('active',true).order('sort_order').order('created_at');
@@ -78,8 +100,11 @@
           summary.textContent=scheduleLabel(account.posting_days);
         }
         if(right&&!right.querySelector('[data-edit-schedule]')){
-          const b=document.createElement('button');b.type='button';b.className='dailyOpsScheduleBtn';b.dataset.editSchedule=account.id;b.textContent='Edit Schedule';b.onclick=()=>openModal(account);
-          const status=right.querySelector('.dailyOpsStatus');status?right.insertBefore(b,status):right.appendChild(b);
+          const b=document.createElement('button');
+          b.type='button';b.className='dailyOpsScheduleBtn';b.dataset.editSchedule=account.id;b.textContent='Edit Schedule';
+          b.onclick=()=>openModal(account);
+          const status=right.querySelector('.dailyOpsStatus');
+          status?right.insertBefore(b,status):right.appendChild(b);
         }
       });
     }finally{injecting=false}
@@ -96,17 +121,17 @@
 
       const today=new Date().getDay();
       const {data:item,error:itemErr}=await sb.from('daily_ops_items').select('id,status').eq('account_id',activeAccount.id).eq('work_date',localDate()).eq('item_type','post').maybeSingle();
-      if(itemErr){console.error('daily ops post schedule sync',itemErr)}
+      if(itemErr)console.error('daily ops post schedule sync',itemErr);
       if(item&&item.status!=='done'){
-        const status=days.includes(today)?'due':'not_needed';
-        const {error:updateErr}=await sb.from('daily_ops_items').update({status,updated_at:new Date().toISOString(),updated_by:typeof currentUser!=='undefined'?currentUser?.id||null:null}).eq('id',item.id);
+        const nextStatus=days.includes(today)?'due':'not_needed';
+        const {error:updateErr}=await sb.from('daily_ops_items').update({status:nextStatus,updated_at:new Date().toISOString(),updated_by:typeof currentUser!=='undefined'?currentUser?.id||null:null}).eq('id',item.id);
         if(updateErr)console.error('daily ops post item update',updateErr);
       }
 
       activeAccount.posting_days=days;
       closeModal();
       await loadAccounts();
-      if(typeof window.__outerhavenRefreshDailyOpsSchedule==='function')window.__outerhavenRefreshDailyOpsSchedule();
+      if(typeof window.__outerhavenRefreshDailyOpsSchedule==='function'&&window.__outerhavenRefreshDailyOpsSchedule!==loadAccounts)window.__outerhavenRefreshDailyOpsSchedule();
     }finally{btn.disabled=false;btn.textContent='Save Schedule'}
   }
 
@@ -114,19 +139,20 @@
   function scheduleRefresh(){
     if(role!=='admin')return;
     clearTimeout(refreshTimer);
-    refreshTimer=setTimeout(()=>{injectButtons()},80);
+    refreshTimer=setTimeout(injectButtons,80);
   }
 
   async function install(){
-    if(typeof sb==='undefined')return;
-    const {data,error}=await sb.rpc('dashboard_role');
-    if(error){console.error('daily ops schedule role',error);return}
-    role=data||null;
+    role=await resolveRole();
     if(role!=='admin')return;
     ensureModal();
     await loadAccounts();
-    new MutationObserver(()=>scheduleRefresh()).observe(document.body,{childList:true,subtree:true});
+    if(!observer){
+      observer=new MutationObserver(scheduleRefresh);
+      observer.observe(document.body,{childList:true,subtree:true});
+    }
     window.__outerhavenRefreshDailyOpsSchedule=loadAccounts;
+    setInterval(injectButtons,1000);
   }
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
