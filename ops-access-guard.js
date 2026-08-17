@@ -34,6 +34,7 @@
       }
       if(adminLoadData){loadData=adminLoadData;await loadData()}
       if(adminSubscribe){subscribe=adminSubscribe;subscribe()}
+      loadScript('/originator-admin.js');
       return;
     }
     showAuth('');
