@@ -29,4 +29,11 @@
     }
     showAuth('');
   };
+
+  if(!document.querySelector('script[src="/daily-ops-overview-fix.js"]')){
+    const overview=document.createElement('script');
+    overview.src='/daily-ops-overview-fix.js';
+    overview.async=false;
+    document.head.appendChild(overview);
+  }
 })();
