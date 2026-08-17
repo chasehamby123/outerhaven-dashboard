@@ -26,7 +26,7 @@
     box.className='prospBackfillBox';
     box.dataset.prospBackfillBox='';
     box.innerHTML=`
-      <div class="prospBackfillHead"><div><div class="prospBackfillTitle">Backfill Existing Prosp Replies</div><div class="prospBackfillCopy">Pull historical campaign leads and LinkedIn conversations from Prosp, then send existing replies through the same OuterHaven qualification layer. The API key is used for this request only and is not saved in the dashboard.</div></div></div>
+      <div class="prospBackfillHead"><div><div class="prospBackfillTitle">Backfill Existing Prosp Replies</div><div class="prospBackfillCopy">Only leads Prosp marks as replied or responded are reviewed. Non-repliers are ignored. For reply-marked leads, OuterHaven reads the reply and runs it through Buy Side, Sell Side, Needs Review, or Not Qualified classification. The API key is used for this request only and is not saved in the dashboard.</div></div></div>
       <div class="prospBackfillForm">
         <label class="prospBackfillField">Prosp API Key<input id="prospBackfillKey" type="password" autocomplete="off" placeholder="Paste Prosp API key"></label>
         <button id="prospBackfillRun" class="prospBackfillBtn" type="button">Backfill Existing Replies</button>
@@ -58,9 +58,9 @@
     const btn=document.getElementById('prospBackfillRun');
     const out=document.getElementById('prospBackfillResult');
     if(!key){alert('Paste your Prosp API key first.');return}
-    btn.disabled=true;btn.textContent='Scanning Prosp...';
+    btn.disabled=true;btn.textContent='Checking Replies...';
     out.className='prospBackfillResult show';
-    out.textContent='Scanning campaigns, sender accounts, leads and historical LinkedIn conversations. This can take a little while.';
+    out.textContent='Checking Prosp for leads marked replied or responded. Non-repliers will be skipped without opening their conversations.';
     try{
       const {data,error}=await sb.functions.invoke('prosp-backfill-browser',{body:{api_key:key}});
       document.getElementById('prospBackfillKey').value='';
@@ -69,18 +69,19 @@
       const parts=[
         `${data.campaigns_scanned||0} campaigns scanned`,
         `${data.senders_found||0} sender accounts found`,
-        `${data.leads_seen||0} leads seen`,
-        `${data.leads_processed||0} newly checked`,
+        `${data.leads_seen||0} campaign leads inspected`,
+        `${data.reply_marked_leads||0} replies detected`,
+        `${data.reply_lookups||0} reply conversations checked`,
         `${data.conversation_successes||0} conversations opened`,
-        `${data.conversation_errors||0} conversation errors`,
-        `${data.skipped_no_inbound||0} no-reply leads`,
+        `${data.conversation_errors||0} reply conversation errors`,
+        `${data.skipped_not_replied||0} non-repliers ignored`,
         `${data.imported||0} historical replies imported`,
         `${data.qualified||0} qualified`,
         `${data.needs_review||0} need review`,
         `${data.rejected||0} rejected`
       ];
       out.className='prospBackfillResult show';
-      out.textContent=parts.join(' · ')+(data.hit_scan_limit?' · Pass limit reached. Run it again to continue with leads not yet checked.':'');
+      out.textContent=parts.join(' · ')+(data.hit_reply_limit?' · Reply lookup limit reached. Run it again to continue with remaining reply-marked leads.':'');
       setTimeout(()=>document.querySelector('.navBtn[data-view="leadreview"]')?.click(),700);
     }catch(e){
       out.className='prospBackfillResult show error';
