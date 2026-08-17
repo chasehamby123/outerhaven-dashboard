@@ -17,6 +17,10 @@
       const {data:role,error}=await sb.rpc('dashboard_role');
       if(error){console.error('dashboard role',error);return}
       window.__outerhavenDashboardRole=role||null;
+      if(role==='originator'){
+        location.replace('/originator.html');
+        return;
+      }
       if(!['admin','ops'].includes(role)){
         await sb.auth.signOut();
         showAuth('This account does not have an active Outerhaven dashboard role.');
