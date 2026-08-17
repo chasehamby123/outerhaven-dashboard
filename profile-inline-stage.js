@@ -11,6 +11,9 @@
     .profileSummaryBox.stageEditable{cursor:pointer}
     .profileSummaryBox.stageEditable .v{display:block}
     .profileStageSaving{opacity:.55;pointer-events:none}
+    .profileSidebarNextStepBtn{margin-top:9px;border:1px solid #d6dae0;background:#fff;color:#252b35;border-radius:7px;padding:6px 9px;font-size:10px;font-weight:800;cursor:pointer}
+    .profileSidebarNextStepBtn:hover{background:#f4f5f7}
+    #taskModal.profileTaskModal{z-index:1300!important}
   `;
   document.head.appendChild(style);
 
@@ -63,6 +66,26 @@
     await loadData();
   }
 
+  function injectNextStep(body,ctx,record,profileOwner){
+    const boxes=body.querySelectorAll('.profileSummaryBox');
+    const nextBox=boxes[2];
+    if(!nextBox||nextBox.querySelector('[data-profile-sidebar-next-step]'))return;
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='profileSidebarNextStepBtn';
+    button.dataset.profileSidebarNextStep='';
+    button.textContent='+ Next Step';
+    button.onclick=e=>{
+      e.preventDefault();e.stopPropagation();
+      const taskModal=document.getElementById('taskModal');
+      if(taskModal)taskModal.classList.add('profileTaskModal');
+      if(typeof openTaskModal!=='function')return;
+      if(ctx.kind==='opportunity')openTaskModal(profileOwner.id,record.id);
+      else openTaskModal(profileOwner.id);
+    };
+    nextBox.appendChild(button);
+  }
+
   function inject(){
     const overlay=document.getElementById('relationshipProfileOverlay');
     const body=document.getElementById('relationshipProfileBody');
@@ -77,6 +100,8 @@
       window.__outerhavenProfileStageContext=null;
       return;
     }
+
+    injectNextStep(body,ctx,record,profileOwner);
 
     const box=body.querySelector('.profileSummaryBox');
     if(!box)return;
