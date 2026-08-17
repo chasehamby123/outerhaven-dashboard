@@ -17,6 +17,11 @@
       const {data:role,error}=await sb.rpc('dashboard_role');
       if(error){console.error('dashboard role',error);return}
       window.__outerhavenDashboardRole=role||null;
+      if(!['admin','ops'].includes(role)){
+        await sb.auth.signOut();
+        showAuth('This account does not have an active Outerhaven dashboard role.');
+        return;
+      }
       if(role==='ops'){
         document.body.classList.add('dailyOpsOnly');
         loadData=async function(){return};
@@ -30,17 +35,20 @@
     showAuth('');
   };
 
-  function loadScript(src){
-    if(document.querySelector(`script[src="${src}"]`))return;
-    const s=document.createElement('script');
-    s.src=src;
-    s.async=false;
-    document.head.appendChild(s);
+  function loadScript(src,onload){
+    const existing=document.querySelector(`script[src="${src}"]`);
+    if(existing){if(onload)existing.addEventListener('load',onload,{once:true});return existing}
+    const s=document.createElement('script');s.src=src;s.async=false;if(onload)s.onload=onload;document.head.appendChild(s);return s;
   }
 
-  loadScript('/daily-ops-overview-fix.js');
-  loadScript('/daily-ops-schedule-admin.js');
-  loadScript('/daily-ops-adspower-handoff.js');
-  loadScript('/daily-ops-finished-status.js');
-  loadScript('/daily-ops-whatsapp-cleanup.js');
+  loadScript('/dashboard-static-metrics.js');
+  const afterDailyOps=()=>{
+    loadScript('/daily-ops-post-metrics.js');
+    loadScript('/daily-ops-runtime.js');
+  };
+  const existingDailyOps=document.querySelector('script[src="/daily-ops.js"]');
+  if(existingDailyOps){
+    if(window.__outerhavenDailyOps)afterDailyOps();
+    else existingDailyOps.addEventListener('load',afterDailyOps,{once:true});
+  }else loadScript('/daily-ops.js',afterDailyOps);
 })();
