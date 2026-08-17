@@ -2,6 +2,10 @@
   if(window.__outerhavenOpsAccessGuard)return;
   window.__outerhavenOpsAccessGuard=true;
   if(typeof handleAuth!=='function')return;
+
+  const adminLoadData=typeof loadData==='function'?loadData:null;
+  const adminSubscribe=typeof subscribe==='function'?subscribe:null;
+
   handleAuth=async function(){
     const {data:{session}}=await sb.auth.getSession();
     if(session){
@@ -15,10 +19,12 @@
       window.__outerhavenDashboardRole=role||null;
       if(role==='ops'){
         document.body.classList.add('dailyOpsOnly');
+        loadData=async function(){return};
+        subscribe=function(){return};
         return;
       }
-      await loadData();
-      subscribe();
+      if(adminLoadData){loadData=adminLoadData;await loadData()}
+      if(adminSubscribe){subscribe=adminSubscribe;subscribe()}
       return;
     }
     showAuth('');
