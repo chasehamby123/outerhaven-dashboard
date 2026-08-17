@@ -14,6 +14,7 @@
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const num=v=>v==null||v===''?null:Number(v);
   const field=id=>document.getElementById(id);
+  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
   function parseMoney(v){
     if(v==null||v==='')return 0;if(typeof v==='number')return Number.isFinite(v)?v:0;
     const m=String(v).replace(/,/g,'').toLowerCase().match(/\$?\s*([0-9]+(?:\.[0-9]+)?)\s*(billion|million|thousand|bn|mm|m|b|k)?/i);if(!m)return 0;
@@ -47,7 +48,7 @@
     ['revenuePath','revenueLinkedOpportunity','revenueRaiseAmount','revenueMonthlyRetainer','revenueRetainerMonths','revenueFixedRetainer','revenueSuccessPercent','revenueFixedSuccess'].forEach(id=>field(id).addEventListener('input',()=>{if(id==='revenuePath')applyPathDefaults();updateForm()}));
   }
   function closeModal(){field('revenueTermsModal')?.classList.add('hidden');activeId=null}
-  function linkedOptions(current){return'<option value="">No linked sell-side opportunity</option>'+opps.filter(o=>o.side==='Sell Side').map(o=>`<option value="${o.id}" ${o.id===current?'selected':''}>${String(o.title||'Opportunity').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))} · ${o.opportunity_size||'Size not set'}</option>`).join('')}
+  function linkedOptions(current){return'<option value="">No linked sell-side opportunity</option>'+opps.filter(o=>o.side==='Sell Side').map(o=>`<option value="${o.id}" ${o.id===current?'selected':''}>${esc(o.title||'Opportunity')} · ${esc(o.opportunity_size||'Size not set')}</option>`).join('')}
   function open(id){
     const o=opps.find(x=>x.id===id);if(!o)return;activeId=id;ensureModal();
     const t=terms(o);field('revenueTermsTitle').textContent=`Revenue Terms · ${o.title}`;field('revenuePath').value=t.path;field('revenueLinkedOpportunity').innerHTML=linkedOptions(o.revenue_linked_sell_side_opportunity_id||'');field('revenueRaiseAmount').value=t.raise||'';field('revenueMonthlyRetainer').value=o.revenue_retainer_monthly??(t.path==='direct_sponsor'?15000:'');field('revenueRetainerMonths').value=o.revenue_retainer_months??(t.path==='direct_sponsor'?3:'');field('revenueFixedRetainer').value=o.revenue_retainer_fixed??'';field('revenueSuccessPercent').value=o.revenue_success_fee_percent??(t.path==='direct_sponsor'?5:'');field('revenueFixedSuccess').value=o.revenue_success_fee_fixed??'';field('revenueNotes').value=o.revenue_notes||'';updateForm();field('revenueTermsModal').classList.remove('hidden')
@@ -81,8 +82,8 @@
 
   function summaryHtml(o){
     const t=terms(o),linked=o.revenue_linked_sell_side_opportunity_id?opps.find(x=>x.id===o.revenue_linked_sell_side_opportunity_id):null;let shown=t;
-    if(t.path==='buy_side_interest'&&linked){const lt=terms(linked),success=lt.fixedSuccess!=null?lt.fixedSuccess:t.raise*lt.pct/100;shown={...t,retainer:lt.retainer,success,total:lt.retainer+success,pct:lt.pct}}
-    return `<section class="detailSec" data-revenue-summary><div class="detailTitle">REVENUE ECONOMICS</div><div class="revenueSummaryGrid"><div class="revenueSummaryTotal"><div class="k">Projected Revenue</div><div class="v">${money(shown.total)}</div></div><div class="revenueSummaryCell"><div class="k">Revenue Path</div><div class="v">${pathLabel(t.path)}</div></div><div class="revenueSummaryCell"><div class="k">Raise / Interest</div><div class="v">${money(t.raise)}</div></div><div class="revenueSummaryCell"><div class="k">Retainer</div><div class="v">${money(shown.retainer)}</div></div><div class="revenueSummaryCell"><div class="k">Success Fee</div><div class="v">${shown.fixedSuccess!=null?money(shown.success):(shown.pct||0)+'% · '+money(shown.success)}</div></div></div>${linked?`<div class="revenueSummaryNote">Linked to ${linked.title}. Sell-side economics are counted once in the top revenue card.</div>`:''}</section>`
+    if(t.path==='buy_side_interest'&&linked){const lt=terms(linked),success=lt.fixedSuccess!=null?lt.fixedSuccess:t.raise*lt.pct/100;shown={...t,retainer:lt.retainer,success,total:lt.retainer+success,pct:lt.pct,fixedSuccess:lt.fixedSuccess}}
+    return `<section class="detailSec" data-revenue-summary><div class="detailTitle">REVENUE ECONOMICS</div><div class="revenueSummaryGrid"><div class="revenueSummaryTotal"><div class="k">Projected Revenue</div><div class="v">${money(shown.total)}</div></div><div class="revenueSummaryCell"><div class="k">Revenue Path</div><div class="v">${pathLabel(t.path)}</div></div><div class="revenueSummaryCell"><div class="k">Raise / Interest</div><div class="v">${money(t.raise)}</div></div><div class="revenueSummaryCell"><div class="k">Retainer</div><div class="v">${money(shown.retainer)}</div></div><div class="revenueSummaryCell"><div class="k">Success Fee</div><div class="v">${shown.fixedSuccess!=null?money(shown.success):(shown.pct||0)+'% · '+money(shown.success)}</div></div></div>${linked?`<div class="revenueSummaryNote">Linked to ${esc(linked.title)}. Sell-side economics are counted once in the top revenue card.</div>`:''}</section>`
   }
   function currentDrawerId(){try{if(typeof selectedId!=='undefined'&&selectedId)return selectedId}catch{}const title=field('detailTitle')?.textContent?.trim();return title?opps.find(o=>o.title===title)?.id:null}
   function apply(){
@@ -90,7 +91,7 @@
     const drawer=field('drawer'),drawerId=currentDrawerId();
     if(drawer&&!drawer.classList.contains('hidden')&&drawerId){
       const foot=drawer.querySelector('.drawerFoot');if(foot&&!foot.querySelector('[data-revenue-terms-current]')){const b=document.createElement('button');b.type='button';b.className='revenueTermsBtn';b.dataset.revenueTermsCurrent='';b.textContent='Revenue Terms';b.onclick=()=>open(currentDrawerId());const edit=field('editOpp');edit?foot.insertBefore(b,edit):foot.appendChild(b)}
-      const body=field('drawerBody'),o=opps.find(x=>x.id===drawerId);if(body&&o){body.querySelector('[data-revenue-summary]')?.remove();body.insertAdjacentHTML('beforeend',summaryHtml(o))}
+      const body=field('drawerBody'),o=opps.find(x=>x.id===drawerId);if(body&&o){const next=summaryHtml(o),existing=body.querySelector('[data-revenue-summary]');if(!existing)body.insertAdjacentHTML('beforeend',next);else{const tmp=document.createElement('div');tmp.innerHTML=next;const nextEl=tmp.firstElementChild;if(nextEl&&existing.innerHTML!==nextEl.innerHTML)existing.innerHTML=nextEl.innerHTML}}
     }
     document.querySelectorAll('.profileItemCard').forEach(card=>{const openDeal=card.querySelector('[data-open-deal]');if(!openDeal)return;const actions=openDeal.closest('.profileItemActions');if(actions&&!actions.querySelector('[data-revenue-opportunity]')){const b=document.createElement('button');b.type='button';b.className='profileMiniBtn profileRevenueBtn';b.dataset.revenueOpportunity=openDeal.dataset.openDeal;b.textContent='Revenue Terms';b.onclick=e=>{e.preventDefault();e.stopPropagation();open(b.dataset.revenueOpportunity)};actions.insertBefore(b,openDeal)}});
   }
