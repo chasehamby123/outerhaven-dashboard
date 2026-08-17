@@ -36,4 +36,11 @@
     overview.async=false;
     document.head.appendChild(overview);
   }
+
+  if(!document.querySelector('script[src="/daily-ops-schedule-admin.js"]')){
+    const schedule=document.createElement('script');
+    schedule.src='/daily-ops-schedule-admin.js';
+    schedule.async=false;
+    document.head.appendChild(schedule);
+  }
 })();
