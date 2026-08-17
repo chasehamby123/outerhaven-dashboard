@@ -46,7 +46,7 @@
     out.className='prospBackfillResult show';
     out.textContent='Scanning campaigns, leads and historical LinkedIn conversations. This can take a little while.';
     try{
-      const {data,error}=await sb.functions.invoke('prosp-backfill',{body:{api_key:key}});
+      const {data,error}=await sb.functions.invoke('prosp-backfill-browser',{body:{api_key:key}});
       document.getElementById('prospBackfillKey').value='';
       if(error)throw error;
       if(!data?.ok)throw new Error(data?.error||'Backfill failed');
