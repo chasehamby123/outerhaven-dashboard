@@ -85,11 +85,25 @@
   tidyDashboardSwitch();
   if(typeof currentUser!=='undefined'&&currentUser&&typeof renderPeople==='function')renderPeople();
 
+  function loadOpportunityDocumentDetail(){
+    if(document.querySelector('script[src="/opportunity-document-detail.js"]'))return;
+    const d=document.createElement('script');
+    d.src='/opportunity-document-detail.js';
+    d.async=false;
+    document.body.appendChild(d);
+  }
+
   function loadDashboardPipelineInteractions(){
-    if(document.querySelector('script[src="/dashboard-pipeline-interactions.js"]'))return;
+    const existing=document.querySelector('script[src="/dashboard-pipeline-interactions.js"]');
+    if(existing){
+      if(window.__outerhavenDashboardPipelineInteractions)loadOpportunityDocumentDetail();
+      else existing.addEventListener('load',loadOpportunityDocumentDetail,{once:true});
+      return;
+    }
     const s=document.createElement('script');
     s.src='/dashboard-pipeline-interactions.js';
     s.async=false;
+    s.onload=loadOpportunityDocumentDetail;
     document.body.appendChild(s);
   }
 
