@@ -8,7 +8,7 @@
 
   const escP=v=>typeof esc==='function'?esc(v):String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
   const dayNumber=()=>{const short=new Intl.DateTimeFormat('en-US',{timeZone:TZ,weekday:'short'}).format(new Date());return DAYS.find(d=>d[0]===short)?.[1]??new Date().getDay()};
-  const malaysiaDate=()=>new Intl.DateTimeFormat('en-US',{timeZone:TZ,weekday:'long',month:'long',day:'numeric'}).format(new Date());
+  const localDate=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
   const scheduleDays=days=>(days||[]).map(Number).sort((a,b)=>a-b).map(n=>DAYS.find(d=>d[1]===n)?.[0]).filter(Boolean).join(', ')||'Schedule not set';
   const timeLabel=t=>{if(!t)return'Time not set';const [h,m]=String(t).split(':').map(Number);const suffix=h>=12?'PM':'AM',hour=((h+11)%12)+1;return `${hour}${m?`:${String(m).padStart(2,'0')}`:''} ${suffix}`};
   const scheduledToday=a=>(a.posting_days||[]).map(Number).includes(dayNumber());
@@ -22,16 +22,13 @@
     const posted=posts.filter(a=>p[key('post',a.owner_name)]).length;
     const repostAccounts=accounts.filter(a=>posts.some(x=>x.id!==a.id));
     const reposted=repostAccounts.filter(a=>p[key('repost',a.owner_name)]).length;
-    return `<div class="ops3Controls" data-exact-post-schedule><div class="ops3Sub">Malaysia time · Posts ${posted}/${posts.length} · Repost accounts ${reposted}/${repostAccounts.length}</div><div class="ops3Content">${accounts.map(a=>`<div class="ops3ContentRow"><div><div class="ops3ContentName">${escP(a.owner_name)}</div><div class="ops3Sub">${escP(accountSchedule(a))}</div></div><div class="ops3ContentActions">${scheduledToday(a)?`<button class="ops3Chip ${p[key('post',a.owner_name)]?'on':''}" data-post-progress="${escP(key('post',a.owner_name))}">${p[key('post',a.owner_name)]?'Posted ✓':'Mark Posted'}</button>`:'<span class="ops3Muted">No post today</span>'}${posts.some(x=>x.id!==a.id)?`<button class="ops3Chip ${p[key('repost',a.owner_name)]?'on':''}" data-post-progress="${escP(key('repost',a.owner_name))}">${p[key('repost',a.owner_name)]?'Reposts Done ✓':'Reposts Complete'}</button>`:'<span class="ops3Muted">No reposts due</span>'}</div></div>`).join('')}</div></div>`;
+    return `<div class="ops3Controls" data-exact-post-schedule><div class="ops3Sub">Posting schedule uses GMT+08 · Posts ${posted}/${posts.length} · Repost accounts ${reposted}/${repostAccounts.length}</div><div class="ops3Content">${accounts.map(a=>`<div class="ops3ContentRow"><div><div class="ops3ContentName">${escP(a.owner_name)}</div><div class="ops3Sub">${escP(accountSchedule(a))}</div></div><div class="ops3ContentActions">${scheduledToday(a)?`<button class="ops3Chip ${p[key('post',a.owner_name)]?'on':''}" data-post-progress="${escP(key('post',a.owner_name))}">${p[key('post',a.owner_name)]?'Posted ✓':'Mark Posted'}</button>`:'<span class="ops3Muted">No post today</span>'}${posts.some(x=>x.id!==a.id)?`<button class="ops3Chip ${p[key('repost',a.owner_name)]?'on':''}" data-post-progress="${escP(key('repost',a.owner_name))}">${p[key('repost',a.owner_name)]?'Reposts Done ✓':'Reposts Complete'}</button>`:'<span class="ops3Muted">No reposts due</span>'}</div></div>`).join('')}</div></div>`;
   }
 
   function signature(){return `${dayNumber()}|${checklist?.id||''}|${JSON.stringify(progress())}|${accounts.map(a=>`${a.id}:${(a.posting_days||[]).join(',')}:${a.posting_time||''}`).join('|')}`}
 
   function apply(){
     const root=document.getElementById('dailyOpsRoot');if(!root||!root.classList.contains('ops3')||!accounts.length)return;
-    const heroToday=root.querySelector('.ops3Hero .ops3Sub');
-    if(heroToday&&heroToday.textContent.startsWith('TODAY ·'))heroToday.textContent=`TODAY · ${malaysiaDate().toUpperCase()} · GMT+08`;
-
     const badges=root.querySelectorAll('.ops3Accounts .ops3Badge');
     badges.forEach(b=>{const name=b.childNodes[0]?.textContent?.trim()||b.textContent.trim();const a=accounts.find(x=>x.owner_name===name);const small=b.querySelector('small');if(a&&small){const next=accountSchedule(a);if(small.textContent!==next)small.textContent=next}});
 
@@ -79,10 +76,9 @@
   async function load(){
     if(busy||typeof sb==='undefined')return;busy=true;
     try{
-      const day=new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
       const [a,c]=await Promise.all([
         sb.from('daily_ops_accounts').select('id,owner_name,posting_days,posting_time,posting_timezone,sort_order,created_at').eq('active',true).order('sort_order').order('created_at'),
-        sb.from('daily_ops_checklist').select('id,account_progress').eq('work_date',day).eq('task_key','content_distribution').maybeSingle()
+        sb.from('daily_ops_checklist').select('id,account_progress').eq('work_date',localDate()).eq('task_key','content_distribution').maybeSingle()
       ]);
       if(a.error||c.error){console.error('post schedule',a.error||c.error);return}
       accounts=a.data||[];checklist=c.data||null;lastSig='';apply();
