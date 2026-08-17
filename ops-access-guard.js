@@ -42,4 +42,5 @@
   loadScript('/daily-ops-schedule-admin.js');
   loadScript('/daily-ops-adspower-handoff.js');
   loadScript('/daily-ops-finished-status.js');
+  loadScript('/daily-ops-whatsapp-cleanup.js');
 })();
