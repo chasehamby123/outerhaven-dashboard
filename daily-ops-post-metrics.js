@@ -55,7 +55,7 @@
       input.placeholder='Post name, e.g. 900+ Family Offices';
       parent.insertBefore(input,urlInput);
     }
-    if(document.activeElement!==input)input.value=item.notes||'';
+    if(document.activeElement!==input&&input.value!==(item.notes||''))input.value=item.notes||'';
     input.onchange=()=>savePostName(item.id,input.value);
 
     const button=postTask.querySelector('[data-toggle-item]');
@@ -85,48 +85,56 @@
     return `<div class="dailyOpsPostHistory"><div class="dailyOpsPostHistoryHead"><div>Recent Posts</div><span>Post name · comments</span></div>${shown.map(postRow).join('')}${rows.length>shown.length?`<div class="dailyOpsPostHistoryEmpty">Showing the latest ${shown.length} of ${rows.length} tracked posts.</div>`:''}</div>`;
   }
 
+  const observer=new MutationObserver(scheduleApply);
+  function observe(){observer.observe(document.body,{childList:true,subtree:true})}
   function applyDom(){
-    const cards=[...document.querySelectorAll('.dailyOpsAccount')];
-    if(!cards.length||!accounts.length)return;
-    cards.forEach((card,i)=>{
-      const account=accounts[i];if(!account)return;
-      const allPosts=accountPosts(account.id);
-      const latest=currentPost(account.id);
-      const totalComments=allPosts.reduce((n,p)=>n+Number(p.commenter_count||0),0);
-      const latestLinked=latest?postDms(latest.id):[];
-      const latestQualified=latestLinked.length;
-      const latestWhatsapp=latestLinked.filter(x=>x.status==='whatsapp').length;
+    observer.disconnect();
+    try{
+      const cards=[...document.querySelectorAll('.dailyOpsAccount')];
+      if(!cards.length||!accounts.length)return;
+      cards.forEach((card,i)=>{
+        const account=accounts[i];if(!account)return;
+        const allPosts=accountPosts(account.id);
+        const latest=currentPost(account.id);
+        const totalComments=allPosts.reduce((n,p)=>n+Number(p.commenter_count||0),0);
+        const latestLinked=latest?postDms(latest.id):[];
+        const latestQualified=latestLinked.length;
+        const latestWhatsapp=latestLinked.filter(x=>x.status==='whatsapp').length;
 
-      const commentsTask=taskByTitle(card,'Comments');
-      if(commentsTask){
-        const old=commentsTask.querySelector('.dailyOpsCountWrap');
-        let auto=commentsTask.querySelector('.dailyOpsAutoCount');
-        if(old){auto=document.createElement('div');auto.className='dailyOpsAutoCount';old.replaceWith(auto)}
-        if(auto){
-          auto.innerHTML=`<span>${allPosts.length} post${allPosts.length===1?'':'s'}</span><strong>${totalComments}</strong><span>comments</span><button type="button" class="dailyOpsPostsToggle" data-post-history-account="${account.id}">${expandedAccounts.has(account.id)?'Hide Posts':'View Posts'}</button>`;
-          const btn=auto.querySelector('[data-post-history-account]');
-          if(btn)btn.onclick=e=>{e.preventDefault();e.stopPropagation();expandedAccounts.has(account.id)?expandedAccounts.delete(account.id):expandedAccounts.add(account.id);scheduleApply()};
+        const commentsTask=taskByTitle(card,'Comments');
+        if(commentsTask){
+          const old=commentsTask.querySelector('.dailyOpsCountWrap');
+          let auto=commentsTask.querySelector('.dailyOpsAutoCount');
+          if(old){auto=document.createElement('div');auto.className='dailyOpsAutoCount';old.replaceWith(auto)}
+          if(auto){
+            const next=`<span>${allPosts.length} post${allPosts.length===1?'':'s'}</span><strong>${totalComments}</strong><span>comments</span><button type="button" class="dailyOpsPostsToggle" data-post-history-account="${account.id}">${expandedAccounts.has(account.id)?'Hide Posts':'View Posts'}</button>`;
+            if(auto.innerHTML!==next)auto.innerHTML=next;
+            const btn=auto.querySelector('[data-post-history-account]');
+            if(btn)btn.onclick=e=>{e.preventDefault();e.stopPropagation();expandedAccounts.has(account.id)?expandedAccounts.delete(account.id):expandedAccounts.add(account.id);scheduleApply()};
+          }
+          const sub=commentsTask.querySelector('.dailyOpsTaskSub');
+          if(sub){const text=allPosts.length?'Comments are tracked separately for every LinkedIn post on this account.':'Add a post name and URL first. Each post will keep its own comment count.';if(sub.textContent!==text)sub.textContent=text}
+          const existing=commentsTask.querySelector('.dailyOpsPostHistory');
+          if(expandedAccounts.has(account.id)){
+            const next=historyHtml(account);
+            if(existing){if(existing.outerHTML!==next)existing.outerHTML=next}else commentsTask.insertAdjacentHTML('beforeend',next);
+          }else if(existing)existing.remove();
         }
-        const sub=commentsTask.querySelector('.dailyOpsTaskSub');
-        if(sub)sub.textContent=allPosts.length?'Comments are tracked separately for every LinkedIn post on this account.':'Add a post name and URL first. Each post will keep its own comment count.';
-        const existing=commentsTask.querySelector('.dailyOpsPostHistory');
-        if(expandedAccounts.has(account.id)){
-          if(existing)existing.outerHTML=historyHtml(account);else commentsTask.insertAdjacentHTML('beforeend',historyHtml(account));
-        }else if(existing)existing.remove();
-      }
 
-      const postTask=taskByTitle(card,'Post Today');
-      if(postTask){
-        injectPostNameField(postTask,account);
-        const left=postTask.firstElementChild;
-        if(left){
-          let perf=left.querySelector('.dailyOpsPostPerformance');
-          if(!latest){if(perf)perf.remove();return}
-          if(!perf){perf=document.createElement('div');perf.className='dailyOpsPostPerformance';left.appendChild(perf)}
-          perf.innerHTML=`<span class="primary">${Number(latest.commenter_count||0)} comments on latest</span><span>${latestQualified} qualified</span><span class="good">${latestWhatsapp} WhatsApp</span>${latest.linkedin_post_url?`<a href="${safe(latest.linkedin_post_url)}" target="_blank" rel="noopener">Open Latest Post</a>`:''}`;
+        const postTask=taskByTitle(card,'Post Today');
+        if(postTask){
+          injectPostNameField(postTask,account);
+          const left=postTask.firstElementChild;
+          if(left){
+            let perf=left.querySelector('.dailyOpsPostPerformance');
+            if(!latest){if(perf)perf.remove();return}
+            if(!perf){perf=document.createElement('div');perf.className='dailyOpsPostPerformance';left.appendChild(perf)}
+            const next=`<span class="primary">${Number(latest.commenter_count||0)} comments on latest</span><span>${latestQualified} qualified</span><span class="good">${latestWhatsapp} WhatsApp</span>${latest.linkedin_post_url?`<a href="${safe(latest.linkedin_post_url)}" target="_blank" rel="noopener">Open Latest Post</a>`:''}`;
+            if(perf.innerHTML!==next)perf.innerHTML=next;
+          }
         }
-      }
-    });
+      });
+    }finally{observe()}
   }
 
   function scheduleApply(){clearTimeout(applyTimer);applyTimer=setTimeout(applyDom,50)}
@@ -153,7 +161,6 @@
       .subscribe();
   }
 
-  const observer=new MutationObserver(scheduleApply);
-  function install(){observer.observe(document.body,{childList:true,subtree:true});setTimeout(refresh,600)}
+  function install(){observe();setTimeout(refresh,600)}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
