@@ -117,9 +117,19 @@
     const s=document.createElement('script');s.src='/prosp-backfill-ui.js';s.async=false;document.body.appendChild(s);
   }
 
+  function loadDailyOpsPostMetrics(){
+    if(document.querySelector('script[src="/daily-ops-post-metrics.js"]'))return;
+    const s=document.createElement('script');s.src='/daily-ops-post-metrics.js';s.async=false;document.body.appendChild(s);
+  }
+
   function loadDailyOpsUI(){
-    if(document.querySelector('script[src="/daily-ops.js"]'))return;
-    const s=document.createElement('script');s.src='/daily-ops.js';s.async=false;document.body.appendChild(s);
+    const existing=document.querySelector('script[src="/daily-ops.js"]');
+    if(existing){
+      if(window.__outerhavenDailyOps)loadDailyOpsPostMetrics();
+      else existing.addEventListener('load',loadDailyOpsPostMetrics,{once:true});
+      return;
+    }
+    const s=document.createElement('script');s.src='/daily-ops.js';s.async=false;s.onload=loadDailyOpsPostMetrics;document.body.appendChild(s);
   }
 
   window.__outerhavenRefreshProfileInlineStage=inject;
