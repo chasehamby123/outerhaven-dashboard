@@ -7,6 +7,7 @@
   let showAll=false;
   let busy=false;
   let timer=null;
+  let lastPanelSig='';
 
   const style=document.createElement('style');
   style.textContent=`
@@ -37,6 +38,10 @@
     return Number(input?.value||0);
   }
 
+  function panelSignature(){
+    return `${showAll?'all':'five'}|${inboundRows.map(d=>`${d.id}:${d.created_at}:${d.reply_text||''}`).join('|')}|${accounts.map(a=>`${a.owner_name}:${a.linkedin_url||''}:${a.source_account_match||''}`).join('|')}`;
+  }
+
   function dmPanelHtml(){
     const rows=showAll?inboundRows:inboundRows.slice(0,5);
     return `<section class="ops3DmPanel" id="ops3InboundDmPanel"><div class="ops3DmHead"><div><b>Inbound DMs Today · ${inboundRows.length}</b><div class="ops3Sub">Read what came in here. The conversations themselves stay in LinkedIn.</div></div>${inboundRows.length>5?`<button id="ops3DmToggle" class="ops3Schedule">${showAll?'Show Latest 5':'View All'}</button>`:''}</div>${rows.length?`<div class="ops3DmList">${rows.map(d=>`<article class="ops3DmCard"><div class="ops3DmTop"><div><div class="ops3DmName">${escAdj(d.name||'Unknown lead')}${d.company_name?` · ${escAdj(d.company_name)}`:''}</div><div class="ops3DmMeta">${escAdj(sourceName(d.source_account))} · ${escAdj(timeLabel(d.created_at))}</div></div></div><div class="ops3DmText">${escAdj(cleanReply(d.reply_text))}</div></article>`).join('')}</div>`:'<div class="ops3Sub" style="margin-top:10px">No inbound DMs captured today.</div>'}</section>`;
@@ -61,13 +66,18 @@
       if(waSmall&&waSmall.textContent!=='Group chats created today')waSmall.textContent='Group chats created today';
     }
 
+    const sig=panelSignature();
     let panel=document.getElementById('ops3InboundDmPanel');
-    if(!panel&&metrics){metrics.insertAdjacentHTML('afterend',dmPanelHtml());panel=document.getElementById('ops3InboundDmPanel')}
-    if(panel){
-      const expected=dmPanelHtml();
-      if(panel.outerHTML!==expected){panel.outerHTML=expected;panel=document.getElementById('ops3InboundDmPanel')}
-      document.getElementById('ops3DmToggle')?.addEventListener('click',()=>{showAll=!showAll;apply()},{once:true});
+    if(!panel&&metrics){
+      metrics.insertAdjacentHTML('afterend',dmPanelHtml());
+      panel=document.getElementById('ops3InboundDmPanel');
+      lastPanelSig=sig;
+    }else if(panel&&lastPanelSig!==sig){
+      panel.outerHTML=dmPanelHtml();
+      panel=document.getElementById('ops3InboundDmPanel');
+      lastPanelSig=sig;
     }
+    document.getElementById('ops3DmToggle')?.addEventListener('click',()=>{showAll=!showAll;lastPanelSig='';apply()},{once:true});
 
     const task=[...root.querySelectorAll('.ops3Task')].find(x=>x.querySelector('.ops3Title')?.textContent?.includes('Set Appointment')||x.querySelector('.ops3Title')?.textContent?.includes('WhatsApp Group Chats'));
     if(task){
@@ -78,7 +88,7 @@
       const controls=task.querySelector('.ops3Controls');
       const input=controls?.querySelector('[data-count]');
       if(controls&&input){
-        let hint=controls.querySelector('.ops3Sub');
+        const hint=controls.querySelector('.ops3Sub');
         if(hint&&hint.textContent!=='WhatsApp group chats created today')hint.textContent='WhatsApp group chats created today';
       }
     }
