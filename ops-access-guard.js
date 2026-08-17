@@ -30,24 +30,16 @@
     showAuth('');
   };
 
-  if(!document.querySelector('script[src="/daily-ops-overview-fix.js"]')){
-    const overview=document.createElement('script');
-    overview.src='/daily-ops-overview-fix.js';
-    overview.async=false;
-    document.head.appendChild(overview);
+  function loadScript(src){
+    if(document.querySelector(`script[src="${src}"]`))return;
+    const s=document.createElement('script');
+    s.src=src;
+    s.async=false;
+    document.head.appendChild(s);
   }
 
-  if(!document.querySelector('script[src="/daily-ops-schedule-admin.js"]')){
-    const schedule=document.createElement('script');
-    schedule.src='/daily-ops-schedule-admin.js';
-    schedule.async=false;
-    document.head.appendChild(schedule);
-  }
-
-  if(!document.querySelector('script[src="/daily-ops-adspower-handoff.js"]')){
-    const adsPower=document.createElement('script');
-    adsPower.src='/daily-ops-adspower-handoff.js';
-    adsPower.async=false;
-    document.head.appendChild(adsPower);
-  }
+  loadScript('/daily-ops-overview-fix.js');
+  loadScript('/daily-ops-schedule-admin.js');
+  loadScript('/daily-ops-adspower-handoff.js');
+  loadScript('/daily-ops-finished-status.js');
 })();
