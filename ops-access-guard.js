@@ -43,5 +43,5 @@
 
   loadScript('/dashboard-static-metrics.js');
   loadScript('/revenue-dashboard.js');
-  loadScript('/daily-ops-v3.js');
+  loadScript('/daily-ops-v3.js',()=>loadScript('/daily-ops-v3-adjustments.js'));
 })();
