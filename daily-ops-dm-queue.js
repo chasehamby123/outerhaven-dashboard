@@ -61,7 +61,16 @@
 
   function closeSidebar(panel){
     const button=openButton(panel);
-    if(button){button.click();return}
+    if(button&&typeof button.onclick==='function'){
+      button.onclick();
+      cleanupBackdrop();
+      return;
+    }
+    if(button){
+      button.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+      cleanupBackdrop();
+      return;
+    }
     panel.remove();
     cleanupBackdrop();
   }
