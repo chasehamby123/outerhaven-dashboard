@@ -116,7 +116,7 @@
     const days=[...document.querySelectorAll('#dailyOpsDayGrid .dailyOpsDay.active')].map(x=>Number(x.dataset.day)).sort((a,b)=>a-b);
     btn.disabled=true;btn.textContent='Saving...';
     try{
-      const {error}=await sb.from('daily_ops_accounts').update({posting_days:days,updated_at:new Date().toISOString()}).eq('id',activeAccount.id);
+      const {error}=await sb.from('daily_ops_accounts').update({posting_days:days}).eq('id',activeAccount.id);
       if(error){alert(error.message);return}
 
       const today=new Date().getDay();
