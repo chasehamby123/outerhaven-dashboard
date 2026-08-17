@@ -42,6 +42,7 @@
   }
 
   loadScript('/dashboard-static-metrics.js');
+  loadScript('/revenue-dashboard.js');
   const afterDailyOps=()=>{
     loadScript('/daily-ops-post-metrics.js');
     loadScript('/daily-ops-runtime.js');
