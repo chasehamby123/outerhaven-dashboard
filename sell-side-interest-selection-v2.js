@@ -85,9 +85,23 @@
       const current=typeof personSellStage==='function'?personSellStage(p):(p.pipelineStage||RECEIVED);
       if(current!==RECEIVED)return;
       const actions=card.querySelector('.pipelinePersonActions');if(!actions)return;
-      actions.querySelector('[data-advance-person]')?.remove();
-      if(!actions.querySelector('[data-select-initial-interest]')){
-        const btn=document.createElement('button');btn.type='button';btn.className='pipelineAdvance';btn.dataset.selectInitialInterest=p.id;btn.textContent='Advance →';actions.appendChild(btn);
+
+      // At Opportunity Received, a multi-deal source gets exactly one Advance control:
+      // the selector that chooses which stored opportunity has initial interest.
+      const selectorButtons=[...actions.querySelectorAll('[data-select-initial-interest]')];
+      const keep=selectorButtons.shift()||null;
+      selectorButtons.forEach(btn=>btn.remove());
+      actions.querySelectorAll('.pipelineAdvance').forEach(btn=>{
+        if(btn!==keep)btn.remove();
+      });
+
+      if(!keep){
+        const btn=document.createElement('button');
+        btn.type='button';
+        btn.className='pipelineAdvance';
+        btn.dataset.selectInitialInterest=p.id;
+        btn.textContent='Advance →';
+        actions.appendChild(btn);
       }
     });
     board.querySelectorAll('.pipelineStage').forEach(stage=>{
