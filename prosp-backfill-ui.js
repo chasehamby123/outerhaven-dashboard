@@ -60,7 +60,7 @@
     if(!key){alert('Paste your Prosp API key first.');return}
     btn.disabled=true;btn.textContent='Checking Replies...';
     out.className='prospBackfillResult show';
-    out.textContent='Checking Prosp for leads marked replied or responded. Non-repliers will be skipped without opening their conversations.';
+    out.textContent='Checking Prosp for leads marked Replied. Non-repliers are ignored and their conversations are never opened.';
     try{
       const {data,error}=await sb.functions.invoke('prosp-backfill-browser',{body:{api_key:key}});
       document.getElementById('prospBackfillKey').value='';
@@ -70,7 +70,7 @@
         `${data.campaigns_scanned||0} campaigns scanned`,
         `${data.senders_found||0} sender accounts found`,
         `${data.leads_seen||0} campaign leads inspected`,
-        `${data.reply_marked_leads||0} replies detected`,
+        `${data.reply_marked_leads||0} Replied leads detected`,
         `${data.reply_lookups||0} reply conversations checked`,
         `${data.conversation_successes||0} conversations opened`,
         `${data.conversation_errors||0} reply conversation errors`,
@@ -80,8 +80,12 @@
         `${data.needs_review||0} need review`,
         `${data.rejected||0} rejected`
       ];
+      let suffix=data.hit_reply_limit?' · Reply lookup limit reached. Run it again to continue with remaining reply-marked leads.':'';
+      if(!(data.reply_marked_leads||0)&&Array.isArray(data.status_values_seen)&&data.status_values_seen.length){
+        suffix+=`\n\nProsp status fields seen: ${data.status_values_seen.join(' | ')}`;
+      }
       out.className='prospBackfillResult show';
-      out.textContent=parts.join(' · ')+(data.hit_reply_limit?' · Reply lookup limit reached. Run it again to continue with remaining reply-marked leads.':'');
+      out.textContent=parts.join(' · ')+suffix;
       setTimeout(()=>document.querySelector('.navBtn[data-view="leadreview"]')?.click(),700);
     }catch(e){
       out.className='prospBackfillResult show error';
