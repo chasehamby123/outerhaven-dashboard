@@ -85,11 +85,25 @@
   tidyDashboardSwitch();
   if(typeof currentUser!=='undefined'&&currentUser&&typeof renderPeople==='function')renderPeople();
 
+  function loadSellSideInterestSelection(){
+    if(document.querySelector('script[src="/sell-side-interest-selection.js"]'))return;
+    const x=document.createElement('script');
+    x.src='/sell-side-interest-selection.js';
+    x.async=false;
+    document.body.appendChild(x);
+  }
+
   function loadOpportunityDocumentDetail(){
-    if(document.querySelector('script[src="/opportunity-document-detail.js"]'))return;
+    const existing=document.querySelector('script[src="/opportunity-document-detail.js"]');
+    if(existing){
+      if(window.__outerhavenOpportunityDocumentDetail)loadSellSideInterestSelection();
+      else existing.addEventListener('load',loadSellSideInterestSelection,{once:true});
+      return;
+    }
     const d=document.createElement('script');
     d.src='/opportunity-document-detail.js';
     d.async=false;
+    d.onload=loadSellSideInterestSelection;
     document.body.appendChild(d);
   }
 
