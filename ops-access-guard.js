@@ -43,5 +43,6 @@
 
   loadScript('/dashboard-static-metrics.js');
   loadScript('/revenue-dashboard.js');
+  loadScript('/ai-image-quick-add.js');
   loadScript('/daily-ops-v3.js',()=>loadScript('/daily-ops-v3-adjustments.js',()=>loadScript('/daily-ops-post-schedule.js')));
 })();
