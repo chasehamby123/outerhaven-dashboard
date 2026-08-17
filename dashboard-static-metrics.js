@@ -21,11 +21,12 @@
     if(['b','bn','billion'].includes(u))x*=1e9;else if(['m','mm','million'].includes(u))x*=1e6;else if(['k','thousand'].includes(u))x*=1e3;
     return Number.isFinite(x)?x:0;
   }
+  function rounded(v,d){const p=10**d;return Math.round((v+Number.EPSILON)*p)/p}
   function money(v){
     const x=Number(v)||0,a=Math.abs(x);
-    if(a>=1e9)return '$'+(x/1e9).toFixed(a>=1e10?1:2).replace(/\.00$/,'').replace(/(\.\d)0$/,'$1')+'B';
-    if(a>=1e6)return '$'+(x/1e6).toFixed(a>=1e7?1:2).replace(/\.00$/,'').replace(/(\.\d)0$/,'$1')+'M';
-    if(a>=1e3)return '$'+(x/1e3).toFixed(a>=1e5?0:1).replace(/\.0$/,'')+'K';
+    if(a>=1e9){const d=a>=1e10?1:2,q=rounded(x/1e9,d);return '$'+q.toFixed(d).replace(/\.00$/,'').replace(/(\.\d)0$/,'$1')+'B'}
+    if(a>=1e6){const d=a>=1e7?1:2,q=rounded(x/1e6,d);return '$'+q.toFixed(d).replace(/\.00$/,'').replace(/(\.\d)0$/,'$1')+'M'}
+    if(a>=1e3){const d=a>=1e5?0:1,q=rounded(x/1e3,d);return '$'+q.toFixed(d).replace(/\.0$/,'')+'K'}
     return '$'+Math.round(x).toLocaleString();
   }
   function pathFor(o,p){
