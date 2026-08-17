@@ -6,9 +6,8 @@
 
   const style=document.createElement('style');
   style.textContent=`
-    .dailyOpsFinishedBtn{border:1px solid #d7dce3;background:#f2f4f7;color:#8a919d;border-radius:8px;padding:7px 10px;font-size:9px;font-weight:900;cursor:default;white-space:nowrap;transition:.18s ease}
-    .dailyOpsFinishedBtn.ready{border-color:#218c4b;background:#2e9d57;color:#fff;box-shadow:0 0 0 3px rgba(46,157,87,.10)}
-    #dailyOpsRoot .dailyOpsStatus{display:none!important}
+    #dailyOpsRoot .dailyOpsStatus{display:inline-flex!important;align-items:center;justify-content:center}
+    #dailyOpsRoot .dailyOpsStatus.done{border:1px solid #218c4b!important;background:#2e9d57!important;color:#fff!important;box-shadow:0 0 0 3px rgba(46,157,87,.10)}
   `;
   document.head.appendChild(style);
 
@@ -24,24 +23,16 @@
   }
 
   function apply(){
+    document.querySelectorAll('#dailyOpsRoot [data-daily-finished]').forEach(x=>x.remove());
     const cards=[...document.querySelectorAll('#dailyOpsRoot .dailyOpsAccount')];
     if(!cards.length||!accounts.length)return;
     cards.forEach((card,index)=>{
       const account=accounts[index];if(!account)return;
-      const right=card.querySelector('.dailyOpsAccountRight');if(!right)return;
-      let btn=right.querySelector('[data-daily-finished]');
-      if(!btn){
-        btn=document.createElement('button');
-        btn.type='button';
-        btn.className='dailyOpsFinishedBtn';
-        btn.dataset.dailyFinished=account.id;
-        btn.setAttribute('aria-disabled','true');
-        right.appendChild(btn);
-      }
+      const status=card.querySelector('.dailyOpsStatus');if(!status)return;
       const complete=isComplete(account);
-      btn.classList.toggle('ready',complete);
-      btn.textContent=complete?'Finished ✓':'Finished';
-      btn.title=complete?'All required work for this account is complete.':'Finish the required post, comments, follow-ups, and qualified DMs for this account.';
+      status.classList.toggle('done',complete);
+      status.textContent=complete?'Complete ✓':'Needs Attention';
+      status.title=complete?'All required work for this account is complete.':'This account still has required work or qualified DMs waiting.';
     });
   }
 
@@ -54,7 +45,7 @@
         sb.from('daily_ops_items').select('account_id,item_type,status').eq('work_date',localDate()),
         sb.from('daily_ops_dms').select('account_id,status').in('status',['needs_reply','replied'])
       ]);
-      if(a.error||i.error||d.error){console.error('daily ops finished status',a.error||i.error||d.error);return}
+      if(a.error||i.error||d.error){console.error('daily ops completion status',a.error||i.error||d.error);return}
       accounts=a.data||[];items=i.data||[];dms=d.data||[];apply();
     }finally{busy=false}
   }
@@ -63,7 +54,7 @@
   function install(){
     new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true});
     setTimeout(refresh,500);
-    setInterval(refresh,5000);
+    setInterval(refresh,3000);
   }
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
