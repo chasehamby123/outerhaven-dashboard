@@ -117,6 +117,11 @@
     const s=document.createElement('script');s.src='/prosp-backfill-ui.js';s.async=false;document.body.appendChild(s);
   }
 
+  function loadDailyOpsUI(){
+    if(document.querySelector('script[src="/daily-ops.js"]'))return;
+    const s=document.createElement('script');s.src='/daily-ops.js';s.async=false;document.body.appendChild(s);
+  }
+
   window.__outerhavenRefreshProfileInlineStage=inject;
   const observer=new MutationObserver(()=>inject());
   function install(){
@@ -126,6 +131,7 @@
     if(overlay)observer.observe(overlay,{attributes:true,attributeFilter:['class']});
     inject();
     loadProspBackfillUI();
+    loadDailyOpsUI();
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
