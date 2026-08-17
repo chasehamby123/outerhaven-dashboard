@@ -46,6 +46,7 @@
   const afterDailyOps=()=>{
     loadScript('/daily-ops-post-metrics.js');
     loadScript('/daily-ops-runtime.js');
+    loadScript('/daily-ops-dm-queue.js');
   };
   const existingDailyOps=document.querySelector('script[src="/daily-ops.js"]');
   if(existingDailyOps){
