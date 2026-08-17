@@ -13,7 +13,7 @@
     .prospBackfillField input{margin-top:5px}
     .prospBackfillBtn{border:1px solid #111827;background:#111827;color:#fff;border-radius:9px;padding:10px 13px;font-size:10px;font-weight:850;white-space:nowrap}
     .prospBackfillBtn:disabled{opacity:.55;cursor:wait}
-    .prospBackfillResult{font-size:10px;line-height:1.55;color:#596170;margin-top:10px;padding:10px 11px;background:#f7f8fa;border:1px solid #eceef1;border-radius:9px;display:none}
+    .prospBackfillResult{font-size:10px;line-height:1.55;color:#596170;margin-top:10px;padding:10px 11px;background:#f7f8fa;border:1px solid #eceef1;border-radius:9px;display:none;white-space:pre-wrap;word-break:break-word}
     .prospBackfillResult.show{display:block}
     .prospBackfillResult.error{background:#fff1f1;border-color:#efc3c3;color:#a32121}
   `;
@@ -37,6 +37,20 @@
     box.querySelector('#prospBackfillRun').onclick=run;
   }
 
+  function errorDetail(data){
+    const bits=[];
+    if(data?.error)bits.push(data.error);
+    if(data?.prosp_status)bits.push(`Prosp status ${data.prosp_status}`);
+    const d=data?.prosp_details;
+    if(d){
+      if(typeof d==='string')bits.push(d);
+      else if(d.message)bits.push(d.message);
+      else if(d.error)bits.push(typeof d.error==='string'?d.error:JSON.stringify(d.error));
+      else bits.push(JSON.stringify(d));
+    }
+    return bits.join(' · ')||'Backfill failed';
+  }
+
   async function run(){
     const key=document.getElementById('prospBackfillKey')?.value?.trim();
     const btn=document.getElementById('prospBackfillRun');
@@ -49,7 +63,7 @@
       const {data,error}=await sb.functions.invoke('prosp-backfill-browser',{body:{api_key:key}});
       document.getElementById('prospBackfillKey').value='';
       if(error)throw error;
-      if(!data?.ok)throw new Error(data?.error||'Backfill failed');
+      if(!data?.ok){out.className='prospBackfillResult show error';out.textContent=errorDetail(data);return}
       const parts=[
         `${data.campaigns_scanned||0} campaigns scanned`,
         `${data.leads_seen||0} leads checked`,
