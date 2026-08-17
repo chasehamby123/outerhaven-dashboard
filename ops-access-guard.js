@@ -33,8 +33,8 @@
         return;
       }
       if(adminLoadData){loadData=adminLoadData;await loadData()}
-      if(adminSubscribe){subscribe=adminSubscribe;subscribe()}
-      loadScript('/originator-admin.js',()=>loadScript('/originator-preview-admin.js'));
+      if(adminSubscribe){adminSubscribe();}
+      loadScript('/originator-admin.js',()=>loadScript('/originator-preview-admin.js',()=>loadScript('/originator-test-admin.js')));
       return;
     }
     showAuth('');
