@@ -86,9 +86,9 @@
   if(typeof currentUser!=='undefined'&&currentUser&&typeof renderPeople==='function')renderPeople();
 
   function loadSellSideInterestSelection(){
-    if(document.querySelector('script[src="/sell-side-interest-selection.js"]'))return;
+    if(document.querySelector('script[src="/sell-side-interest-selection-v2.js"]'))return;
     const x=document.createElement('script');
-    x.src='/sell-side-interest-selection.js';
+    x.src='/sell-side-interest-selection-v2.js';
     x.async=false;
     document.body.appendChild(x);
   }
