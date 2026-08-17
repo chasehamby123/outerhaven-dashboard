@@ -60,7 +60,7 @@
   function closeModal(){document.getElementById('dailyOpsScheduleModal')?.classList.add('hidden');activeAccount=null}
   function openModal(account){
     activeAccount=account;ensureModal();
-    document.getElementById('dailyOpsScheduleTitle').textContent=`Posting Schedule · ${account.owner_name}`;
+    const title=document.getElementById('dailyOpsScheduleTitle');if(title)title.textContent=`Posting Schedule · ${account.owner_name}`;
     const selected=new Set((account.posting_days||[]).map(Number));
     const grid=document.getElementById('dailyOpsDayGrid');
     grid.innerHTML=DAYS.map(([name,num])=>`<button type="button" class="dailyOpsDay ${selected.has(num)?'active':''}" data-day="${num}">${name}</button>`).join('');
@@ -113,27 +113,38 @@
       if(!identity){identity=document.createElement('div');identity.className='dailyOpsDmIdentity';name.parentNode.insertBefore(identity,name);identity.appendChild(name)}
       let url=identity.querySelector('.dailyOpsLeadUrl');
       if(!url){url=document.createElement('span');url.className='dailyOpsLeadUrl';identity.appendChild(url)}
-      url.textContent=dm.linkedin_url;url.title=dm.linkedin_url;
+      if(url.textContent!==dm.linkedin_url)url.textContent=dm.linkedin_url;
+      if(url.title!==dm.linkedin_url)url.title=dm.linkedin_url;
       let copy=identity.querySelector('.dailyOpsCopyUrl');
       if(!copy){copy=document.createElement('button');copy.type='button';copy.className='dailyOpsCopyUrl';copy.textContent='Copy URL';identity.appendChild(copy)}
       copy.onclick=e=>{e.preventDefault();e.stopPropagation();copyUrl(copy,dm.linkedin_url)};
       let hint=card.querySelector('.dailyOpsAdsPowerHint');
       if(!hint){hint=document.createElement('div');hint.className='dailyOpsAdsPowerHint';identity.insertAdjacentElement('afterend',hint)}
-      hint.textContent=account?`Paste into ${account.owner_name}'s account in AdsPower`:'Assign this reply to the correct AdsPower account first';
+      const hintText=account?`Paste into ${account.owner_name}'s account in AdsPower`:'Assign this reply to the correct AdsPower account first';
+      if(hint.textContent!==hintText)hint.textContent=hintText;
     }
     card.querySelectorAll('a[href*="linkedin.com"]').forEach(x=>x.remove());
   }
 
   function apply(){
     const root=document.getElementById('dailyOpsRoot');if(!root)return;
-    const metrics=root.querySelector('.dailyOpsMetrics');if(metrics&&accounts.length)metrics.innerHTML=overviewHtml();
+    const metrics=root.querySelector('.dailyOpsMetrics');
+    if(metrics&&accounts.length){const next=overviewHtml();if(metrics.innerHTML!==next)metrics.innerHTML=next}
     const cards=[...root.querySelectorAll('.dailyOpsAccount')];
     cards.forEach((card,index)=>{
       const account=accounts[index];if(!account)return;
       const status=card.querySelector('.dailyOpsStatus');
-      if(status){const complete=isComplete(account);status.classList.toggle('done',complete);status.textContent=complete?'Complete ✓':'Needs Attention'}
+      if(status){
+        const complete=isComplete(account),label=complete?'Complete ✓':'Needs Attention';
+        if(status.classList.contains('done')!==complete)status.classList.toggle('done',complete);
+        if(status.textContent!==label)status.textContent=label;
+      }
       const meta=card.querySelector('.dailyOpsAccountMeta');
-      if(meta){let summary=meta.parentElement.querySelector('.dailyOpsScheduleSummary');if(!summary){summary=document.createElement('div');summary.className='dailyOpsScheduleSummary';meta.insertAdjacentElement('afterend',summary)}summary.textContent=scheduleLabel(account.posting_days)}
+      if(meta){
+        let summary=meta.parentElement.querySelector('.dailyOpsScheduleSummary');
+        if(!summary){summary=document.createElement('div');summary.className='dailyOpsScheduleSummary';meta.insertAdjacentElement('afterend',summary)}
+        const label=scheduleLabel(account.posting_days);if(summary.textContent!==label)summary.textContent=label;
+      }
       if(role==='admin'){
         const right=card.querySelector('.dailyOpsAccountRight');
         if(right&&!right.querySelector('[data-edit-schedule]')){const b=document.createElement('button');b.type='button';b.className='dailyOpsScheduleBtn';b.dataset.editSchedule=account.id;b.textContent='Edit Schedule';b.onclick=()=>openModal(account);status?right.insertBefore(b,status):right.appendChild(b)}
