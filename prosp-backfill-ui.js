@@ -25,7 +25,45 @@
     if(metrics)metrics.insertAdjacentElement('afterend',box);else view.prepend(box);
   }
 
+  let metricsApplying=false;
+  function staticMetricsHtml(){
+    if(typeof state==='undefined'||!state)return'';
+    const d=Array.isArray(state.opportunities)?state.opportunities:[];
+    const p=Array.isArray(state.people)?state.people:[];
+    const rows=[
+      ['Active Opportunities',d.length,'Across all opportunities'],
+      ['Sell Side',d.filter(o=>o.side==='Sell Side').length,'Sell-side opportunities'],
+      ['Buy Side',d.filter(o=>o.side==='Buy Side').length,'Buy-side opportunities'],
+      ['LinkedIn Access',p.filter(x=>x.hasLinkedIn).length+'/'+p.length,'People with account access']
+    ];
+    return rows.map(x=>`<article class="metric"><div class="metricLabel">${x[0]}</div><div class="metricValue">${x[1]}</div><div class="metricFoot">${x[2]}</div></article>`).join('');
+  }
+
+  function applyStaticMetrics(){
+    const el=document.getElementById('metrics');
+    if(!el||typeof state==='undefined')return;
+    const html=staticMetricsHtml();
+    if(!html||el.innerHTML===html)return;
+    metricsApplying=true;
+    el.innerHTML=html;
+    metricsApplying=false;
+  }
+
+  function installStaticMetrics(){
+    const el=document.getElementById('metrics');
+    if(!el)return;
+    const mo=new MutationObserver(()=>{if(!metricsApplying)queueMicrotask(applyStaticMetrics)});
+    mo.observe(el,{childList:true,subtree:true,characterData:true});
+    const role=document.getElementById('roleFilter');
+    if(role)role.addEventListener('change',()=>setTimeout(applyStaticMetrics,0));
+    applyStaticMetrics();
+  }
+
   const observer=new MutationObserver(()=>inject());
-  function install(){observer.observe(document.body,{childList:true,subtree:true});inject()}
+  function install(){
+    observer.observe(document.body,{childList:true,subtree:true});
+    inject();
+    installStaticMetrics();
+  }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
