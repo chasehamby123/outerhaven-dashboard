@@ -132,12 +132,21 @@
     document.body.appendChild(s);
   }
 
+  function loadLeadQualification(){
+    if(document.querySelector('script[src="/lead-qualification.js"]'))return;
+    const s=document.createElement('script');
+    s.src='/lead-qualification.js';
+    s.async=false;
+    document.body.appendChild(s);
+  }
+
   const observer=new MutationObserver(()=>enhanceWaitingControls());
   function install(){
     const board=document.getElementById('relationshipPipeline');
     if(board)observer.observe(board,{childList:true,subtree:true});
     enhanceWaitingControls();
     loadProfileInlineStage();
+    loadLeadQualification();
     if(typeof currentUser!=='undefined'&&currentUser&&typeof loadData==='function')loadData();
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
