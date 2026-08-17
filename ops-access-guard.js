@@ -43,16 +43,5 @@
 
   loadScript('/dashboard-static-metrics.js');
   loadScript('/revenue-dashboard.js');
-  const afterDailyOps=()=>{
-    loadScript('/daily-ops-post-metrics.js');
-    loadScript('/daily-ops-runtime.js');
-    loadScript('/daily-ops-dm-queue.js');
-  };
-  const existingDailyOps=document.querySelector('script[src="/daily-ops.js"]');
-  if(existingDailyOps){
-    if(window.__outerhavenDailyOps)afterDailyOps();
-    else existingDailyOps.addEventListener('load',afterDailyOps,{once:true});
-  }else loadScript('/daily-ops.js',afterDailyOps);
+  loadScript('/daily-ops-v2.js');
 })();
-
-// Production bundle marker: Daily Ops sidebar + Ignore + direct close handler.
