@@ -32,9 +32,18 @@
     const start=SELL_PIPELINE.indexOf(OPPORTUNITY_START);
     return start>=0?SELL_PIPELINE.slice(start):[OPPORTUNITY_START,INITIAL_INTEREST,'Buy-Side Interest Confirmed','Engagement Active','Closed'];
   }
+  function openRevenueTerms(id){
+    let tries=0;
+    const run=()=>{
+      if(typeof window.__outerhavenOpenRevenueTerms==='function'){window.__outerhavenOpenRevenueTerms(id);return}
+      if(++tries<12)setTimeout(run,100);
+    };
+    setTimeout(run,80);
+  }
 
   async function applyOpportunityStage(id,target){
     const o=opportunity(id),p=opportunityPerson(o);if(!o||!target)return{error:new Error('Opportunity not found')};
+    const needsRevenueTerms=o.side==='Sell Side'&&!isDirect(p)&&target===INITIAL_INTEREST;
     const {error}=await sb.from('opportunities').update({pipeline_stage:target,stage:target,pipeline_active:true}).eq('id',id);
     if(error)return{error};
 
@@ -44,7 +53,8 @@
       const personUpdate=await sb.from('people').update(payload).eq('id',p.id);
       if(personUpdate.error)return{error:personUpdate.error};
     }
-    return{error:null};
+    if(typeof window.__outerhavenRefreshDashboardMetrics==='function')window.__outerhavenRefreshDashboardMetrics();
+    return{error:null,needsRevenueTerms};
   }
 
   function installModal(){
@@ -102,6 +112,7 @@
     if(result.error){alert(result.error.message);if(submit){submit.disabled=false;submit.textContent='Move Opportunity'}return}
     closeStageModal();
     await loadData();
+    if(result.needsRevenueTerms)openRevenueTerms(id);
   }
 
   function makeMoveButton(id,className='pipelineMoveStageBtn'){
@@ -153,6 +164,7 @@
       if(result.error){alert(result.error.message);select.value=previous;select.disabled=false;return}
       await loadData();
       if(typeof openDetail==='function')openDetail(o.id);
+      if(result.needsRevenueTerms)openRevenueTerms(o.id);
     };
   }
 
