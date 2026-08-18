@@ -6,6 +6,7 @@
   const URL='https://nfcysxqdwpdhrdpgxrlo.supabase.co';
   const KEY='sb_publishable_nBRZvesX4tz7zUPq5QLYfQ__in76dF5';
   const sb=supabase.createClient(URL,KEY);
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
   async function ensureOriginator(){
     const {data:role,error}=await sb.rpc('dashboard_role');
@@ -39,35 +40,41 @@
       if(error)throw error;
       await ensureOriginator();
     }catch(err){show(err?.message||'Could not sign in.')}
-    finally{btn.disabled=false;btn.textContent='Open Partner Portal'}
+    finally{btn.disabled=false;btn.textContent='Open Partner Dashboard'}
   });
 
   document.getElementById('createForm').addEventListener('submit',async e=>{
     e.preventDefault();
     msg.className='msg';
-    const name=document.getElementById('createName').value.trim();
     const email=document.getElementById('createEmail').value.trim().toLowerCase();
     const password=document.getElementById('createPassword').value;
-    const confirm=document.getElementById('createConfirm').value;
     const btn=document.getElementById('createBtn');
-    if(!name){show('Enter your full name.');return}
-    if(password!==confirm){show('The passwords do not match.');return}
     if(password.length<8){show('Use at least 8 characters for the password.');return}
     btn.disabled=true;btn.textContent='Creating account...';
     try{
-      const signup=await sb.auth.signUp({email,password,options:{data:{full_name:name,account_type:'originator'},emailRedirectTo:location.origin+'/originator-login.html?mode=signin'}});
+      const signup=await sb.auth.signUp({email,password,options:{data:{account_type:'originator'}}});
       if(signup.error)throw signup.error;
       if(signup.data.session){await ensureOriginator();return}
-      show('Account created. Check your email to confirm it, then sign in to your partner dashboard.','good');
-      window.setPartnerMode('signin');
-      document.getElementById('signinEmail').value=email;
+
+      await sleep(250);
+      const signin=await sb.auth.signInWithPassword({email,password});
+      if(signin.error){
+        if(signup.data.user&&Array.isArray(signup.data.user.identities)&&signup.data.user.identities.length===0){
+          show('This email already has an account. Use Sign In instead.','good');
+          window.setPartnerMode('signin');
+          document.getElementById('signinEmail').value=email;
+          return;
+        }
+        throw signin.error;
+      }
+      await ensureOriginator();
     }catch(err){
       const t=err?.message||'Could not create account.';
       if(/already registered|already been registered|user already exists/i.test(t)){
-        show('This account already exists. Use Sign In instead.','good');
+        show('This email already has an account. Use Sign In instead.','good');
         window.setPartnerMode('signin');
         document.getElementById('signinEmail').value=email;
       }else show(t);
-    }finally{btn.disabled=false;btn.textContent='Create Partner Account'}
+    }finally{btn.disabled=false;btn.textContent='Create Account'}
   });
 })();
