@@ -32,12 +32,16 @@
 
     const visible=Math.max(0,12-removed);
     const head=modal.querySelector('.ddHead p');
-    if(head)head.textContent='Questions already answered in Step 1 are removed here. Complete only the additional diligence below, or mark a question Not Applicable when appropriate.';
+    if(head)head.textContent='Complete the remaining diligence needed for Outerhaven to review this opportunity.';
     const msg=modal.querySelector('#ddFootMsg');
-    if(msg)msg.textContent=`Complete the ${visible} additional diligence questions below before sending the opportunity to Outerhaven.`;
+    if(msg)msg.textContent=`Complete the ${visible} diligence questions below before sending the opportunity to Outerhaven.`;
   }
 
   const observer=new MutationObserver(()=>document.querySelectorAll('.ddModal').forEach(apply));
   observer.observe(document.documentElement,{childList:true,subtree:true});
   document.querySelectorAll('.ddModal').forEach(apply);
+
+  if(!document.querySelector('script[src="/originator-network-matches.js"]')){
+    const s=document.createElement('script');s.src='/originator-network-matches.js';s.async=false;document.body.appendChild(s);
+  }
 })();
