@@ -7,6 +7,7 @@
   const q=id=>document.getElementById(id);
   const html=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
   const norm=v=>String(v||'').trim().toLowerCase();
+  const parseAmount=v=>typeof window.__outerhavenParseDealAmount==='function'?window.__outerhavenParseDealAmount(v):Number(v||0)||0;
   const fmtMoney=v=>{const n=Number(v||0);if(!n)return'Flexible';if(n>=1e9)return'$'+(n/1e9).toFixed(n%1e9?1:0)+'B';if(n>=1e6)return'$'+(n/1e6).toFixed(n%1e6?1:0)+'M';return'$'+Math.round(n).toLocaleString()};
 
   const style=document.createElement('style');
@@ -44,8 +45,9 @@
       return false;
     });
   }
+  function currentInput(){return{amount:parseAmount(q('dealAmount')?.value),sector:q('dealSector')?.value.trim()||'',geo:q('dealGeography')?.value.trim()||'',type:q('dealType')?.value||'',title:q('dealTitle')?.value.trim()||'',company:q('dealCompany')?.value.trim()||'',summary:q('dealSummary')?.value.trim()||''}}
   function scoreInput(b){
-    const amount=Number(q('dealAmount')?.value||0),sector=q('dealSector')?.value||'',geo=q('dealGeography')?.value||'',type=q('dealType')?.value||'';
+    const {amount,sector,geo,type}=currentInput();
     let score=0,reasons=[];
     if(!b.min_size&&!b.max_size){score+=15;reasons.push('Size flexible')}
     else if(amount&&(!b.min_size||amount>=Number(b.min_size))&&(!b.max_size||amount<=Number(b.max_size))){score+=35;reasons.push('Size aligned')}
@@ -54,6 +56,69 @@
     if(!b.geographies?.length){score+=10;reasons.push('Geography flexible')}else if(textMatch(geo,b.geographies,['all','any','global','worldwide'])){score+=20;reasons.push('Geography aligned')}
     if(!b.structures?.length){score+=10;reasons.push('Structure flexible')}else if(structureMatch(type,b.structures)){score+=15;reasons.push('Structure aligned')}
     return{score:Math.min(100,score),reasons};
+  }
+  function baselineScore(){
+    const {amount,title,company,sector,geo,type,summary}=currentInput();
+    let score=0;
+    if(amount>=100000000)score+=45;else if(amount>=50000000)score+=40;else if(amount>=25000000)score+=20;else if(amount>0)score+=8;
+    if(title&&company)score+=5;if(sector)score+=10;if(geo)score+=10;if(type)score+=10;if(summary.length>=120)score+=10;else if(summary.length>=40)score+=6;
+    try{if(typeof selectedFiles!=='undefined'&&selectedFiles.length)score+=15}catch{}
+    return Math.min(100,score);
+  }
+
+  function bestMandate(){
+    if(!buckets.length)return null;
+    return buckets.map(b=>({bucket:b,...scoreInput(b)})).sort((a,b)=>b.score-a.score)[0]||null;
+  }
+  function mandateChecklist(b){
+    const {amount,sector,geo,type}=currentInput();
+    const sizeAligned=(!b.min_size||amount>=Number(b.min_size))&&(!b.max_size||amount<=Number(b.max_size));
+    const sizeNear=amount&&((b.min_size&&amount>=Number(b.min_size)*.75&&amount<Number(b.min_size))||(b.max_size&&amount>Number(b.max_size)&&amount<=Number(b.max_size)*1.25));
+    const sectorOK=!b.sectors?.length||textMatch(sector,b.sectors,['all','any','sector agnostic','agnostic']);
+    const geoOK=!b.geographies?.length||textMatch(geo,b.geographies,['all','any','global','worldwide']);
+    const structureOK=!b.structures?.length||structureMatch(type,b.structures);
+    return[
+      [`Size · ${rangeText(b)}`,amount?(sizeAligned?'Aligned':sizeNear?'Near range':'Outside range'):'Missing',!!amount&&(sizeAligned||sizeNear)],
+      [`Sector · ${joined(b.sectors)}`,sector?(sectorOK?'Aligned':'No match'):'Missing',!!sector&&sectorOK],
+      [`Geography · ${joined(b.geographies)}`,geo?(geoOK?'Aligned':'No match'):'Missing',!!geo&&geoOK],
+      [`Structure · ${joined(b.structures)}`,type?(structureOK?'Aligned':'No match'):'Missing',!!type&&structureOK]
+    ];
+  }
+  function baselineChecklist(){
+    const {amount,sector,geo,type,summary}=currentInput();
+    let files=0;try{files=typeof selectedFiles!=='undefined'?selectedFiles.length:0}catch{}
+    return[
+      ['$50M+ preferred scale',amount>=50000000?'Strong':amount>=25000000?'Near scale':amount?'Below thesis':'Missing',amount>=25000000],
+      ['Sector + geography',sector&&geo?'Complete':'Incomplete',!!sector&&!!geo],
+      ['Transaction structure',type?'Complete':'Missing',!!type],
+      ['Opportunity context',summary.length>=120?'Strong':summary?'Needs detail':'Missing',summary.length>=40],
+      ['Supporting materials',files?`${files} attached`:'Not attached',files>0]
+    ];
+  }
+  function drawFit(score,label,copy,rows,ringLabel='Match'){
+    const ring=q('estimateRing'),scoreEl=q('estimateScore'),labelEl=q('estimateLabel'),copyEl=q('estimateCopy'),check=q('fitChecklist');
+    if(!ring||!scoreEl||!labelEl||!copyEl||!check)return;
+    scoreEl.textContent=score+'%';ring.style.setProperty('--score',score+'%');
+    const span=ring.querySelector('span');if(span)span.textContent=ringLabel;
+    labelEl.textContent=label;copyEl.textContent=copy;
+    check.innerHTML=rows.map(r=>`<div class="fitCheck ${r[2]?'good':'warn'}"><span>${html(r[0])}</span><span>${html(r[1])}</span></div>`).join('');
+  }
+  function renderBestFit(){
+    const input=currentInput(),hasAny=!!(input.amount||input.sector||input.geo||input.type||input.title||input.summary);
+    if(hasAny&&buckets.length){
+      const best=bestMandate();
+      if(best){
+        const reason=best.reasons.length?best.reasons.join(' · '):'Complete more opportunity details to refine this buyer fit.';
+        drawFit(best.score,best.bucket.anonymous_label,`Best current buyer-mandate fit. ${reason}`,mandateChecklist(best.bucket),'Buyer Match');
+        return;
+      }
+    }
+    const score=baselineScore();
+    let label='Complete the submission',copy='Your score updates as you add the details institutional buyers need to evaluate the opportunity.';
+    if(score>=85){label='Strong Outerhaven fit';copy='This opportunity appears well aligned with the broader Outerhaven mandate, subject to review and diligence.'}
+    else if(score>=65){label='Potential Outerhaven fit';copy='The opportunity has meaningful alignment with the broader Outerhaven mandate.'}
+    else if(score>0){label='Developing fit';copy='Add missing transaction details and supporting materials to improve the fit assessment.'}
+    drawFit(score,label,copy,baselineChecklist(),'Outerhaven Match');
   }
 
   async function load(){
@@ -82,11 +147,8 @@
   function renderMandates(){
     ensureMandatesPanel();const grid=q('networkMandateGrid');if(!grid)return;
     grid.innerHTML=buckets.length?buckets.map(b=>`<article class="networkMandateCard"><div class="networkMandateTop"><div class="networkMandateTitle">${html(b.anonymous_label)}</div><div class="networkMandateRange">${html(rangeText(b))}</div></div><div class="networkMandateRows"><div class="networkMandateRow"><span>Sector</span><b>${html(joined(b.sectors))}</b></div><div class="networkMandateRow"><span>Geography</span><b>${html(joined(b.geographies))}</b></div><div class="networkMandateRow"><span>Structure</span><b>${html(joined(b.structures))}</b></div></div></article>`).join(''):'<div class="empty" style="grid-column:1/-1">No specific buyer mandates are published yet. The Outerhaven general thesis still applies.</div>';
-
-    const home=q('homeThesis');
-    if(home){home.querySelector('[data-network-mandate-count]')?.remove();home.insertAdjacentHTML('beforeend',`<div class="thesisQuickRow" data-network-mandate-count><span>Live buyer mandates</span><b>${buckets.length}</b></div>`)}
+    const home=q('homeThesis');if(home){home.querySelector('[data-network-mandate-count]')?.remove();home.insertAdjacentHTML('beforeend',`<div class="thesisQuickRow" data-network-mandate-count><span>Live buyer mandates</span><b>${buckets.length}</b></div>`)}
   }
-
   function matchesForSubmission(id){
     const map=new Map(buckets.map(b=>[b.id,b]));
     return matchRows.filter(r=>r.submission_id===id&&map.has(r.bucket_id)&&Number(r.score)>=MATCH_THRESHOLD).map(r=>({...r,bucket:map.get(r.bucket_id)})).sort((a,b)=>Number(b.score)-Number(a.score));
@@ -98,35 +160,35 @@
       const s=submissions[index];if(!s)return;
       const matchLabel=card.querySelector('.matchLabel');if(matchLabel)matchLabel.textContent='Outerhaven Baseline Match';
       card.querySelector('.networkMatchBlock')?.remove();
-      const rows=matchesForSubmission(s.id);
-      const target=card.firstElementChild;if(!target)return;
+      const rows=matchesForSubmission(s.id),target=card.firstElementChild;if(!target)return;
       const block=document.createElement('div');block.className='networkMatchBlock';
       block.innerHTML=`<div class="networkMatchHead"><span>Specific Buyer Matches</span><b>${rows.length} match${rows.length===1?'':'es'}</b></div>${rows.length?`<div class="networkMatchList">${rows.slice(0,5).map(r=>`<div class="networkMatchRow"><div><div class="networkMatchName">${html(r.bucket.anonymous_label)}</div><div class="networkMatchReasons">${html((r.match_reasons||[]).join(' · '))}</div></div><div class="networkMatchScore">${Number(r.score||0)}%</div></div>`).join('')}</div>`:`<div class="networkNoMatch">No specific buyer mandate currently reaches the ${MATCH_THRESHOLD}% match threshold.</div>`}`;
       const docs=target.querySelector('.docs');docs?target.insertBefore(block,docs):target.appendChild(block);
     });
   }
-
   function ensureLivePreview(){
     const checklist=q('fitChecklist');if(!checklist)return null;
-    let box=q('networkLivePreview');
-    if(!box){box=document.createElement('div');box.id='networkLivePreview';box.className='networkLivePreview';checklist.insertAdjacentElement('afterend',box)}
-    return box;
+    let box=q('networkLivePreview');if(!box){box=document.createElement('div');box.id='networkLivePreview';box.className='networkLivePreview';checklist.insertAdjacentElement('afterend',box)}return box;
   }
   function renderLivePreview(){
     const box=ensureLivePreview();if(!box)return;
-    const amount=Number(q('dealAmount')?.value||0),sector=q('dealSector')?.value.trim()||'',geo=q('dealGeography')?.value.trim()||'',type=q('dealType')?.value||'';
+    const {amount,sector,geo,type}=currentInput();
     if(!buckets.length){box.innerHTML='<div class="networkLivePreviewHead"><span>Specific Buyer Mandates</span><b>0 live</b></div><div class="networkNoMatch">No specific mandates have been published yet.</div>';return}
     if(!amount&&!sector&&!geo&&!type){box.innerHTML=`<div class="networkLivePreviewHead"><span>Specific Buyer Mandates</span><b>${buckets.length} live</b></div><div class="networkNoMatch">Add opportunity details to preview buyer-specific fit.</div>`;return}
     const rows=buckets.map(b=>({bucket:b,...scoreInput(b)})).sort((a,b)=>b.score-a.score);
     box.innerHTML=`<div class="networkLivePreviewHead"><span>Specific Buyer Mandates</span><b>${buckets.length} live</b></div><div class="networkMatchList">${rows.slice(0,3).map(r=>`<div class="networkMatchRow"><div><div class="networkMatchName">${html(r.bucket.anonymous_label)}</div><div class="networkMatchReasons">${html(r.reasons.join(' · ')||'Complete more fields')}</div></div><div class="networkMatchScore">${r.score}%</div></div>`).join('')}</div>`;
   }
+  function render(){renderMandates();renderSubmissionMatches();renderLivePreview();renderBestFit()}
 
-  function render(){renderMandates();renderSubmissionMatches();renderLivePreview()}
-
-  document.addEventListener('input',e=>{if(['dealAmount','dealSector','dealGeography','dealType'].includes(e.target?.id))renderLivePreview()});
-  document.addEventListener('change',e=>{if(['dealAmount','dealSector','dealGeography','dealType'].includes(e.target?.id))renderLivePreview()});
+  document.addEventListener('input',e=>{if(['dealAmount','dealSector','dealGeography','dealType','dealTitle','dealCompany','dealSummary'].includes(e.target?.id)){renderLivePreview();renderBestFit()}});
+  document.addEventListener('change',e=>{if(['dealAmount','dealSector','dealGeography','dealType'].includes(e.target?.id)){renderLivePreview();renderBestFit()}});
+  q('submissionForm')?.addEventListener('reset',()=>setTimeout(()=>{renderLivePreview();renderBestFit()},0));
 
   try{
+    if(typeof renderEstimate==='function'){
+      const baseRenderEstimate=renderEstimate;
+      renderEstimate=function(){baseRenderEstimate();queueMicrotask(()=>{renderLivePreview();renderBestFit()})};
+    }
     if(typeof renderAll==='function'){
       const baseRenderAll=renderAll;
       renderAll=function(){baseRenderAll();setTimeout(render,0)};
@@ -135,7 +197,7 @@
 
   function realtime(){
     if(channel||typeof sb==='undefined')return;
-    channel=sb.channel('originator-network-mandates-v2')
+    channel=sb.channel('originator-network-mandates-v3')
       .on('postgres_changes',{event:'*',schema:'public',table:'originator_match_buckets'},load)
       .on('postgres_changes',{event:'*',schema:'public',table:'originator_submission_matches'},load)
       .subscribe();
