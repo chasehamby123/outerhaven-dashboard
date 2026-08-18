@@ -79,4 +79,19 @@
       }else show(t);
     }finally{btn.disabled=false;btn.textContent='Create Account'}
   });
+
+  document.getElementById('forgotPassword')?.addEventListener('click',async()=>{
+    let email=document.getElementById('signinEmail').value.trim().toLowerCase();
+    if(!email){email=String(window.prompt('Enter the email address for your partner account:')||'').trim().toLowerCase()}
+    if(!email)return;
+    const btn=document.getElementById('forgotPassword');btn.disabled=true;btn.textContent='Sending reset link...';msg.className='msg';
+    try{
+      const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+'/originator-update-password.html'});
+      if(error)throw error;
+      show('If that email has a partner account, a password reset link has been sent.','good');
+    }catch(err){
+      console.error('partner password reset',err);
+      show('We could not send the reset link right now. Try again shortly or contact Outerhaven for access help.');
+    }finally{btn.disabled=false;btn.textContent='Forgot password?'}
+  });
 })();
