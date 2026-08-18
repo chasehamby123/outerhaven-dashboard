@@ -2,7 +2,8 @@
   if(window.__outerhavenOriginatorNetworkMatches)return;
   window.__outerhavenOriginatorNetworkMatches=true;
 
-  let buckets=[],matchRows=[],renderTimer=null,channel=null,loading=false;
+  const MATCH_THRESHOLD=60;
+  let buckets=[],matchRows=[],channel=null,loading=false;
   const q=id=>document.getElementById(id);
   const html=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
   const norm=v=>String(v||'').trim().toLowerCase();
@@ -87,19 +88,19 @@
 
   function matchesForSubmission(id){
     const map=new Map(buckets.map(b=>[b.id,b]));
-    return matchRows.filter(r=>r.submission_id===id&&map.has(r.bucket_id)).map(r=>({...r,bucket:map.get(r.bucket_id)})).sort((a,b)=>Number(b.score)-Number(a.score));
+    return matchRows.filter(r=>r.submission_id===id&&map.has(r.bucket_id)&&Number(r.score)>=MATCH_THRESHOLD).map(r=>({...r,bucket:map.get(r.bucket_id)})).sort((a,b)=>Number(b.score)-Number(a.score));
   }
   function renderSubmissionMatches(){
     if(typeof submissions==='undefined')return;
     const cards=[...document.querySelectorAll('#submissionCards .submissionCard')];
     cards.forEach((card,index)=>{
       const s=submissions[index];if(!s)return;
-      card.querySelector('.matchLabel')?.replaceChildren(document.createTextNode('Outerhaven Baseline Match'));
+      const matchLabel=card.querySelector('.matchLabel');if(matchLabel)matchLabel.textContent='Outerhaven Baseline Match';
       card.querySelector('.networkMatchBlock')?.remove();
       const rows=matchesForSubmission(s.id);
       const target=card.firstElementChild;if(!target)return;
       const block=document.createElement('div');block.className='networkMatchBlock';
-      block.innerHTML=`<div class="networkMatchHead"><span>Specific Buyer Mandates</span><b>${rows.length} match${rows.length===1?'':'es'}</b></div>${rows.length?`<div class="networkMatchList">${rows.slice(0,5).map(r=>`<div class="networkMatchRow"><div><div class="networkMatchName">${html(r.bucket.anonymous_label)}</div><div class="networkMatchReasons">${html((r.match_reasons||[]).join(' · '))}</div></div><div class="networkMatchScore">${Number(r.score||0)}%</div></div>`).join('')}</div>`:'<div class="networkNoMatch">No specific buyer mandates are published yet.</div>'}`;
+      block.innerHTML=`<div class="networkMatchHead"><span>Specific Buyer Matches</span><b>${rows.length} match${rows.length===1?'':'es'}</b></div>${rows.length?`<div class="networkMatchList">${rows.slice(0,5).map(r=>`<div class="networkMatchRow"><div><div class="networkMatchName">${html(r.bucket.anonymous_label)}</div><div class="networkMatchReasons">${html((r.match_reasons||[]).join(' · '))}</div></div><div class="networkMatchScore">${Number(r.score||0)}%</div></div>`).join('')}</div>`:`<div class="networkNoMatch">No specific buyer mandate currently reaches the ${MATCH_THRESHOLD}% match threshold.</div>`}`;
       const docs=target.querySelector('.docs');docs?target.insertBefore(block,docs):target.appendChild(block);
     });
   }
@@ -114,21 +115,26 @@
     const box=ensureLivePreview();if(!box)return;
     const amount=Number(q('dealAmount')?.value||0),sector=q('dealSector')?.value.trim()||'',geo=q('dealGeography')?.value.trim()||'',type=q('dealType')?.value||'';
     if(!buckets.length){box.innerHTML='<div class="networkLivePreviewHead"><span>Specific Buyer Mandates</span><b>0 live</b></div><div class="networkNoMatch">No specific mandates have been published yet.</div>';return}
-    if(!amount&&!sector&&!geo&&!type){box.innerHTML=`<div class="networkLivePreviewHead"><span>Specific Buyer Mandates</span><b>${buckets.length} live</b></div><div class="networkNoMatch">Add opportunity details to preview buyer-specific matches.</div>`;return}
+    if(!amount&&!sector&&!geo&&!type){box.innerHTML=`<div class="networkLivePreviewHead"><span>Specific Buyer Mandates</span><b>${buckets.length} live</b></div><div class="networkNoMatch">Add opportunity details to preview buyer-specific fit.</div>`;return}
     const rows=buckets.map(b=>({bucket:b,...scoreInput(b)})).sort((a,b)=>b.score-a.score);
     box.innerHTML=`<div class="networkLivePreviewHead"><span>Specific Buyer Mandates</span><b>${buckets.length} live</b></div><div class="networkMatchList">${rows.slice(0,3).map(r=>`<div class="networkMatchRow"><div><div class="networkMatchName">${html(r.bucket.anonymous_label)}</div><div class="networkMatchReasons">${html(r.reasons.join(' · ')||'Complete more fields')}</div></div><div class="networkMatchScore">${r.score}%</div></div>`).join('')}</div>`;
   }
 
   function render(){renderMandates();renderSubmissionMatches();renderLivePreview()}
-  function scheduleRender(){clearTimeout(renderTimer);renderTimer=setTimeout(render,60)}
 
-  ['dealAmount','dealSector','dealGeography','dealType'].forEach(id=>document.addEventListener('input',e=>{if(e.target?.id===id)renderLivePreview()}));
+  document.addEventListener('input',e=>{if(['dealAmount','dealSector','dealGeography','dealType'].includes(e.target?.id))renderLivePreview()});
   document.addEventListener('change',e=>{if(['dealAmount','dealSector','dealGeography','dealType'].includes(e.target?.id))renderLivePreview()});
-  const observer=new MutationObserver(scheduleRender);observer.observe(document.body,{childList:true,subtree:true});
+
+  try{
+    if(typeof renderAll==='function'){
+      const baseRenderAll=renderAll;
+      renderAll=function(){baseRenderAll();setTimeout(render,0)};
+    }
+  }catch{}
 
   function realtime(){
     if(channel||typeof sb==='undefined')return;
-    channel=sb.channel('originator-network-mandates-v1')
+    channel=sb.channel('originator-network-mandates-v2')
       .on('postgres_changes',{event:'*',schema:'public',table:'originator_match_buckets'},load)
       .on('postgres_changes',{event:'*',schema:'public',table:'originator_submission_matches'},load)
       .subscribe();
