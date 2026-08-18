@@ -41,7 +41,11 @@
   observer.observe(document.documentElement,{childList:true,subtree:true});
   document.querySelectorAll('.ddModal').forEach(apply);
 
-  if(!document.querySelector('script[src="/originator-network-matches.js"]')){
+  function loadNetworkMatches(){
+    if(document.querySelector('script[src="/originator-network-matches.js"]'))return;
     const s=document.createElement('script');s.src='/originator-network-matches.js';s.async=false;document.body.appendChild(s);
   }
+  if(!document.querySelector('script[src="/originator-money-input.js"]')){
+    const s=document.createElement('script');s.src='/originator-money-input.js';s.async=false;s.onload=loadNetworkMatches;document.body.appendChild(s);
+  }else loadNetworkMatches();
 })();
