@@ -2,15 +2,16 @@
   if(window.__outerhavenDashboardStaticMetrics)return;
   window.__outerhavenDashboardStaticMetrics=true;
 
-  let applying=false,revenue={total:0,direct:0,sourced:0,buy:0,loaded:false},refreshing=false,revenueChannel=null;
+  let applying=false,revenue={total:0,direct:0,sourced:0,buy:0,missingTerms:0,loaded:false},refreshing=false,revenueChannel=null;
   const style=document.createElement('style');
   style.textContent=`
     @media(min-width:1001px){#metrics.metrics{grid-template-columns:repeat(5,minmax(0,1fr))}}
-    .revenueMetric .metricValue{font-size:27px}.revenueBreakdown{display:grid;gap:3px;margin-top:8px;font-size:9px;color:#70757d}.revenueBreakdownRow{display:flex;justify-content:space-between;gap:8px}.revenueBreakdownRow strong{color:#343b46;font-weight:800}.revenueMetric{cursor:default}
+    .revenueMetric .metricValue{font-size:27px}.revenueBreakdown{display:grid;gap:3px;margin-top:8px;font-size:9px;color:#70757d}.revenueBreakdownRow{display:flex;justify-content:space-between;gap:8px}.revenueBreakdownRow strong{color:#343b46;font-weight:800}.revenueMetric{cursor:default}.revenueTermsWarning{margin-top:7px;padding-top:6px;border-top:1px solid rgba(127,127,127,.18);font-size:8px;font-weight:850;color:#9b5f24}
   `;
   document.head.appendChild(style);
 
   const n=v=>v==null||v===''?null:Number(v);
+  const SELL_REVENUE_STAGES=['Initial Interest Identified','Buy-Side Interest Confirmed','Engagement Active','Closed'];
   function parseMoney(v){
     if(v==null||v==='')return 0;
     if(typeof v==='number')return Number.isFinite(v)?v:0;
@@ -34,6 +35,14 @@
     if(o.side==='Buy Side')return'buy_side_interest';
     return p?.sell_side_kind==='direct_sponsor'?'direct_sponsor':'sourced_opportunity';
   }
+  function sellRevenueActive(o){
+    if(!o||o.side!=='Sell Side')return false;
+    return SELL_REVENUE_STAGES.includes(o.pipeline_stage||o.stage||'');
+  }
+  function hasSourcedTerms(o,p){
+    if(pathFor(o,p)!=='sourced_opportunity')return true;
+    return [o.revenue_retainer_monthly,o.revenue_retainer_fixed,o.revenue_success_fee_percent,o.revenue_success_fee_fixed].some(v=>v!=null&&v!==''&&Number(v)!==0);
+  }
   function termsFor(o,p){
     const path=pathFor(o,p),direct=path==='direct_sponsor';
     const raise=n(o.revenue_raise_amount)??parseMoney(o.opportunity_size);
@@ -48,13 +57,15 @@
   }
   function calculate(rawOpps,rawPeople){
     const people=new Map((rawPeople||[]).map(p=>[p.id,p]));
-    const opps=rawOpps||[],sell=opps.filter(o=>o.side==='Sell Side'),buy=opps.filter(o=>o.side==='Buy Side');
+    const opps=rawOpps||[],allSell=opps.filter(o=>o.side==='Sell Side'),buy=opps.filter(o=>o.side==='Buy Side');
+    const sell=allSell.filter(sellRevenueActive);
     const sellTerms=new Map(sell.map(o=>[o.id,termsFor(o,people.get(o.person_id))]));
     const linked=new Map();
     buy.forEach(o=>{if(o.revenue_linked_sell_side_opportunity_id){const id=o.revenue_linked_sell_side_opportunity_id;if(!linked.has(id))linked.set(id,[]);linked.get(id).push(o)}});
-    let direct=0,sourced=0,buyRevenue=0;
+    let direct=0,sourced=0,buyRevenue=0,missingTerms=0;
     sell.forEach(o=>{
-      const t=sellTerms.get(o.id),buyers=linked.get(o.id)||[];
+      const p=people.get(o.person_id),t=sellTerms.get(o.id),buyers=linked.get(o.id)||[];
+      if(!hasSourcedTerms(o,p)){missingTerms++;return}
       if(buyers.length){
         let interested=buyers.reduce((sum,b)=>sum+(n(b.revenue_raise_amount)??parseMoney(b.opportunity_size)),0);
         if(interested<=0)interested=t.raise;
@@ -65,7 +76,7 @@
       else sourced+=t.total;
     });
     buy.filter(o=>!o.revenue_linked_sell_side_opportunity_id).forEach(o=>{buyRevenue+=termsFor(o,people.get(o.person_id)).total});
-    return{direct,sourced,buy:buyRevenue,total:direct+sourced+buyRevenue,loaded:true};
+    return{direct,sourced,buy:buyRevenue,total:direct+sourced+buyRevenue,missingTerms,loaded:true};
   }
 
   async function refreshRevenue(){
@@ -73,7 +84,7 @@
     refreshing=true;
     try{
       const [o,p]=await Promise.all([
-        sb.from('opportunities').select('id,person_id,side,opportunity_size,revenue_path,revenue_raise_amount,revenue_retainer_monthly,revenue_retainer_months,revenue_retainer_fixed,revenue_success_fee_percent,revenue_success_fee_fixed,revenue_linked_sell_side_opportunity_id'),
+        sb.from('opportunities').select('id,person_id,side,stage,pipeline_stage,pipeline_active,opportunity_size,revenue_path,revenue_raise_amount,revenue_retainer_monthly,revenue_retainer_months,revenue_retainer_fixed,revenue_success_fee_percent,revenue_success_fee_fixed,revenue_linked_sell_side_opportunity_id'),
         sb.from('people').select('id,sell_side_kind')
       ]);
       if(!o.error&&!p.error)revenue=calculate(o.data||[],p.data||[]);
@@ -91,7 +102,8 @@
       ['LinkedIn Access',people.filter(p=>p.hasLinkedIn).length+'/'+people.length,'People with account access']
     ];
     const base=rows.map(x=>`<article class="metric"><div class="metricLabel">${x[0]}</div><div class="metricValue">${x[1]}</div><div class="metricFoot">${x[2]}</div></article>`).join('');
-    const rev=`<article class="metric revenueMetric" title="Projected gross OuterHaven revenue based on recorded opportunity economics"><div class="metricLabel">Projected Revenue</div><div class="metricValue">${revenue.loaded?money(revenue.total):'—'}</div><div class="revenueBreakdown"><div class="revenueBreakdownRow"><span>Direct Sponsors</span><strong>${revenue.loaded?money(revenue.direct):'—'}</strong></div><div class="revenueBreakdownRow"><span>Sourced Deals</span><strong>${revenue.loaded?money(revenue.sourced):'—'}</strong></div><div class="revenueBreakdownRow"><span>Buy-Side Interest</span><strong>${revenue.loaded?money(revenue.buy):'—'}</strong></div></div></article>`;
+    const warning=revenue.loaded&&revenue.missingTerms?`<div class="revenueTermsWarning">${revenue.missingTerms} active sourced deal${revenue.missingTerms===1?'':'s'} · Revenue Terms Required</div>`:'';
+    const rev=`<article class="metric revenueMetric" title="Projected gross OuterHaven revenue. Sell-side opportunities begin counting at Initial Interest Identified."><div class="metricLabel">Projected Revenue</div><div class="metricValue">${revenue.loaded?money(revenue.total):'—'}</div><div class="revenueBreakdown"><div class="revenueBreakdownRow"><span>Direct Sponsors</span><strong>${revenue.loaded?money(revenue.direct):'—'}</strong></div><div class="revenueBreakdownRow"><span>Sourced Deals</span><strong>${revenue.loaded?money(revenue.sourced):'—'}</strong></div><div class="revenueBreakdownRow"><span>Buy-Side Interest</span><strong>${revenue.loaded?money(revenue.buy):'—'}</strong></div></div>${warning}</article>`;
     return base+rev;
   }
   function render(){
@@ -101,7 +113,7 @@
   }
   function ensureRealtime(){
     if(revenueChannel||typeof sb==='undefined')return;
-    revenueChannel=sb.channel('outerhaven-revenue-overview-v1')
+    revenueChannel=sb.channel('outerhaven-revenue-overview-v2')
       .on('postgres_changes',{event:'*',schema:'public',table:'opportunities'},refreshRevenue)
       .on('postgres_changes',{event:'*',schema:'public',table:'people'},refreshRevenue)
       .subscribe();
