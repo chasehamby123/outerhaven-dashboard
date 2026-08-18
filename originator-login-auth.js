@@ -48,8 +48,10 @@
     msg.className='msg';
     const email=document.getElementById('createEmail').value.trim().toLowerCase();
     const password=document.getElementById('createPassword').value;
+    const confirm=document.getElementById('createConfirm').value;
     const btn=document.getElementById('createBtn');
     if(password.length<8){show('Use at least 8 characters for the password.');return}
+    if(password!==confirm){show('The passwords do not match.');return}
     btn.disabled=true;btn.textContent='Creating account...';
     try{
       const signup=await sb.auth.signUp({email,password,options:{data:{account_type:'originator'}}});
