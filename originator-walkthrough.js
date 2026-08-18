@@ -99,12 +99,11 @@
     overlay.querySelector('[data-ow-next]').onclick=()=>{if(stepIndex===steps.length-1)finish();else{stepIndex++;render()}};
   }
 
-  function start(replay=false){
+  function start(){
     if(overlay)return;
     stepIndex=0;
     overlay=document.createElement('div');overlay.className='owOverlay';document.body.appendChild(overlay);
     render();
-    if(!replay)markSeen();
   }
 
   function finish(){
@@ -116,7 +115,7 @@
     const app=document.getElementById('app');
     if(!app||app.classList.contains('hidden'))return false;
     installHelp();
-    if(!seen())setTimeout(()=>start(false),500);
+    if(!seen())setTimeout(()=>start(),500);
     return true;
   }
 
