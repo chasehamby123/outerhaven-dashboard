@@ -19,32 +19,32 @@
   const steps=[
     {
       title:'Welcome to the Originator Portal',
-      copy:'This is your workspace for submitting institutional opportunities directly to Outerhaven. You can review our current buyer thesis, send opportunities and supporting materials, complete diligence, and track each submission from one place.',
-      hint:'An opportunity is not sent into Outerhaven’s review queue until the diligence step is complete.'
+      copy:'Use this portal to submit opportunities to Outerhaven and track their progress. Start by reviewing the buyer thesis, then submit the opportunity and supporting materials.',
+      hint:'You will complete a short diligence step before the opportunity is sent to Outerhaven for review.'
     },
     {
-      title:'Start with the Buyer Thesis',
-      copy:'This section shows the current mandate we are matching against, including preferred transaction scale, geography, sectors, and structures. Use it as a quick fit check before submitting an opportunity.',
+      title:'Review the Buyer Thesis',
+      copy:'Check our current buyer thesis before submitting. It shows the preferred transaction scale, geography, sectors, and structures so you can quickly judge whether an opportunity is a fit.',
       section:'home',
       target:'.thesisPreview'
     },
     {
-      title:'Import the One-Pager or Pitch Deck First',
-      copy:'On a new submission, upload the primary one-pager or pitch deck at the top. The portal reads the document and pre-fills the opportunity fields for you. Always review the extracted information, especially the exact capital ask, before continuing.',
+      title:'Import the One-Pager or Pitch Deck',
+      copy:'Upload the primary one-pager or pitch deck first. The portal will use it to fill the opportunity details automatically. Review the fields and correct anything before continuing.',
       section:'submit',
       target:'#odImport',
-      hint:'If the portal cannot confidently identify the exact capital ask, it will leave that field blank for you to confirm.'
+      hint:'If a field cannot be identified confidently, fill it in manually before moving on.'
     },
     {
-      title:'Complete the Remaining Diligence',
-      copy:'After the opportunity details are confirmed, click Continue to Diligence. Questions already answered in Step 1 are removed. Complete only the remaining questions, or mark one Not Applicable when appropriate.',
+      title:'Complete Diligence',
+      copy:'Once the opportunity details look right, click Continue to Diligence and complete the short diligence form. When you are finished, submit the opportunity to Outerhaven.',
       section:'submit',
       target:'.formActions',
-      hint:'This is the final gate. The opportunity is submitted to Outerhaven only after diligence is complete.'
+      hint:'This is the final step before the opportunity reaches our review queue.'
     },
     {
       title:'Track Your Submissions',
-      copy:'My Submissions is where you can follow every opportunity you have sent through the portal. You will see the thesis match, supporting documents, and status as the opportunity moves through review, matching, buyer interest, engagement, or close.',
+      copy:'Use My Submissions to follow each opportunity after submission. You will see its match score, documents, and current status as Outerhaven reviews and progresses it.',
       section:'submissions',
       target:'.navBtn[data-section="submissions"]'
     }
