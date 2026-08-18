@@ -2,6 +2,13 @@
   if(window.__outerhavenOriginatorAmountFix)return;
   window.__outerhavenOriginatorAmountFix=true;
 
+  let activeFile=null;
+  let activeToken=0;
+  let strictAsk=null;
+  let strictReady=false;
+  let userEdited=false;
+  let correcting=false;
+
   function loadScript(src,test){return new Promise((resolve,reject)=>{if(test())return resolve();const s=document.createElement('script');s.src=src;s.onload=resolve;s.onerror=()=>reject(new Error('Could not load document reader.'));document.head.appendChild(s)})}
   async function pdfText(file){
     await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',()=>!!window.pdfjsLib);
@@ -21,46 +28,80 @@
   }
   async function textFrom(file){const ext=(file.name.split('.').pop()||'').toLowerCase();if(ext==='pdf')return pdfText(file);if(ext==='docx')return docxText(file);if(ext==='pptx')return pptxText(file);return''}
 
-  function valueOf(raw,unit){let n=Number(raw);const u=String(unit||'').toLowerCase();if(['b','bn','billion'].includes(u))n*=1e9;else if(['m','mm','million'].includes(u))n*=1e6;return Number.isFinite(n)?n:0}
+  function valueOf(raw,unit,currency){
+    let n=Number(raw),u=String(unit||'').toLowerCase();
+    if(['b','bn','billion'].includes(u))n*=1e9;
+    else if(['m','mm','million'].includes(u))n*=1e6;
+    else if(!currency&&n<1000000)return 0;
+    return Number.isFinite(n)?n:0;
+  }
   function display(n){if(n>=1e9)return'$'+(n/1e9).toFixed(n%1e9?1:0)+'B';if(n>=1e6)return'$'+(n/1e6).toFixed(n%1e6?1:0)+'M';return'$'+n.toLocaleString()}
-  function moneyPattern(){return '(?:US\\$|USD\\s*|\\$)\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(billion|bn|b|million|mm|m)?'}
+
   function findCapitalAsk(text){
-    const clean=String(text||'').replace(/[ \t]+/g,' ').replace(/\n+/g,' ');
-    const money=moneyPattern();
-    const before=[
-      '(?:exact\\s+)?capital\\s+(?:ask|raise|requirement)',
-      'funding\\s+(?:ask|requirement|request)',
-      '(?:currently\\s+)?raising',
-      '(?:looking|seeking)\\s+(?:to\\s+raise|capital|funding|financing|investment)?',
-      'raise\\s+of',
-      'financing\\s+(?:request|sought|required)',
-      'investment\\s+sought',
-      'amount\\s+(?:being\\s+)?raised'
-    ];
+    const clean=String(text||'').replace(/[ \t]+/g,' ').replace(/\n+/g,' ').trim();
+    if(!clean)return 0;
+    const amountRe=/(US\$|USD\s*|\$)?\s*([0-9]+(?:\.[0-9]+)?)\s*(billion|bn|b|million|mm|m)?/ig;
     const candidates=[];
-    for(let i=0;i<before.length;i++){
-      const re=new RegExp(before[i]+'[^$0-9]{0,45}'+money,'ig');let m;
-      while((m=re.exec(clean)))candidates.push({n:valueOf(m[1],m[2]),priority:100-i*3,index:m.index,context:m[0]});
+    let m;
+    while((m=amountRe.exec(clean))){
+      const currency=(m[1]||'').trim(),unit=(m[3]||'').toLowerCase();
+      if(!currency&&!unit)continue;
+      const n=valueOf(m[2],unit,currency);if(!n)continue;
+      const left=clean.slice(Math.max(0,m.index-150),m.index).trimEnd();
+      const right=clean.slice(amountRe.lastIndex,Math.min(clean.length,amountRe.lastIndex+90)).trimStart();
+      const around=clean.slice(Math.max(0,m.index-95),Math.min(clean.length,amountRe.lastIndex+95));
+      let score=0;
+
+      if(/(?:exact\s+)?capital\s+(?:ask|raise|requirement|required|needed|sought)(?:\s+(?:is|of))?\s*[:\-–—]?\s*$/i.test(left))score=125;
+      else if(/funding\s+(?:ask|raise|requirement|required|needed|request)(?:\s+(?:is|of))?\s*[:\-–—]?\s*$/i.test(left))score=122;
+      else if(/(?:currently\s+)?raising(?:\s+(?:capital|funding|financing))?(?:\s+(?:of|approximately|about|up to))?\s*[:\-–—]?\s*$/i.test(left))score=120;
+      else if(/(?:looking|seeking)(?:\s+to\s+raise|\s+for)?(?:\s+(?:capital|funding|financing|investment))?(?:\s+(?:of|approximately|about|up to))?\s*[:\-–—]?\s*$/i.test(left))score=118;
+      else if(/raise\s+of\s*[:\-–—]?\s*$/i.test(left))score=116;
+      else if(/amount\s+(?:being\s+)?raised(?:\s+is)?\s*[:\-–—]?\s*$/i.test(left))score=114;
+      else if(/financing\s+(?:request|sought|required|needed)(?:\s+is)?\s*[:\-–—]?\s*$/i.test(left))score=112;
+      else if(/investment\s+sought(?:\s+is)?\s*[:\-–—]?\s*$/i.test(left))score=110;
+
+      if(score===0&&/^(?:capital\s+raise|funding\s+(?:ask|requirement)|raise|being\s+raised|financing\s+sought|required\s+capital)\b/i.test(right))score=108;
+
+      if(score===0&&/(?:raise|raising|capital ask|funding ask|funding requirement|capital requirement|seeking capital|seeking funding|amount sought)/i.test(around))score=72;
+
+      if(/\b(?:revenue|ebitda|sales|valuation|enterprise value|gross development value|gdv|project value|project cost|market size|aum|assets under management|total assets)\b/i.test(around)&&score<108)score-=60;
+      if(score>=100)candidates.push({n,score,index:m.index});
     }
-    const after=new RegExp(money+'[^a-z0-9]{0,18}(?:capital\\s+raise|funding\\s+(?:ask|requirement)|raise|being\\s+raised|financing\\s+sought|required\\s+capital)','ig');let a;
-    while((a=after.exec(clean)))candidates.push({n:valueOf(a[1],a[2]),priority:88,index:a.index,context:a[0]});
-    const explicit=new RegExp('(?:raise|raising|seeking|capital\\s+ask|funding\\s+ask)[^.!?]{0,80}'+money,'ig');let e;
-    while((e=explicit.exec(clean)))candidates.push({n:valueOf(e[1],e[2]),priority:78,index:e.index,context:e[0]});
-    const bad=/revenue|ebitda|sales|valuation|enterprise value|gross development value|gdv|project value|market size|aum|assets under management|total assets/i;
-    for(const c of candidates){const around=clean.slice(Math.max(0,c.index-80),c.index+String(c.context).length+80);if(bad.test(around)&&!/raise|raising|seeking|capital ask|funding ask/i.test(c.context))c.priority-=50}
-    const valid=candidates.filter(c=>c.n>0).sort((x,y)=>y.priority-x.priority||x.index-y.index);
-    return valid[0]?.n||0;
+    candidates.sort((a,b)=>b.score-a.score||a.index-b.index);
+    return candidates[0]?.n||0;
   }
 
-  function setStatus(text){const el=document.getElementById('odImportStatus');if(el){el.textContent=text;el.className='odImportStatus ok'}}
-  async function correctAmount(file,wasBlank){
-    const amount=document.getElementById('dealAmount');if(!amount||!file)return;
+  function setStatus(text,type='ok'){
+    const el=document.getElementById('odImportStatus');if(!el)return;
+    el.textContent=text;el.className='odImportStatus '+type;
+  }
+
+  function applyStrictResult(){
+    const amount=document.getElementById('dealAmount');
+    if(!amount||!activeFile||!strictReady||userEdited||correcting)return;
+    correcting=true;
+    amount.value=strictAsk?String(strictAsk):'';
+    amount.dispatchEvent(new Event('input',{bubbles:true}));
+    correcting=false;
+    if(strictAsk)setStatus(`${activeFile.name} attached. Detected exact capital ask: ${display(strictAsk)}. Review before continuing.`,'ok');
+    else setStatus(`${activeFile.name} attached. We could not confidently identify an exact capital ask, so that field was left blank for confirmation.`,'err');
+  }
+
+  async function beginStrictParse(file){
+    if(!file)return;
+    const token=++activeToken;
+    activeFile=file;strictAsk=null;strictReady=false;userEdited=false;
+    const amount=document.getElementById('dealAmount');if(amount){amount.value='';amount.dispatchEvent(new Event('input',{bubbles:true}))}
     try{
-      const text=await textFrom(file);const ask=findCapitalAsk(text);
-      if(amount.dataset.userEdited==='1')return;
-      if(ask){amount.value=String(ask);amount.dispatchEvent(new Event('input',{bubbles:true}));setStatus(`${file.name} attached. Detected capital ask: ${display(ask)}. Review before continuing.`)}
-      else if(wasBlank){amount.value='';amount.dispatchEvent(new Event('input',{bubbles:true}));setStatus(`${file.name} attached. We could not confidently identify the capital ask, so that field was left blank for you to confirm.`)}
-    }catch(err){console.warn('capital ask correction',err)}
+      const text=await textFrom(file);
+      if(token!==activeToken)return;
+      strictAsk=findCapitalAsk(text);strictReady=true;applyStrictResult();
+    }catch(err){
+      console.warn('capital ask strict parse',err);
+      if(token!==activeToken)return;
+      strictAsk=0;strictReady=true;applyStrictResult();
+    }
   }
 
   function updateAmountLabel(){
@@ -71,11 +112,25 @@
   }
 
   function install(){
-    const input=document.getElementById('odImportInput'),box=document.getElementById('odImport'),amount=document.getElementById('dealAmount'),type=document.getElementById('dealType');
-    if(!input||!box||!amount||!type)return false;
-    amount.addEventListener('input',e=>{if(e.isTrusted)amount.dataset.userEdited='1'},true);
-    input.addEventListener('change',()=>{const file=input.files?.[0],wasBlank=!String(amount.value||'').trim();amount.dataset.userEdited='';if(file)setTimeout(()=>correctAmount(file,wasBlank),0)},true);
-    const oldDrop=box.ondrop;box.ondrop=ev=>{const file=[...(ev.dataTransfer?.files||[])][0],wasBlank=!String(amount.value||'').trim();amount.dataset.userEdited='';if(oldDrop)oldDrop.call(box,ev);if(file)setTimeout(()=>correctAmount(file,wasBlank),0)};
+    const input=document.getElementById('odImportInput'),box=document.getElementById('odImport'),amount=document.getElementById('dealAmount'),type=document.getElementById('dealType'),status=document.getElementById('odImportStatus');
+    if(!input||!box||!amount||!type||!status)return false;
+
+    input.addEventListener('change',()=>{const file=input.files?.[0];if(file)beginStrictParse(file)},true);
+    const oldDrop=box.ondrop;
+    box.ondrop=ev=>{const file=[...(ev.dataTransfer?.files||[])][0];if(file)beginStrictParse(file);if(oldDrop)oldDrop.call(box,ev)};
+
+    amount.addEventListener('input',e=>{
+      if(correcting)return;
+      if(e.isTrusted){userEdited=true;return}
+      if(activeFile&&strictReady)queueMicrotask(applyStrictResult);
+    },true);
+
+    const observer=new MutationObserver(()=>{
+      const text=status.textContent||'';
+      if(activeFile&&strictReady&&!userEdited&&!/Detected exact capital ask|could not confidently identify an exact capital ask/i.test(text))setTimeout(applyStrictResult,0);
+    });
+    observer.observe(status,{childList:true,subtree:true,characterData:true});
+
     type.addEventListener('change',updateAmountLabel);updateAmountLabel();
     return true;
   }
