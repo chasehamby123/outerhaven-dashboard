@@ -17,6 +17,14 @@
   function storedFor(personId){
     return (state.opportunities||[]).filter(o=>o.contactId===personId&&isStored(o)).sort((a,b)=>(b.updatedAt||b.createdAt||'').localeCompare(a.updatedAt||a.createdAt||''));
   }
+  function openRevenueTerms(id){
+    let tries=0;
+    const run=()=>{
+      if(typeof window.__outerhavenOpenRevenueTerms==='function'){window.__outerhavenOpenRevenueTerms(id);return}
+      if(++tries<12)setTimeout(run,100);
+    };
+    setTimeout(run,80);
+  }
 
   function ensureModal(){
     if(document.getElementById('initialInterestSelectionModal'))return;
@@ -72,6 +80,8 @@
     await sb.from('people').update({pipeline_stage:RECEIVED,interest_opportunity:o.company}).eq('id',pid);
     document.getElementById('initialInterestSelectionModal').classList.add('hidden');
     await loadData();
+    if(typeof window.__outerhavenRefreshDashboardMetrics==='function')window.__outerhavenRefreshDashboardMetrics();
+    openRevenueTerms(oid);
   }
 
   function applyPipelineGate(){
@@ -86,8 +96,6 @@
       if(current!==RECEIVED)return;
       const actions=card.querySelector('.pipelinePersonActions');if(!actions)return;
 
-      // At Opportunity Received, a multi-deal source gets exactly one Advance control:
-      // the selector that chooses which stored opportunity has initial interest.
       const selectorButtons=[...actions.querySelectorAll('[data-select-initial-interest]')];
       const keep=selectorButtons.shift()||null;
       selectorButtons.forEach(btn=>btn.remove());
@@ -146,6 +154,7 @@
       const {error}=await sb.from('opportunities').update({pipeline_stage:RECEIVED,stage:RECEIVED,pipeline_active:false}).eq('id',id);
       if(error){alert(error.message);if(button){button.disabled=false;button.textContent='Revert'}return}
       await loadData();
+      if(typeof window.__outerhavenRefreshDashboardMetrics==='function')window.__outerhavenRefreshDashboardMetrics();
     };
   }
 
