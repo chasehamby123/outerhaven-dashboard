@@ -6,12 +6,13 @@
   let stepIndex=0;
   let overlay=null;
   let currentTarget=null;
+  let positionTimer=null;
 
   const style=document.createElement('style');
   style.textContent=`
     .owHelp{position:fixed;right:18px;bottom:18px;z-index:2600;width:34px;height:34px;border:1px solid #d9dee4;border-radius:50%;background:#fff;color:#111318;display:grid;place-items:center;font-size:15px;font-weight:900;cursor:pointer;box-shadow:0 8px 24px rgba(17,19,24,.10)}
-    .owHelp:hover{background:#f5f7f8}.owOverlay{position:fixed;inset:0;z-index:4000;background:rgba(17,19,24,.48);display:grid;place-items:center;padding:18px}.owCard{width:min(430px,calc(100vw - 32px));background:#fff;border-radius:16px;padding:18px;box-shadow:0 24px 80px rgba(0,0,0,.28);position:relative;z-index:4010}.owEyebrow{font-size:8px;font-weight:900;letter-spacing:.12em;color:#777f89}.owCard h2{font-size:19px;letter-spacing:-.025em;margin:5px 0 7px}.owCard p{font-size:10px;line-height:1.6;color:#5f6873;margin:0}.owStep{margin-top:13px;display:flex;align-items:center;justify-content:space-between;gap:12px}.owDots{display:flex;gap:5px}.owDot{width:6px;height:6px;border-radius:99px;background:#d8dde2}.owDot.active{width:18px;background:#111318}.owActions{display:flex;gap:7px}.owBtn{border:1px solid #d7dce1;background:#fff;border-radius:8px;padding:8px 10px;font-size:8.5px;font-weight:850;cursor:pointer}.owBtn.primary{background:#111318;color:#fff;border-color:#111318}.owSkip{border:0;background:transparent;color:#858d97;padding:6px 0;font-size:8px;font-weight:800;cursor:pointer}.owTarget{position:relative!important;z-index:4005!important;outline:3px solid #fff!important;box-shadow:0 0 0 7px rgba(255,255,255,.22),0 12px 40px rgba(0,0,0,.25)!important;border-radius:10px!important}.owTarget *{position:relative;z-index:1}.owHint{margin-top:9px;padding:8px 9px;border-radius:9px;background:#f5f7f8;font-size:8.5px;line-height:1.5;color:#737c87}
-    @media(max-width:700px){.owHelp{right:12px;bottom:12px}.owOverlay{align-items:end;padding:10px}.owCard{width:100%;border-radius:15px}.owTarget{z-index:4005!important}}
+    .owHelp:hover{background:#f5f7f8}.owOverlay{position:fixed;inset:0;z-index:4000;background:rgba(17,19,24,.48);padding:0}.owCard{width:min(390px,calc(100vw - 32px));background:#fff;border-radius:16px;padding:18px;box-shadow:0 24px 80px rgba(0,0,0,.28);position:fixed;z-index:4010;left:50%;top:50%;transform:translate(-50%,-50%);transition:left .18s ease,top .18s ease,transform .18s ease}.owEyebrow{font-size:8px;font-weight:900;letter-spacing:.12em;color:#777f89}.owCard h2{font-size:19px;letter-spacing:-.025em;margin:5px 0 7px}.owCard p{font-size:10px;line-height:1.6;color:#5f6873;margin:0}.owStep{margin-top:13px;display:flex;align-items:center;justify-content:space-between;gap:12px}.owDots{display:flex;gap:5px}.owDot{width:6px;height:6px;border-radius:99px;background:#d8dde2}.owDot.active{width:18px;background:#111318}.owActions{display:flex;gap:7px}.owBtn{border:1px solid #d7dce1;background:#fff;border-radius:8px;padding:8px 10px;font-size:8.5px;font-weight:850;cursor:pointer}.owBtn.primary{background:#111318;color:#fff;border-color:#111318}.owSkip{border:0;background:transparent;color:#858d97;padding:6px 0;font-size:8px;font-weight:800;cursor:pointer}.owTarget{position:relative!important;z-index:4005!important;outline:3px solid #fff!important;box-shadow:0 0 0 7px rgba(255,255,255,.22),0 12px 40px rgba(0,0,0,.25)!important;border-radius:10px!important}.owTarget *{position:relative;z-index:1}.owHint{margin-top:9px;padding:8px 9px;border-radius:9px;background:#f5f7f8;font-size:8.5px;line-height:1.5;color:#737c87}
+    @media(max-width:700px){.owHelp{right:12px;bottom:12px}.owCard{width:calc(100vw - 20px);border-radius:15px}.owTarget{z-index:4005!important}}
   `;
   document.head.appendChild(style);
 
@@ -63,7 +64,7 @@
     const b=document.createElement('button');
     b.id='owHelp';b.className='owHelp';b.type='button';b.textContent='?';
     b.setAttribute('aria-label','Replay portal walkthrough');b.title='Portal walkthrough';
-    b.onclick=()=>start(true);
+    b.onclick=()=>start();
     document.body.appendChild(b);
   }
 
@@ -79,21 +80,69 @@
     return document.querySelector(step.target);
   }
 
+  function centerCard(){
+    const card=overlay?.querySelector('.owCard');if(!card)return;
+    card.style.left='50%';card.style.top='50%';card.style.transform='translate(-50%,-50%)';
+  }
+
+  function positionCard(target){
+    const card=overlay?.querySelector('.owCard');if(!card){return}
+    if(!target){centerCard();return}
+
+    const vw=window.innerWidth,vh=window.innerHeight,margin=18,gap=22;
+    const rect=target.getBoundingClientRect();
+    const cw=Math.min(card.offsetWidth||390,vw-margin*2),ch=Math.min(card.offsetHeight||260,vh-margin*2);
+
+    let left,top;
+    if(vw<=700){
+      const spaceAbove=Math.max(0,rect.top-margin),spaceBelow=Math.max(0,vh-rect.bottom-margin);
+      left=Math.max(margin,(vw-cw)/2);
+      if(spaceBelow>=ch+gap||spaceBelow>=spaceAbove)top=Math.min(vh-ch-margin,rect.bottom+gap);
+      else top=Math.max(margin,rect.top-gap-ch);
+    }else{
+      const spaceLeft=Math.max(0,rect.left-margin),spaceRight=Math.max(0,vw-rect.right-margin);
+      const fitsRight=spaceRight>=cw+gap,fitsLeft=spaceLeft>=cw+gap;
+
+      if(fitsRight||fitsLeft){
+        if(fitsRight&&(!fitsLeft||spaceRight>=spaceLeft))left=Math.min(vw-cw-margin,rect.right+gap);
+        else left=Math.max(margin,rect.left-gap-cw);
+        top=Math.max(margin,Math.min(vh-ch-margin,rect.top+(rect.height-ch)/2));
+      }else{
+        const spaceAbove=Math.max(0,rect.top-margin),spaceBelow=Math.max(0,vh-rect.bottom-margin);
+        left=spaceRight>=spaceLeft?vw-cw-margin:margin;
+        if(spaceBelow>=ch+gap||spaceBelow>=spaceAbove)top=Math.min(vh-ch-margin,rect.bottom+gap);
+        else top=Math.max(margin,rect.top-gap-ch);
+      }
+    }
+
+    card.style.left=`${Math.round(left)}px`;
+    card.style.top=`${Math.round(top)}px`;
+    card.style.transform='none';
+  }
+
+  function schedulePosition(target){
+    clearTimeout(positionTimer);
+    positionTimer=setTimeout(()=>positionCard(target),140);
+  }
+
   function render(){
     if(!overlay)return;
     clearTarget();
     const step=steps[stepIndex];
     ensureSection(step.section);
 
+    overlay.innerHTML=`<div class="owCard" role="dialog" aria-modal="true" aria-label="Originator portal walkthrough"><div class="owEyebrow">PORTAL WALKTHROUGH · ${stepIndex+1} OF ${steps.length}</div><h2>${step.title}</h2><p>${step.copy}</p>${step.hint?`<div class="owHint">${step.hint}</div>`:''}<div class="owStep"><div><button type="button" class="owSkip" data-ow-skip>Skip walkthrough</button><div class="owDots">${steps.map((_,i)=>`<span class="owDot ${i===stepIndex?'active':''}"></span>`).join('')}</div></div><div class="owActions">${stepIndex?'<button type="button" class="owBtn" data-ow-back>Back</button>':''}<button type="button" class="owBtn primary" data-ow-next>${stepIndex===steps.length-1?'Finish':'Next'}</button></div></div></div>`;
+    centerCard();
+
     setTimeout(()=>{
       const target=targetFor(step);
       if(target){
         currentTarget=target;target.classList.add('owTarget');
         try{target.scrollIntoView({behavior:'smooth',block:'center',inline:'nearest'})}catch{}
-      }
+        schedulePosition(target);
+      }else centerCard();
     },80);
 
-    overlay.innerHTML=`<div class="owCard" role="dialog" aria-modal="true" aria-label="Originator portal walkthrough"><div class="owEyebrow">PORTAL WALKTHROUGH · ${stepIndex+1} OF ${steps.length}</div><h2>${step.title}</h2><p>${step.copy}</p>${step.hint?`<div class="owHint">${step.hint}</div>`:''}<div class="owStep"><div><button type="button" class="owSkip" data-ow-skip>Skip walkthrough</button><div class="owDots">${steps.map((_,i)=>`<span class="owDot ${i===stepIndex?'active':''}"></span>`).join('')}</div></div><div class="owActions">${stepIndex?'<button type="button" class="owBtn" data-ow-back>Back</button>':''}<button type="button" class="owBtn primary" data-ow-next>${stepIndex===steps.length-1?'Finish':'Next'}</button></div></div></div>`;
     overlay.querySelector('[data-ow-skip]').onclick=finish;
     overlay.querySelector('[data-ow-back]')?.addEventListener('click',()=>{stepIndex--;render()});
     overlay.querySelector('[data-ow-next]').onclick=()=>{if(stepIndex===steps.length-1)finish();else{stepIndex++;render()}};
@@ -107,9 +156,12 @@
   }
 
   function finish(){
-    markSeen();clearTarget();overlay?.remove();overlay=null;
+    markSeen();clearTimeout(positionTimer);clearTarget();overlay?.remove();overlay=null;
     try{if(typeof showSection==='function')showSection('home')}catch{}
   }
+
+  window.addEventListener('resize',()=>{if(overlay)positionCard(currentTarget)});
+  window.addEventListener('scroll',()=>{if(overlay&&currentTarget)positionCard(currentTarget)},{passive:true});
 
   function boot(){
     const app=document.getElementById('app');
