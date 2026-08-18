@@ -33,9 +33,10 @@
         return;
       }
       if(adminLoadData){loadData=adminLoadData;await loadData()}
-      if(adminSubscribe){subscribe=adminSubscribe;subscribe()}
+      if(adminSubscribe){adminSubscribe();subscribe=adminSubscribe}
       loadScript('/buy-side-partner-sync.js');
       loadScript('/buy-side-thesis-status-viewer.js',()=>loadScript('/buy-side-thesis-preview-click-guard.js'));
+      loadScript('/website-inbound-admin.js');
       loadScript('/originator-admin.js',()=>loadScript('/originator-preview-admin.js',()=>loadScript('/originator-test-admin.js',()=>loadScript('/originator-review-admin.js',()=>loadScript('/originator-review-diligence-admin.js')))));
       return;
     }
