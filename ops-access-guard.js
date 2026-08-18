@@ -33,7 +33,7 @@
         return;
       }
       if(adminLoadData){loadData=adminLoadData;await loadData()}
-      if(adminSubscribe){adminSubscribe();subscribe=adminSubscribe}
+      if(adminSubscribe){subscribe=adminSubscribe;subscribe()}
       loadScript('/buy-side-partner-sync.js');
       loadScript('/buy-side-thesis-status-viewer.js',()=>loadScript('/buy-side-thesis-preview-click-guard.js'));
       loadScript('/website-inbound-admin.js');
