@@ -7,21 +7,19 @@
   const KEY='sb_publishable_nBRZvesX4tz7zUPq5QLYfQ__in76dF5';
   const sb=supabase.createClient(URL,KEY);
 
-  async function allowed(email){
-    const {data,error}=await sb.rpc('is_dashboard_email_allowed',{input_email:email});
-    if(error)throw error;
-    return data===true;
-  }
-
   async function ensureOriginator(){
     const {data:role,error}=await sb.rpc('dashboard_role');
     if(error)throw error;
     if(role!=='originator'){
       await sb.auth.signOut();
-      throw new Error('This account is not approved for the Outerhaven Originator Portal.');
+      throw new Error('This account does not have partner portal access.');
     }
     location.replace('/originator.html');
   }
+
+  const requestedMode=new URLSearchParams(location.search).get('mode');
+  if(requestedMode==='create')window.setPartnerMode?.('create');
+  else if(requestedMode==='signin')window.setPartnerMode?.('signin');
 
   sb.auth.getSession().then(async({data})=>{
     if(data.session){
@@ -37,7 +35,6 @@
     const btn=document.getElementById('signinBtn');
     btn.disabled=true;btn.textContent='Signing in...';
     try{
-      if(!(await allowed(email)))throw new Error('That email is not approved for partner access.');
       const {error}=await sb.auth.signInWithPassword({email,password});
       if(error)throw error;
       await ensureOriginator();
@@ -53,15 +50,15 @@
     const password=document.getElementById('createPassword').value;
     const confirm=document.getElementById('createConfirm').value;
     const btn=document.getElementById('createBtn');
+    if(!name){show('Enter your full name.');return}
     if(password!==confirm){show('The passwords do not match.');return}
     if(password.length<8){show('Use at least 8 characters for the password.');return}
     btn.disabled=true;btn.textContent='Creating account...';
     try{
-      if(!(await allowed(email)))throw new Error('That email is not approved for partner access.');
-      const signup=await sb.auth.signUp({email,password,options:{data:{full_name:name,account_type:'originator'},emailRedirectTo:location.origin+'/originator-login.html'}});
+      const signup=await sb.auth.signUp({email,password,options:{data:{full_name:name,account_type:'originator'},emailRedirectTo:location.origin+'/originator-login.html?mode=signin'}});
       if(signup.error)throw signup.error;
       if(signup.data.session){await ensureOriginator();return}
-      show('Account created. Check your email to confirm the account, then return here and sign in.','good');
+      show('Account created. Check your email to confirm it, then sign in to your partner dashboard.','good');
       window.setPartnerMode('signin');
       document.getElementById('signinEmail').value=email;
     }catch(err){
