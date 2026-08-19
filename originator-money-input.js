@@ -33,6 +33,8 @@
     const form=document.getElementById('submissionForm');
     if(!amount||!form)return false;
 
+    if(amount.tagName==='SELECT')return true;
+
     amount.type='text';
     amount.inputMode='decimal';
     amount.placeholder='30M';
