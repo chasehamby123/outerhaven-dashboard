@@ -60,7 +60,18 @@
             <div class="formGrid">
               <label class="span2">Opportunity / Project Name<input id="dealTitle" required placeholder="Example: Southeast Asia Luxury Resort Portfolio"></label>
               <label>Company / Sponsor<input id="dealCompany" placeholder="Company or sponsor name"></label>
-              <label>Capital / Transaction Size<div class="moneyInput"><span>$</span><input id="dealAmount" type="number" min="0" step="1000000" required placeholder="50000000"></div></label>
+              <label>Exact Capital Ask<select id="dealAmount" required>
+                <option value="">Select range</option>
+                <option value="35000000" data-min="20000000" data-max="50000000" data-range="$20M–$50M">$20M–$50M</option>
+                <option value="65500000" data-min="51000000" data-max="80000000" data-range="$51M–$80M">$51M–$80M</option>
+                <option value="100500000" data-min="81000000" data-max="120000000" data-range="$81M–$120M">$81M–$120M</option>
+                <option value="160500000" data-min="121000000" data-max="200000000" data-range="$121M–$200M">$121M–$200M</option>
+                <option value="250500000" data-min="201000000" data-max="300000000" data-range="$201M–$300M">$201M–$300M</option>
+                <option value="400500000" data-min="301000000" data-max="500000000" data-range="$301M–$500M">$301M–$500M</option>
+                <option value="625500000" data-min="501000000" data-max="750000000" data-range="$501M–$750M">$501M–$750M</option>
+                <option value="875500000" data-min="751000000" data-max="1000000000" data-range="$751M–$1B">$751M–$1B</option>
+                <option value="1250000000" data-min="1000000001" data-range="$1B+">$1B+</option>
+              </select></label>
               <label>Sector<input id="dealSector" required placeholder="Hospitality, Healthcare, Infrastructure..."></label>
               <label>Geography<input id="dealGeography" required placeholder="United States, Southeast Asia, Global..."></label>
               <label class="span2">Transaction Type<select id="dealType" required><option value="">Select structure</option><option>Equity Raise</option><option>Debt Financing</option><option>Structured Capital</option><option>Acquisition / M&A</option><option>Joint Venture</option><option>Strategic Investment</option><option>Full or Partial Sale</option><option>Other</option></select></label>
