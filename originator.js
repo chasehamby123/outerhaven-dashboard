@@ -4,6 +4,7 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let currentUser=null,profile=null,thesis=null,submissions=[],documents=[],selectedFiles=[];
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+const parseDealAmount=v=>typeof window.__outerhavenParseDealAmount==='function'?window.__outerhavenParseDealAmount(v):Number(String(v||'').replace(/[$,]/g,''))||0;
 
 function money(v){const n=Number(v||0);if(!n)return'Not specified';if(n>=1e9)return'$'+(n/1e9).toFixed(n%1e9?1:0)+'B';return'$'+(n/1e6).toFixed(n%1e6?1:0)+'M'}
 function capitalDisplay(s){return s?.capital_amount_range||money(s?.capital_amount)}
@@ -42,7 +43,7 @@ async function loadData(render=true){
   if(render)renderAll();
 }
 
-function defaultThesis(){return{title:'Outerhaven Institutional Buyer Thesis',summary:'We are broadly sector-agnostic and focus on institutional-scale opportunities of $50M+.',min_transaction_size:50000000,sectors:['Sector agnostic'],geographies:['Global'],structures:['Equity','Debt','Structured Capital','Acquisition Capital','Joint Venture','Strategic Investment','Full or Partial Acquisition'],requirements:'Clear institutional investment case, credible management or sponsorship, a defined capital or transaction need, and sufficient materials for diligence.'}}
+function defaultThesis(){return{title:'Outerhaven Institutional Buyer Thesis',summary:'We are broadly sector-agnostic and focus on institutional-scale opportunities of $50M+.',min_transaction_size:50000000,sectors:['Sector agnostic'],geographies:['Global'],structures:['Equity','Debt','Structured Capital','Acquisition Capital','Joint Venture','Strategic Investment','Full or Partial Acquisition'],requirements:'Clear institutional investment case, credible management or sponsorship, a defined capital or transaction need, and sufficient information for diligence.'}}
 
 function bind(){
   document.querySelectorAll('.navBtn').forEach(b=>b.onclick=()=>showSection(b.dataset.section));
@@ -57,8 +58,8 @@ function bind(){
   fileInput.onchange=()=>addFiles([...fileInput.files]);
   drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag')};drop.ondragleave=()=>drop.classList.remove('drag');
   drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');addFiles([...e.dataTransfer.files])};
-  ['dealTitle','dealCompany','dealSector','dealGeography','dealSummary'].forEach(id=>$(id).addEventListener('blur',renderEstimate));
-  ['dealAmount','dealType'].forEach(id=>$(id).addEventListener('change',renderEstimate));
+  ['dealAmount','dealSector','dealGeography'].forEach(id=>$(id).addEventListener('blur',renderEstimate));
+  $('dealType').addEventListener('change',renderEstimate);
   renderEstimate();
 }
 
@@ -66,7 +67,7 @@ function showSection(section){
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.navBtn').forEach(b=>b.classList.toggle('active',b.dataset.section===section));
   const el=$(section+'Section');if(el)el.classList.add('active');
-  const labels={home:['Originator Overview','Submit institutional opportunities and track their fit with our current buy-side mandate.'],submit:['Submit Opportunity','Send a one-pager or deal package directly into Outerhaven’s review workflow.'],submissions:['My Submissions','Track every opportunity you have submitted through the partner portal.'],thesis:['Buyer Thesis','See the current criteria we use to assess whether an opportunity fits our buy-side network.']};
+  const labels={home:['Originator Overview','Submit institutional opportunities and track their fit with our current buy-side mandate.'],submit:['Submit Opportunity','Enter the core transaction details used to match an opportunity to current family-office mandates.'],submissions:['My Submissions','Track every opportunity you have submitted through the partner portal.'],thesis:['Buyer Thesis','See the current criteria we use to assess whether an opportunity fits our buy-side network.']};
   $('pageTitle').textContent=labels[section]?.[0]||'Originator Portal';$('pageSub').textContent=labels[section]?.[1]||'';
   $('topSubmit').style.display=section==='submit'?'none':'';
   window.scrollTo({top:0,behavior:'smooth'});
@@ -82,7 +83,7 @@ function renderMetrics(){
 }
 function renderThesis(){
   const t=thesis||defaultThesis();
-  $('homeThesis').innerHTML=`<div class="thesisQuick"><div class="thesisQuickRow"><span>Preferred scale</span><b>${esc(money(t.min_transaction_size))}+</b></div><div class="thesisQuickRow"><span>Sector</span><b>${esc((t.sectors||['Sector agnostic']).join(', '))}</b></div><div class="thesisQuickRow"><span>Geography</span><b>${esc((t.geographies||['Global']).join(', '))}</b></div><div class="thesisQuickRow"><span>Primary filter</span><b>Scale, quality, investability</b></div></div>`;
+  $('homeThesis').innerHTML=`<div class="thesisQuick"><div class="thesisQuickRow"><span>Preferred scale</span><b>${esc(money(t.min_transaction_size))}+</b></div><div class="thesisQuickRow"><span>Sector</span><b>${esc((t.sectors||['Sector agnostic']).join(', '))}</b></div><div class="thesisQuickRow"><span>Geography</span><b>${esc((t.geographies||['Global']).join(', '))}</b></div><div class="thesisQuickRow"><span>Primary filter</span><b>Scale, sector, geography, structure</b></div></div>`;
   $('thesisTitle').textContent=t.title||'';$('thesisSummary').textContent=t.summary||'';$('thesisMin').textContent=money(t.min_transaction_size)+'+';
   $('thesisSectors').innerHTML=(t.sectors||[]).map(v=>`<span class="tag">${esc(v)}</span>`).join('');
   $('thesisGeographies').innerHTML=(t.geographies||[]).map(v=>`<span class="tag">${esc(v)}</span>`).join('');
@@ -114,30 +115,37 @@ function addFiles(files){
     if(f.size>15*1024*1024){setMessage(`${f.name} is larger than 15 MB.`,'error');continue}
     if(!selectedFiles.some(x=>x.name===f.name&&x.size===f.size))selectedFiles.push(f);
   }
-  $('dealFiles').value='';renderFileList();renderEstimate();
+  $('dealFiles').value='';renderFileList();
 }
 function renderFileList(){
   $('fileList').innerHTML=selectedFiles.map((f,i)=>`<div class="fileChip"><span>${esc(f.name)} · ${Math.max(1,Math.round(f.size/1024))} KB</span><button type="button" data-remove-file="${i}">Remove</button></div>`).join('');
-  document.querySelectorAll('[data-remove-file]').forEach(b=>b.onclick=()=>{selectedFiles.splice(Number(b.dataset.removeFile),1);renderFileList();renderEstimate()});
+  document.querySelectorAll('[data-remove-file]').forEach(b=>b.onclick=()=>{selectedFiles.splice(Number(b.dataset.removeFile),1);renderFileList()});
 }
 
 function estimate(){
-  const amount=Number($('dealAmount').value||0),title=$('dealTitle').value.trim(),company=$('dealCompany').value.trim(),sector=$('dealSector').value.trim(),geo=$('dealGeography').value.trim(),type=$('dealType').value,summary=$('dealSummary').value.trim();
-  let score=0;if(amount>=100000000)score+=45;else if(amount>=50000000)score+=40;else if(amount>=25000000)score+=20;else if(amount>0)score+=8;
-  if(title&&company)score+=5;if(sector)score+=10;if(geo)score+=10;if(type)score+=10;if(summary.length>=120)score+=10;else if(summary.length>=40)score+=6;if(selectedFiles.length)score+=15;
+  const amount=parseDealAmount($('dealAmount')?.value),sector=$('dealSector')?.value.trim(),geo=$('dealGeography')?.value.trim(),type=$('dealType')?.value;
+  let score=0;
+  if(amount>=20000000)score+=25;
+  if(sector)score+=40;
+  if(geo)score+=15;
+  if(type)score+=20;
   return Math.min(100,score);
 }
 function renderEstimate(){
-  const score=estimate(),amount=Number($('dealAmount')?.value||0),summary=$('dealSummary')?.value.trim()||'';
+  const score=estimate(),amount=parseDealAmount($('dealAmount')?.value),sector=$('dealSector')?.value.trim()||'',geo=$('dealGeography')?.value.trim()||'',type=$('dealType')?.value||'';
   if(!window.__outerhavenOriginatorNetworkMatchesV2){
     $('estimateScore').textContent=score+'%';$('estimateRing').style.setProperty('--score',score+'%');
-    let label='Complete the submission',copy='Your score updates as you add the details institutional buyers need to evaluate the opportunity.';
-    if(score>=85){label='Strong thesis fit';copy='This opportunity appears well aligned with the current Outerhaven mandate, subject to review and diligence.'}
-    else if(score>=65){label='Potential fit';copy='The opportunity has meaningful alignment, but additional scale or information may improve its institutional readiness.'}
-    else if(score>0){label='Developing fit';copy='Add missing transaction details and supporting materials to improve the fit assessment.'}
+    let label='Complete the submission',copy='Fit is based only on capital ask, sector, geography, and transaction structure.';
+    if(score===100){label='Ready to match';copy='All four mandate-matching fields are complete. The family-office matcher will calculate the actual fit.'}
+    else if(score>0){label='Complete the matching fields';copy='Add the remaining capital ask, sector, geography, or structure details to calculate fit.'}
     $('estimateLabel').textContent=label;$('estimateCopy').textContent=copy;
   }
-  const rows=[['$50M+ preferred scale',amount>=50000000?40:amount>=25000000?20:0,amount>=50000000?'Strong':amount?'Below thesis':'Missing'],['Sector + geography',($('dealSector')?.value.trim()?10:0)+($('dealGeography')?.value.trim()?10:0),$('dealSector')?.value.trim()&&$('dealGeography')?.value.trim()?'Complete':'Incomplete'],['Transaction structure',$('dealType')?.value?10:0,$('dealType')?.value?'Complete':'Missing'],['Opportunity context',summary.length>=120?10:summary.length>=40?6:0,summary.length>=120?'Strong':summary?'Needs detail':'Missing'],['Supporting materials',selectedFiles.length?15:0,selectedFiles.length?`${selectedFiles.length} attached`:'Not attached']];
+  const rows=[
+    ['Exact capital ask',amount>=20000000?25:0,amount>=20000000?'Complete':amount?'Below $20M floor':'Missing'],
+    ['Sector',sector?40:0,sector?'Complete':'Missing'],
+    ['Geography',geo?15:0,geo?'Complete':'Missing'],
+    ['Transaction structure',type?20:0,type?'Complete':'Missing']
+  ];
   $('fitChecklist').innerHTML=rows.map(r=>`<div class="fitCheck ${r[1]>0?'good':'warn'}"><span>${esc(r[0])}</span><span>${esc(r[2])}</span></div>`).join('');
 }
 
@@ -145,9 +153,9 @@ function safeName(name){return name.normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/
 async function submitOpportunity(e){
   e.preventDefault();setMessage('');
   const btn=$('submitDeal');if(btn.disabled)return;
-  const amountEl=$('dealAmount'),selectedRange=amountEl.selectedOptions?.[0]?.dataset?.range||null;
-  const payload={originator_user_id:currentUser.id,title:$('dealTitle').value.trim(),company_name:$('dealCompany').value.trim()||null,transaction_type:$('dealType').value,capital_amount:Number(amountEl.value||0)||null,capital_amount_range:selectedRange,sector:$('dealSector').value.trim()||null,geography:$('dealGeography').value.trim()||null,summary:$('dealSummary').value.trim()||null};
-  if(!payload.title||!payload.capital_amount||!payload.capital_amount_range||!payload.sector||!payload.geography||!payload.transaction_type||!payload.summary){setMessage('Complete the required opportunity fields before submitting.','error');return}
+  const amount=parseDealAmount($('dealAmount').value);
+  const payload={originator_user_id:currentUser.id,title:$('dealTitle').value.trim(),company_name:$('dealCompany').value.trim()||null,transaction_type:$('dealType').value,capital_amount:amount||null,capital_amount_range:null,sector:$('dealSector').value.trim()||null,geography:$('dealGeography').value.trim()||null,summary:$('dealSummary').value.trim()||null};
+  if(!payload.title||!payload.capital_amount||!payload.sector||!payload.geography||!payload.transaction_type){setMessage('Complete the project name, exact capital ask, sector, geography, and transaction type before submitting.','error');return}
   btn.disabled=true;btn.textContent='Submitting...';
   try{
     const {data:submission,error}=await sb.from('originator_submissions').insert(payload).select('id').single();if(error)throw error;
