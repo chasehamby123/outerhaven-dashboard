@@ -6,6 +6,7 @@ const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
 
 function money(v){const n=Number(v||0);if(!n)return'Not specified';if(n>=1e9)return'$'+(n/1e9).toFixed(n%1e9?1:0)+'B';return'$'+(n/1e6).toFixed(n%1e6?1:0)+'M'}
+function capitalDisplay(s){return s?.capital_amount_range||money(s?.capital_amount)}
 function date(v){return v?new Date(v).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):''}
 function slugStatus(v){return String(v||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}
 function friendlyEmailName(email){return String(email||'Originator').split('@')[0].replace(/[._-]+/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}
@@ -56,8 +57,8 @@ function bind(){
   fileInput.onchange=()=>addFiles([...fileInput.files]);
   drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag')};drop.ondragleave=()=>drop.classList.remove('drag');
   drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');addFiles([...e.dataTransfer.files])};
-  ['dealTitle','dealCompany','dealAmount','dealSector','dealGeography','dealSummary'].forEach(id=>$(id).addEventListener('blur',renderEstimate));
-  $('dealType').addEventListener('change',renderEstimate);
+  ['dealTitle','dealCompany','dealSector','dealGeography','dealSummary'].forEach(id=>$(id).addEventListener('blur',renderEstimate));
+  ['dealAmount','dealType'].forEach(id=>$(id).addEventListener('change',renderEstimate));
   renderEstimate();
 }
 
@@ -89,12 +90,12 @@ function renderThesis(){
   $('thesisRequirements').textContent=t.requirements||'';
 }
 function renderRecent(){
-  const d=submissions.slice(0,4);$('recentSubmissions').innerHTML=d.length?d.map(s=>`<div class="recentItem"><div><strong>${esc(s.title)}</strong><span>${esc(money(s.capital_amount))} · ${esc(s.status)}</span></div><div class="miniScore">${Number(s.match_score||0)}%</div></div>`).join(''):'<div class="empty">No submissions yet. Submit your first opportunity to see it here.</div>';
+  const d=submissions.slice(0,4);$('recentSubmissions').innerHTML=d.length?d.map(s=>`<div class="recentItem"><div><strong>${esc(s.title)}</strong><span>${esc(capitalDisplay(s))} · ${esc(s.status)}</span></div><div class="miniScore">${Number(s.match_score||0)}%</div></div>`).join(''):'<div class="empty">No submissions yet. Submit your first opportunity to see it here.</div>';
 }
 function renderSubmissions(){
   $('submissionCards').innerHTML=submissions.length?submissions.map(s=>{
     const ds=documents.filter(d=>d.submission_id===s.id);
-    return `<article class="submissionCard"><div><h3>${esc(s.title)}</h3><div class="submissionMeta">${esc(s.company_name||'Company not specified')} · ${esc(money(s.capital_amount))} · ${esc(s.sector||'Sector not specified')} · ${esc(s.geography||'Geography not specified')} · Submitted ${esc(date(s.created_at))}</div>${s.summary?`<div class="submissionSummary">${esc(s.summary)}</div>`:''}<div class="matchWhy">${esc(s.match_explanation||'Match analysis pending.')}</div><div class="docs">${ds.length?ds.map(d=>`<button type="button" class="docBtn" data-doc="${d.id}">${esc(d.file_name)}</button>`).join(''):'<span class="submissionMeta">No supporting documents attached.</span>'}</div></div><div class="submissionRight"><div class="matchPct">${Number(s.match_score||0)}%</div><div class="matchLabel">Buyer Thesis Match</div><span class="status ${slugStatus(s.status)}">${esc(s.status)}</span></div></article>`
+    return `<article class="submissionCard"><div><h3>${esc(s.title)}</h3><div class="submissionMeta">${esc(s.company_name||'Company not specified')} · ${esc(capitalDisplay(s))} · ${esc(s.sector||'Sector not specified')} · ${esc(s.geography||'Geography not specified')} · Submitted ${esc(date(s.created_at))}</div>${s.summary?`<div class="submissionSummary">${esc(s.summary)}</div>`:''}<div class="matchWhy">${esc(s.match_explanation||'Match analysis pending.')}</div><div class="docs">${ds.length?ds.map(d=>`<button type="button" class="docBtn" data-doc="${d.id}">${esc(d.file_name)}</button>`).join(''):'<span class="submissionMeta">No supporting documents attached.</span>'}</div></div><div class="submissionRight"><div class="matchPct">${Number(s.match_score||0)}%</div><div class="matchLabel">Buyer Thesis Match</div><span class="status ${slugStatus(s.status)}">${esc(s.status)}</span></div></article>`
   }).join(''):'<div class="empty">You have not submitted any opportunities yet.</div>';
   document.querySelectorAll('[data-doc]').forEach(b=>b.onclick=()=>openDocument(b.dataset.doc));
 }
@@ -144,8 +145,9 @@ function safeName(name){return name.normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/
 async function submitOpportunity(e){
   e.preventDefault();setMessage('');
   const btn=$('submitDeal');if(btn.disabled)return;
-  const payload={originator_user_id:currentUser.id,title:$('dealTitle').value.trim(),company_name:$('dealCompany').value.trim()||null,transaction_type:$('dealType').value,capital_amount:Number($('dealAmount').value||0)||null,sector:$('dealSector').value.trim()||null,geography:$('dealGeography').value.trim()||null,summary:$('dealSummary').value.trim()||null};
-  if(!payload.title||!payload.capital_amount||!payload.sector||!payload.geography||!payload.transaction_type||!payload.summary){setMessage('Complete the required opportunity fields before submitting.','error');return}
+  const amountEl=$('dealAmount'),selectedRange=amountEl.selectedOptions?.[0]?.dataset?.range||null;
+  const payload={originator_user_id:currentUser.id,title:$('dealTitle').value.trim(),company_name:$('dealCompany').value.trim()||null,transaction_type:$('dealType').value,capital_amount:Number(amountEl.value||0)||null,capital_amount_range:selectedRange,sector:$('dealSector').value.trim()||null,geography:$('dealGeography').value.trim()||null,summary:$('dealSummary').value.trim()||null};
+  if(!payload.title||!payload.capital_amount||!payload.capital_amount_range||!payload.sector||!payload.geography||!payload.transaction_type||!payload.summary){setMessage('Complete the required opportunity fields before submitting.','error');return}
   btn.disabled=true;btn.textContent='Submitting...';
   try{
     const {data:submission,error}=await sb.from('originator_submissions').insert(payload).select('id').single();if(error)throw error;
