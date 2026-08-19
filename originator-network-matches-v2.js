@@ -5,11 +5,12 @@
   const FLOOR=20000000;
   const MATCH_THRESHOLD=75;
   const PAGE_SIZE=1000;
-  let buckets=[],matchRows=[],channel=null,loading=false,previewRows=[],previewTimer=null,previewSeq=0;
+  let buckets=[],matchRows=[],channel=null,loading=false,previewRows=[],previewTimer=null,previewSeq=0,editingMatchField=false;
   const q=id=>document.getElementById(id);
   const html=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
   const parseAmount=v=>typeof window.__outerhavenParseDealAmount==='function'?window.__outerhavenParseDealAmount(v):Number(v||0)||0;
   const fmtMoney=v=>{const n=Number(v||0);if(!n)return'Flexible';if(n>=1e9)return'$'+(n/1e9).toFixed(n%1e9?1:0)+'B';if(n>=1e6)return'$'+(n/1e6).toFixed(n%1e6?1:0)+'M';return'$'+Math.round(n).toLocaleString()};
+  const MATCH_TEXT_FIELDS=new Set(['dealAmount','dealSector','dealGeography']);
 
   const style=document.createElement('style');
   style.textContent=`
@@ -113,6 +114,7 @@
 
   function requestPreview(immediate=false){
     clearTimeout(previewTimer);
+    if(editingMatchField&&!immediate)return;
     const run=async()=>{
       const input=currentInput(),seq=++previewSeq;
       if(input.amount>0&&input.amount<FLOOR){previewRows=[];renderPreview();return}
@@ -125,22 +127,33 @@
     if(immediate)run();else previewTimer=setTimeout(run,180);
   }
 
-  document.addEventListener('input',e=>{if(['dealAmount','dealSector','dealGeography','dealType','dealTitle','dealCompany','dealSummary'].includes(e.target?.id))requestPreview(false)});
-  document.addEventListener('change',e=>{if(['dealAmount','dealSector','dealGeography','dealType'].includes(e.target?.id))requestPreview(false)});
+  document.addEventListener('focusin',e=>{if(MATCH_TEXT_FIELDS.has(e.target?.id))editingMatchField=true});
+  document.addEventListener('focusout',e=>{
+    if(!MATCH_TEXT_FIELDS.has(e.target?.id))return;
+    editingMatchField=false;
+    setTimeout(()=>requestPreview(true),0);
+  });
+  document.addEventListener('change',e=>{if(e.target?.id==='dealType')requestPreview(true)});
 
   try{
-    if(typeof renderEstimate==='function'){const base=renderEstimate;renderEstimate=function(){base();requestPreview(false)}}
-    if(typeof renderAll==='function'){const base=renderAll;renderAll=function(){base();setTimeout(()=>{renderMandates();renderSubmissionMatches();requestPreview(true)},0)}}
+    if(typeof renderEstimate==='function'){
+      const base=renderEstimate;
+      renderEstimate=function(){base();if(!editingMatchField)requestPreview(false)};
+    }
+    if(typeof renderAll==='function'){
+      const base=renderAll;
+      renderAll=function(){base();setTimeout(()=>{renderMandates();renderSubmissionMatches();if(!editingMatchField)requestPreview(true)},0)};
+    }
   }catch{}
 
   function realtime(){
     if(channel||typeof sb==='undefined')return;
-    channel=sb.channel('originator-mandate-universe-v5')
+    channel=sb.channel('originator-mandate-universe-v6')
       .on('postgres_changes',{event:'*',schema:'public',table:'originator_match_buckets'},load)
       .on('postgres_changes',{event:'*',schema:'public',table:'originator_submission_matches'},load)
       .subscribe();
   }
 
-  load();realtime();setInterval(load,60000);
+  load();realtime();setInterval(()=>{if(!editingMatchField)load()},60000);
 })();
-// final buyer matching bundle v3
+// sector-gated buyer matching v6
