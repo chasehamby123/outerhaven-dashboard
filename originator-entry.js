@@ -22,4 +22,4 @@
   }
   start();
 })();
-// sector-gated buyer matching v6
+// simplified opportunity submission v8
