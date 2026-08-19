@@ -22,4 +22,4 @@
   }
   start();
 })();
-// sector mandate card polish v1
+// sector-gated buyer matching v6
