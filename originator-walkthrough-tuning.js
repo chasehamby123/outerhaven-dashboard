@@ -12,18 +12,14 @@
   `;
   document.head.appendChild(style);
 
-  const replacements=[
+  const exactReplacements=new Map([
     ['Submit Opportunity is where you send a deal to Outerhaven.','Submit Opportunity is where you send a deal to investors.'],
     ['Buyer Thesis shows what our capital network is currently looking for.','Buyer Thesis shows what investors in our network are currently looking for.'],
-    ['Check the Buyer Thesis before sending a deal','Check the Buyer Thesis before sending a deal to investors'],
+    ['1. Check the Buyer Thesis before sending a deal','1. Check the Buyer Thesis before sending a deal to investors'],
     ['Submit Opportunity: send us a deal','Submit Opportunity: send a deal to investors'],
     ['Buyer Thesis: see what fits our network','Buyer Thesis: see what fits our investor network'],
-    ['Submit the opportunity to Outerhaven only when the diligence step is complete.','Send the opportunity to investors only when the diligence step is complete.'],
-    ['submit the opportunity to Outerhaven','send the opportunity to investors'],
-    ['sent to Outerhaven','sent for investor review'],
-    ['send a deal to Outerhaven','send a deal to investors'],
-    ['sending a deal to Outerhaven','sending a deal to investors']
-  ];
+    ['Submit the opportunity to Outerhaven only when the diligence step is complete.','Send the opportunity to investors only when the diligence step is complete.']
+  ]);
 
   function rewriteNode(root){
     if(!root)return;
@@ -31,9 +27,8 @@
     const nodes=[];
     while(walker.nextNode())nodes.push(walker.currentNode);
     for(const node of nodes){
-      let next=node.nodeValue;
-      for(const [from,to] of replacements)next=next.split(from).join(to);
-      if(next!==node.nodeValue)node.nodeValue=next;
+      const replacement=exactReplacements.get(node.nodeValue);
+      if(replacement)node.nodeValue=replacement;
     }
   }
 
@@ -58,9 +53,9 @@
   window.addEventListener('scroll',tune,{passive:true});
   setInterval(tune,250);
 
-  // Treat this as a new tutorial revision so users who saw the first live-screen
-  // version get the improved side-docked version once automatically.
-  const refreshKey='outerhaven_originator_walkthrough_side_tune_v1';
+  // Treat this as a new tutorial revision so users receive the side-docked,
+  // investor-facing walkthrough once automatically.
+  const refreshKey='outerhaven_originator_walkthrough_side_tune_v2';
   try{
     if(localStorage.getItem(refreshKey)!=='1'){
       localStorage.setItem(refreshKey,'1');
