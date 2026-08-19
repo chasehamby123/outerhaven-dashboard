@@ -5,10 +5,10 @@
   const style=document.createElement('style');
   style.textContent=`
     #networkMandateGrid .networkMandateCard{padding:13px 14px;background:#fbf8f3;border-color:#ddd0c0}
-    #networkMandateGrid .networkMandateTop{align-items:flex-start}
+    #networkMandateGrid .networkMandateTop{align-items:flex-start;gap:14px}
     #networkMandateGrid .networkMandateTitle{font-size:12px;line-height:1.2;font-weight:900;color:#252019;letter-spacing:-.01em}
-    #networkMandateGrid .mandateCode{margin-top:4px;font-size:7px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;color:#9b8873}
-    #networkMandateGrid .networkMandateRange{display:flex;flex-direction:column;align-items:flex-end;gap:2px;text-align:right}
+    #networkMandateGrid .mandateFocusTitle{margin-top:4px;font-size:8px;line-height:1.35;font-weight:760;color:#756657}
+    #networkMandateGrid .networkMandateRange{display:flex;flex-direction:column;align-items:flex-end;gap:2px;text-align:right;min-width:82px}
     #networkMandateGrid .networkMandateRange span{font-size:6.5px;line-height:1;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#9b8873}
     #networkMandateGrid .networkMandateRange strong{font-size:10px;line-height:1.15;font-weight:900;color:#4c4035}
     #networkMandateGrid .networkMandateRows{margin-top:11px;padding-top:9px;border-top:1px solid #e8ddd0;gap:6px}
@@ -26,16 +26,15 @@
     if(!titleEl||!rangeEl||!rows.length)return;
 
     const raw=titleEl.textContent.trim();
-    const m=raw.match(/^(.*?)\s+Mandate\s+(\d+)$/i);
-    if(!m)return;
-
-    const sector=m[1].trim();
-    const number=m[2];
+    const parts=raw.split(/\s+—\s+/);
+    const sector=(parts.shift()||raw).trim();
+    const focus=parts.join(' — ').trim();
     const range=rangeEl.textContent.trim();
 
     titleEl.textContent=sector;
-    if(!titleEl.parentElement.querySelector('.mandateCode')){
-      titleEl.insertAdjacentHTML('afterend',`<div class="mandateCode">Mandate ${number}</div>`);
+    if(focus&&!titleEl.parentElement.querySelector('.mandateFocusTitle')){
+      titleEl.insertAdjacentHTML('afterend',`<div class="mandateFocusTitle"></div>`);
+      titleEl.parentElement.querySelector('.mandateFocusTitle').textContent=focus;
     }
     rangeEl.innerHTML=`<span>Check Size</span><strong>${range}</strong>`;
 
