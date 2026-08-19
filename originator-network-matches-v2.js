@@ -10,7 +10,7 @@
   const html=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
   const parseAmount=v=>typeof window.__outerhavenParseDealAmount==='function'?window.__outerhavenParseDealAmount(v):Number(v||0)||0;
   const fmtMoney=v=>{const n=Number(v||0);if(!n)return'Flexible';if(n>=1e9)return'$'+(n/1e9).toFixed(n%1e9?1:0)+'B';if(n>=1e6)return'$'+(n/1e6).toFixed(n%1e6?1:0)+'M';return'$'+Math.round(n).toLocaleString()};
-  const MATCH_TEXT_FIELDS=new Set(['dealAmount','dealSector','dealGeography']);
+  const MATCH_TEXT_FIELDS=new Set(['dealSector','dealGeography']);
 
   const style=document.createElement('style');
   style.textContent=`
@@ -132,7 +132,7 @@
     editingMatchField=false;
     setTimeout(()=>requestPreview(true),0);
   });
-  document.addEventListener('change',e=>{if(e.target?.id==='dealType')requestPreview(true)});
+  document.addEventListener('change',e=>{if(['dealAmount','dealType'].includes(e.target?.id))requestPreview(true)});
 
   try{
     if(typeof renderEstimate==='function'){
@@ -147,7 +147,7 @@
 
   function realtime(){
     if(channel||typeof sb==='undefined')return;
-    channel=sb.channel('originator-mandate-universe-v7')
+    channel=sb.channel('originator-mandate-universe-v8')
       .on('postgres_changes',{event:'*',schema:'public',table:'originator_match_buckets'},load)
       .on('postgres_changes',{event:'*',schema:'public',table:'originator_submission_matches'},load)
       .subscribe();
@@ -155,4 +155,4 @@
 
   load();realtime();setInterval(()=>{if(!editingMatchField)load()},60000);
 })();
-// exact 42 family office profiles v7
+// capital range matching v8
