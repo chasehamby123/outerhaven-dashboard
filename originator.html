@@ -45,9 +45,9 @@
         <section class="panel howItWorks">
           <div class="panelHead"><div><div class="eyebrow">PROCESS</div><h2>How submissions move</h2></div></div>
           <div class="steps">
-            <article><span>01</span><b>Submit</b><p>Add the opportunity details and attach your one-pager, deck, or supporting materials.</p></article>
+            <article><span>01</span><b>Submit</b><p>Add the opportunity details. Supporting materials are optional at this stage.</p></article>
             <article><span>02</span><b>Match</b><p>The portal scores the opportunity against Outerhaven's current institutional buyer thesis.</p></article>
-            <article><span>03</span><b>Review</b><p>Outerhaven reviews the materials and determines whether the opportunity should enter active matching.</p></article>
+            <article><span>03</span><b>Review</b><p>Outerhaven reviews the opportunity and determines whether it should enter active matching.</p></article>
             <article><span>04</span><b>Progress</b><p>Your portal status updates as the opportunity moves into matching, buyer interest, or engagement.</p></article>
           </div>
         </section>
@@ -56,27 +56,16 @@
       <section id="submitSection" class="section">
         <div class="submitGrid">
           <form id="submissionForm" class="panel formPanel">
-            <div class="panelHead"><div><div class="eyebrow">NEW OPPORTUNITY</div><h2>Submit for Review</h2><p>Give us enough context to understand the transaction before we review the materials.</p></div></div>
+            <div class="panelHead"><div><div class="eyebrow">NEW OPPORTUNITY</div><h2>Submit for Review</h2><p>Enter the core transaction details used to match the opportunity against current family-office mandates.</p></div></div>
             <div class="formGrid">
               <label class="span2">Opportunity / Project Name<input id="dealTitle" required placeholder="Example: Southeast Asia Luxury Resort Portfolio"></label>
               <label>Company / Sponsor<input id="dealCompany" placeholder="Company or sponsor name"></label>
-              <label>Exact Capital Ask<select id="dealAmount" required>
-                <option value="">Select range</option>
-                <option value="35000000" data-min="20000000" data-max="50000000" data-range="$20M–$50M">$20M–$50M</option>
-                <option value="65500000" data-min="51000000" data-max="80000000" data-range="$51M–$80M">$51M–$80M</option>
-                <option value="100500000" data-min="81000000" data-max="120000000" data-range="$81M–$120M">$81M–$120M</option>
-                <option value="160500000" data-min="121000000" data-max="200000000" data-range="$121M–$200M">$121M–$200M</option>
-                <option value="250500000" data-min="201000000" data-max="300000000" data-range="$201M–$300M">$201M–$300M</option>
-                <option value="400500000" data-min="301000000" data-max="500000000" data-range="$301M–$500M">$301M–$500M</option>
-                <option value="625500000" data-min="501000000" data-max="750000000" data-range="$501M–$750M">$501M–$750M</option>
-                <option value="875500000" data-min="751000000" data-max="1000000000" data-range="$751M–$1B">$751M–$1B</option>
-                <option value="1250000000" data-min="1000000001" data-range="$1B+">$1B+</option>
-              </select></label>
+              <label>Exact Capital Ask<div class="moneyInput"><span>$</span><input id="dealAmount" type="text" inputmode="decimal" required placeholder="50M"></div></label>
               <label>Sector<input id="dealSector" required placeholder="Hospitality, Healthcare, Infrastructure..."></label>
               <label>Geography<input id="dealGeography" required placeholder="United States, Southeast Asia, Global..."></label>
               <label class="span2">Transaction Type<select id="dealType" required><option value="">Select structure</option><option>Equity Raise</option><option>Debt Financing</option><option>Structured Capital</option><option>Acquisition / M&A</option><option>Joint Venture</option><option>Strategic Investment</option><option>Full or Partial Sale</option><option>Other</option></select></label>
-              <label class="span2">Opportunity Summary<textarea id="dealSummary" rows="6" required placeholder="What is the opportunity, why is capital being raised or a transaction being pursued, and what should an institutional buyer understand immediately?"></textarea></label>
-              <label class="span2">Supporting Materials<div id="fileDrop" class="fileDrop" tabindex="0"><input id="dealFiles" type="file" multiple accept=".pdf,.doc,.docx,.ppt,.pptx" hidden><strong>Drop one-pagers, decks, or supporting documents</strong><span>PDF, Word, or PowerPoint · up to 15 MB each</span><button id="chooseFiles" type="button" class="secondaryBtn">Choose files</button></div><div id="fileList" class="fileList"></div></label>
+              <label class="span2">Opportunity Summary <small style="font-weight:600;color:#8a7a69">Optional</small><textarea id="dealSummary" rows="6" placeholder="Optional context on the opportunity, use of funds, or transaction rationale."></textarea></label>
+              <label class="span2">Supporting Materials <small style="font-weight:600;color:#8a7a69">Optional</small><div id="fileDrop" class="fileDrop" tabindex="0"><input id="dealFiles" type="file" multiple accept=".pdf,.doc,.docx,.ppt,.pptx" hidden><strong>Drop a one-pager, deck, or supporting documents if available</strong><span>Optional · PDF, Word, or PowerPoint · up to 15 MB each</span><button id="chooseFiles" type="button" class="secondaryBtn">Choose files</button></div><div id="fileList" class="fileList"></div></label>
             </div>
             <div id="submitMessage" class="formMessage"></div>
             <div class="formActions"><button id="submitDeal" class="primaryBtn" type="submit">Submit Opportunity</button></div>
@@ -86,9 +75,9 @@
             <div class="eyebrow">ESTIMATED FIT</div>
             <div class="scoreRing" id="estimateRing"><div><strong id="estimateScore">0%</strong><span>Match</span></div></div>
             <h3 id="estimateLabel">Complete the submission</h3>
-            <p id="estimateCopy">Your score updates as you add the details institutional buyers need to evaluate the opportunity.</p>
+            <p id="estimateCopy">Fit is based only on capital ask, sector, geography, and transaction structure.</p>
             <div id="fitChecklist" class="fitChecklist"></div>
-            <div class="fitNote">The final score is calculated when you submit and automatically updates when supporting materials are attached.</div>
+            <div class="fitNote">Project name, company name, summary text, and supporting materials do not change the match score.</div>
           </aside>
         </div>
       </section>
