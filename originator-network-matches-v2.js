@@ -58,15 +58,14 @@
 
   function renderMandates(){
     ensurePanel();const grid=q('networkMandateGrid'),summary=q('networkMandateSummary');if(!grid||!summary)return;
-    const synthetic=buckets.filter(x=>x.is_synthetic),live=buckets.filter(x=>!x.is_synthetic);
-    summary.innerHTML=`<div class="networkMandateMetric"><span>Buyer mandate profiles</span><strong>${synthetic.length.toLocaleString()}</strong></div><div class="networkMandateMetric"><span>Strong-fit threshold</span><strong>${MATCH_THRESHOLD}%</strong></div><div class="networkMandateMetric"><span>Minimum size</span><strong>$20M</strong></div>`;
-    const sample=[...live,...synthetic.slice(0,15)].slice(0,16);
-    grid.innerHTML=sample.map(b=>`<article class="networkMandateCard"><div class="networkMandateTop"><div class="networkMandateTitle">${html(b.anonymous_label)}</div><div class="networkMandateRange">${html(rangeText(b))}</div></div><div class="networkMandateRows"><div class="networkMandateRow"><span>Sector</span><b>${html(joined(b.sectors))}</b></div><div class="networkMandateRow"><span>Geography</span><b>${html(joined(b.geographies))}</b></div><div class="networkMandateRow"><span>Structure</span><b>${html(joined(b.structures))}</b></div></div></article>`).join('');
-    const home=q('homeThesis');if(home){home.querySelector('[data-network-mandate-count]')?.remove();home.insertAdjacentHTML('beforeend',`<div class="thesisQuickRow" data-network-mandate-count><span>Buyer mandate profiles</span><b>${synthetic.length.toLocaleString()}</b></div>`)}
+    const synthetic=buckets.filter(x=>x.is_synthetic);
+    summary.innerHTML=`<div class="networkMandateMetric"><span>Family office profiles</span><strong>${synthetic.length.toLocaleString()}</strong></div><div class="networkMandateMetric"><span>Strong-fit threshold</span><strong>${MATCH_THRESHOLD}%</strong></div><div class="networkMandateMetric"><span>Minimum size</span><strong>$20M</strong></div>`;
+    grid.innerHTML=synthetic.map(b=>`<article class="networkMandateCard"><div class="networkMandateTop"><div class="networkMandateTitle">${html(b.anonymous_label)}</div><div class="networkMandateRange">${html(rangeText(b))}</div></div><div class="networkMandateRows"><div class="networkMandateRow"><span>Sector</span><b>${html(joined(b.sectors))}</b></div><div class="networkMandateRow"><span>Geography</span><b>${html(joined(b.geographies))}</b></div><div class="networkMandateRow"><span>Structure</span><b>${html(joined(b.structures))}</b></div></div></article>`).join('');
+    const home=q('homeThesis');if(home){home.querySelector('[data-network-mandate-count]')?.remove();home.insertAdjacentHTML('beforeend',`<div class="thesisQuickRow" data-network-mandate-count><span>Family office profiles</span><b>${synthetic.length.toLocaleString()}</b></div>`)}
   }
 
   function matchesForSubmission(id){
-    const map=new Map(buckets.map(b=>[b.id,b]));
+    const map=new Map(buckets.filter(b=>b.is_synthetic).map(b=>[b.id,b]));
     return matchRows.filter(r=>r.submission_id===id&&map.has(r.bucket_id)&&Number(r.score)>=MATCH_THRESHOLD).map(r=>({...r,bucket:map.get(r.bucket_id)})).sort((a,b)=>Number(b.score)-Number(a.score));
   }
 
@@ -93,7 +92,7 @@
     const input=currentInput(),syntheticCount=buckets.filter(x=>x.is_synthetic).length;
     if(input.amount>0&&input.amount<FLOOR){
       box.innerHTML=`<div class="networkLivePreviewHead"><span>Mandate Matching</span><b>${syntheticCount} profiles</b></div><div class="networkNoMatch">0% fit: the opportunity is below the $20M network floor.</div>`;
-      applyBest({score:0,anonymous_label:'Below $20M network floor',match_reasons:['No mandate profile accepts an opportunity below $20M.']});return;
+      applyBest({score:0,anonymous_label:'Below $20M network floor',match_reasons:['No family office profile accepts an opportunity below $20M.']});return;
     }
     if(!input.amount&&!input.sector&&!input.geo&&!input.type){
       box.innerHTML=`<div class="networkLivePreviewHead"><span>Mandate Matching</span><b>${syntheticCount} profiles</b></div><div class="networkNoMatch">Add the transaction details to calculate fit.</div>`;
@@ -121,7 +120,7 @@
       if(!input.amount&&!input.sector&&!input.geo&&!input.type){previewRows=[];renderPreview();return}
       try{
         const {data,error}=await sb.rpc('preview_buyer_mandate_matches',{p_amount:input.amount||null,p_sector:input.sector||null,p_geography:input.geo||null,p_structure:input.type||null,p_limit:5});
-        if(error)throw error;if(seq!==previewSeq)return;previewRows=data||[];renderPreview();
+        if(error)throw error;if(seq!==previewSeq)return;previewRows=(data||[]).filter(r=>r.is_synthetic);renderPreview();
       }catch(err){if(seq!==previewSeq)return;console.error('buyer mandate preview',err);previewRows=[];renderPreview()}
     };
     if(immediate)run();else previewTimer=setTimeout(run,180);
@@ -148,7 +147,7 @@
 
   function realtime(){
     if(channel||typeof sb==='undefined')return;
-    channel=sb.channel('originator-mandate-universe-v6')
+    channel=sb.channel('originator-mandate-universe-v7')
       .on('postgres_changes',{event:'*',schema:'public',table:'originator_match_buckets'},load)
       .on('postgres_changes',{event:'*',schema:'public',table:'originator_submission_matches'},load)
       .subscribe();
@@ -156,4 +155,4 @@
 
   load();realtime();setInterval(()=>{if(!editingMatchField)load()},60000);
 })();
-// sector-gated buyer matching v6
+// exact 42 family office profiles v7
