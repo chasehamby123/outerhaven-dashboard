@@ -27,6 +27,7 @@
   const originalMetrics=typeof renderMetrics==='function'?renderMetrics:null;
   const originalRecent=typeof renderRecent==='function'?renderRecent:null;
   const originalSubmissions=typeof renderSubmissions==='function'?renderSubmissions:null;
+  const parsedAmount=v=>typeof window.__outerhavenParseDealAmount==='function'?window.__outerhavenParseDealAmount(v):Number(String(v||'').replace(/[$,]/g,''))||0;
 
   function isDraft(s){return (s?.submission_state||'submitted')==='awaiting_diligence'}
   function submittedRows(){return submissions.filter(s=>!isDraft(s))}
@@ -67,7 +68,7 @@
     form.addEventListener('submit',startStepOne,true);
     const head=form.querySelector('.panelHead h2'),copy=form.querySelector('.panelHead p'),btn=$('submitDeal');
     if(head)head.textContent='Step 1: Opportunity Details';
-    if(copy)copy.textContent='Add the opportunity and supporting materials. You will complete a short diligence step before it is sent to Outerhaven.';
+    if(copy)copy.textContent='Add the core opportunity details. Supporting materials and the opportunity summary are optional. You will complete a short diligence step before it is sent to Outerhaven.';
     if(btn)btn.textContent='Continue to Diligence';
     return true;
   }
@@ -75,8 +76,9 @@
   async function startStepOne(ev){
     ev.preventDefault();ev.stopImmediatePropagation();setMessage('');
     const btn=$('submitDeal');if(btn.disabled)return;
-    const payload={originator_user_id:currentUser.id,title:$('dealTitle').value.trim(),company_name:$('dealCompany').value.trim()||null,transaction_type:$('dealType').value,capital_amount:Number($('dealAmount').value||0)||null,sector:$('dealSector').value.trim()||null,geography:$('dealGeography').value.trim()||null,summary:$('dealSummary').value.trim()||null};
-    if(!payload.title||!payload.capital_amount||!payload.sector||!payload.geography||!payload.transaction_type||!payload.summary){setMessage('Complete the required opportunity fields before continuing.','error');return}
+    const amount=parsedAmount($('dealAmount').value);
+    const payload={originator_user_id:currentUser.id,title:$('dealTitle').value.trim(),company_name:$('dealCompany').value.trim()||null,transaction_type:$('dealType').value,capital_amount:amount||null,capital_amount_range:null,sector:$('dealSector').value.trim()||null,geography:$('dealGeography').value.trim()||null,summary:$('dealSummary').value.trim()||null};
+    if(!payload.title||!payload.capital_amount||!payload.sector||!payload.geography||!payload.transaction_type){setMessage('Complete the project name, exact capital ask, sector, geography, and transaction type before continuing.','error');return}
     btn.disabled=true;btn.textContent='Preparing diligence...';
     try{
       const files=[...selectedFiles];
@@ -124,7 +126,7 @@
     document.querySelector('.ddBack')?.remove();
     const saved=s.diligence_answers&&typeof s.diligence_answers==='object'?s.diligence_answers:{};
     const back=document.createElement('div');back.className='ddBack';
-    back.innerHTML=`<div class="ddModal"><div class="ddHead"><div><div class="eyebrow">ORIGINATOR DILIGENCE</div><h2>Complete the opportunity review</h2><p>We pre-filled anything we could identify from your opportunity details and uploaded materials. Review those answers, complete what is still missing, or mark a question Not Applicable. The opportunity is sent to Outerhaven only after this step is complete.</p></div><button class="ddClose" type="button" aria-label="Close">×</button></div><div class="ddBody"><div class="ddProgress"><span class="ddStep">STEP 2 OF 2</span><span class="ddDeal">${esc(s.title)}</span></div><div class="ddQuestions">${QUESTIONS.map(([key,q,h])=>questionHtml(key,q,h,saved[key])).join('')}</div></div><div class="ddFoot"><div id="ddFootMsg" class="ddFootMsg">All 12 questions require an answer or Not Applicable.</div><button id="ddSubmit" class="ddSubmit" type="button">Submit Opportunity to Outerhaven</button></div></div>`;
+    back.innerHTML=`<div class="ddModal"><div class="ddHead"><div><div class="eyebrow">ORIGINATOR DILIGENCE</div><h2>Complete the opportunity review</h2><p>We pre-filled anything we could identify from your opportunity details and any uploaded materials. Review those answers, complete what is still missing, or mark a question Not Applicable. The opportunity is sent to Outerhaven only after this step is complete.</p></div><button class="ddClose" type="button" aria-label="Close">×</button></div><div class="ddBody"><div class="ddProgress"><span class="ddStep">STEP 2 OF 2</span><span class="ddDeal">${esc(s.title)}</span></div><div class="ddQuestions">${QUESTIONS.map(([key,q,h])=>questionHtml(key,q,h,saved[key])).join('')}</div></div><div class="ddFoot"><div id="ddFootMsg" class="ddFootMsg">All 12 questions require an answer or Not Applicable.</div><button id="ddSubmit" class="ddSubmit" type="button">Submit Opportunity to Outerhaven</button></div></div>`;
     document.body.appendChild(back);
     back.querySelector('.ddClose').onclick=()=>back.remove();
     back.querySelectorAll('[data-dd-na]').forEach(c=>{c.onchange=()=>{const ta=back.querySelector(`[data-dd-answer="${CSS.escape(c.dataset.ddNa)}"]`);if(ta)ta.disabled=c.checked}});
