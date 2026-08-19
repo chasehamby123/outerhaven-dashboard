@@ -2,7 +2,7 @@
   if(window.__outerhavenOriginatorWalkthrough)return;
   window.__outerhavenOriginatorWalkthrough=true;
 
-  const VERSION='v9-important-only';
+  const VERSION='v10-overview-thesis';
   let stepIndex=0;
   let rail=null;
   let card=null;
@@ -39,18 +39,37 @@
 
   const steps=[
     {
-      title:'Start With the Buyer Thesis',
-      copy:'This is what our investor network is currently searching for. Check this before sending a deal.',
+      title:'How the Portal Works',
+      copy:'The portal follows one simple deal flow: understand what investors are looking for, submit the opportunity, complete diligence, then track investor activity.',
       actions:[
-        'Check the preferred transaction size first.',
-        'Make sure the proposed structure is one investors are considering.',
-        'A reviewable deal needs a credible sponsor, a defined capital need, and enough material for diligence.'
+        'Buyer Thesis shows what our investor network is currently searching for.',
+        'Submit Opportunity is where you send a deal and its materials.',
+        'Diligence verifies the deal before investor outreach.',
+        'My Submissions is where you track whether the deal is matching, receiving interest, or needs action.'
+      ],
+      section:'home',
+      path:[
+        {selector:'.navBtn[data-section="thesis"]',status:'1. Check what our investor network is searching for'},
+        {selector:'.navBtn[data-section="submit"]',status:'2. Submit the opportunity and materials'},
+        {selector:'.navBtn[data-section="submissions"]',status:'3. Track the deal after submission'}
+      ]
+    },
+    {
+      title:'Understand the Buyer Thesis',
+      copy:'The Buyer Thesis tells you what our network is actively positioned to review. Use it to decide whether a deal belongs in the portal and how to present it.',
+      actions:[
+        '$50M+ is the preferred transaction scale. Scale is one of the first filters.',
+        'Sector agnostic and global means industry and geography are broad. Do not reject a strong deal just because of its sector or country.',
+        'The network can consider equity, debt, structured capital, acquisition capital, joint ventures, strategic investment, and full or partial acquisitions.',
+        'The real gate is investability: credible sponsor or management, a defined capital or transaction need, a clear institutional case, and enough material for diligence.'
       ],
       section:'thesis',
       path:[
-        {selector:'#thesisMin',status:'Start with the preferred transaction size'},
-        {selector:'#thesisStructures .tag',fallback:'#thesisStructures',status:'Check the structures currently in scope'},
-        {selector:'#thesisRequirements',status:'These are the minimum qualities of a reviewable deal'}
+        {selector:'#thesisMin',status:'Preferred scale: $50M+ is one of the first filters'},
+        {selector:'#thesisSectors .tag',fallback:'#thesisSectors',status:'Sector agnostic: sector itself is not the main filter'},
+        {selector:'#thesisGeographies .tag',fallback:'#thesisGeographies',status:'Global: geography is intentionally broad'},
+        {selector:'#thesisStructures',status:'These are the transaction structures the network can consider'},
+        {selector:'#thesisRequirements',status:'This is the real gate: credible sponsor, defined need, institutional case, diligence-ready materials'}
       ]
     },
     {
