@@ -37,6 +37,7 @@
       loadScript('/relationship-only-person-entry.js');
       loadScript('/buy-side-partner-sync.js');
       loadScript('/buy-side-thesis-status-viewer.js',()=>loadScript('/buy-side-thesis-preview-click-guard.js'));
+      loadScript('/opportunity-buyer-matches.js');
       loadScript('/originator-admin.js',()=>loadScript('/originator-preview-admin.js',()=>loadScript('/originator-test-admin.js',()=>loadScript('/originator-review-admin.js',()=>loadScript('/originator-review-diligence-admin.js',()=>loadScript('/originator-production-admin.js'))))));
       return;
     }
