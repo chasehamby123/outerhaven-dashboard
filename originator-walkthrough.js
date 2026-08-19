@@ -2,7 +2,7 @@
   if(window.__outerhavenOriginatorWalkthrough)return;
   window.__outerhavenOriginatorWalkthrough=true;
 
-  const VERSION='v8-locked-fast';
+  const VERSION='v9-important-only';
   let stepIndex=0;
   let rail=null;
   let card=null;
@@ -39,73 +39,84 @@
 
   const steps=[
     {
-      title:'Portal Navigation',
-      copy:'Use these four sections to submit deals and track investor activity.',
-      actions:['Overview: your dashboard.','Submit Opportunity: send a deal for investor review.','My Submissions: track submitted deals.','Buyer Thesis: what our investor network is currently searching for.'],
-      section:'home',
-      path:[
-        {selector:'.navBtn[data-section="home"]',status:'Overview'},
-        {selector:'.navBtn[data-section="submit"]',status:'Submit Opportunity'},
-        {selector:'.navBtn[data-section="submissions"]',status:'My Submissions'},
-        {selector:'.navBtn[data-section="thesis"]',status:'Buyer Thesis'}
-      ]
-    },
-    {
-      title:'Buyer Thesis',
-      copy:'This is what our investor network is currently searching for.',
-      actions:['Check the preferred deal size.','Check the sector and geography.','Check the structures currently in scope.'],
+      title:'Start With the Buyer Thesis',
+      copy:'This is what our investor network is currently searching for. Check this before sending a deal.',
+      actions:[
+        'Check the preferred transaction size first.',
+        'Make sure the proposed structure is one investors are considering.',
+        'A reviewable deal needs a credible sponsor, a defined capital need, and enough material for diligence.'
+      ],
       section:'thesis',
       path:[
-        {selector:'#thesisMin',status:'Preferred deal size'},
-        {selector:'#thesisSectors .tag',fallback:'#thesisSectors',status:'Sector focus'},
-        {selector:'#thesisGeographies .tag',fallback:'#thesisGeographies',status:'Geography'},
-        {selector:'#thesisStructures .tag',fallback:'#thesisStructures',status:'Accepted structures'}
+        {selector:'#thesisMin',status:'Start with the preferred transaction size'},
+        {selector:'#thesisStructures .tag',fallback:'#thesisStructures',status:'Check the structures currently in scope'},
+        {selector:'#thesisRequirements',status:'These are the minimum qualities of a reviewable deal'}
       ]
     },
     {
-      title:'Submit an Opportunity',
-      copy:'Start here when you have a deal you want matched with investors.',
-      actions:['Open Submit Opportunity.','Enter the basic deal information.','Attach the main deal materials.'],
+      title:'Upload the Main Deal Material First',
+      copy:'Use the current one-pager or pitch deck first. The portal reads it and uses it to help build the submission.',
+      actions:[
+        'Upload the best current deck or one-pager.',
+        'Let the portal read the document before correcting the fields.',
+        'Add supporting documents only if they help investors understand or diligence the deal.'
+      ],
+      section:'submit',
+      path:[{selector:'#chooseFiles',fallback:'#fileDrop',status:'Upload the main deal document here',click:true}]
+    },
+    {
+      title:'Verify the Deal Terms That Matter',
+      copy:'Document extraction saves time, but these fields must be accurate before the deal moves forward.',
+      actions:[
+        'Capital ask: enter the amount actually being raised or transacted.',
+        'Transaction type: select the real structure, not the structure you hope investors prefer.',
+        'Summary: explain the opportunity, why capital is needed, and what an investor should understand immediately.'
+      ],
       section:'submit',
       path:[
-        {selector:'.navBtn[data-section="submit"]',status:'Open Submit Opportunity'},
-        {selector:'#dealTitle',status:'Start with the opportunity name'}
+        {selector:'#dealAmount',status:'Verify the exact capital ask'},
+        {selector:'#dealType',status:'Verify the actual transaction structure'},
+        {selector:'#dealSummary',status:'Make the investment case clear in the summary'}
       ]
     },
     {
-      title:'Upload the Deal Materials',
-      copy:'Upload the one-pager or pitch deck so the portal can read the deal first.',
-      actions:['Click Choose files.','Select the main deck or one-pager.','Wait for the portal to fill what it can.'],
-      section:'submit',
-      path:[{selector:'#chooseFiles',fallback:'#fileDrop',status:'Choose the main deal document',click:true}]
-    },
-    {
-      title:'Review the Deal Details',
-      copy:'Check the information pulled from the document before continuing.',
-      actions:['Verify the project and sponsor.','Verify the capital ask and structure.','Correct anything missing or wrong.'],
+      title:'Use the Match Score as a Screen',
+      copy:'The match score measures alignment with the current buyer thesis. It is not investor interest, approval, or a commitment to fund the deal.',
+      actions:[
+        'Use the checklist to see what is missing or below thesis.',
+        'Fix missing transaction details and supporting materials before continuing.',
+        'A strong score still has to pass diligence and investor review.'
+      ],
       section:'submit',
       path:[
-        {selector:'#dealTitle',status:'Project name'},
-        {selector:'#dealCompany',status:'Sponsor'},
-        {selector:'#dealAmount',status:'Capital ask'},
-        {selector:'#dealType',status:'Transaction structure'}
+        {selector:'#estimateRing',status:'This is thesis alignment, not investor interest'},
+        {selector:'#fitChecklist',status:'Use this checklist to fix missing or weak information'}
       ]
     },
     {
-      title:'Complete Diligence',
-      copy:'Once the deal details are correct, continue to diligence.',
-      actions:['Click Continue to Diligence.','Complete all 12 questions or mark one Not Applicable.','Submit when diligence is complete.'],
+      title:'Diligence Protects the Investor Outreach',
+      copy:'These questions determine whether the deal is ready to be put in front of investors and help prevent duplicate or poorly controlled outreach.',
+      actions:[
+        'Be precise about your relationship with the sponsor and whether you have a mandate.',
+        'Disclose who has already seen the deal and any lead investor, term sheet, or committed capital.',
+        'Give accurate information on structure, sources and uses, sponsor track record, and sponsor contribution.'
+      ],
       section:'submit',diligence:true,
-      path:[{selector:'#submitDeal',status:'Click Continue to Diligence',click:true}]
+      path:[{selector:'#submitDeal',status:'Continue here only after the basic deal information is correct',click:true}]
     },
     {
-      title:'Track Your Submissions',
-      copy:'Use My Submissions to follow a deal after it is sent for investor review.',
-      actions:['Open My Submissions.','Check the current status and match score.','Complete any requested action from here.'],
+      title:'Track Real Progress in My Submissions',
+      copy:'After submission, the status tells you where the deal actually is. The match score only tells you how closely it fits the thesis.',
+      actions:[
+        'Matching means the opportunity is being worked against the buyer network.',
+        'Buyer Interest or Engagement Active means the deal has moved beyond thesis fit.',
+        'If the portal shows Diligence Required, finish the existing submission instead of creating a duplicate.'
+      ],
       section:'submissions',
       path:[
-        {selector:'.navBtn[data-section="submissions"]',status:'Open My Submissions'},
-        {selector:'.submissionCard',fallback:'#submissionsSection .panelHead',status:'Submitted deals and status appear here'}
+        {selector:'.submissionCard .status',fallback:'.submissionCard',status:'Status tells you the real stage of the deal'},
+        {selector:'.submissionCard .matchPct',fallback:'.submissionCard',status:'Match score is thesis fit, not proof of investor interest'},
+        {selector:'.ddResume',fallback:'.submissionCard',status:'If diligence is required, resume this deal instead of resubmitting it'}
       ]
     }
   ];
@@ -231,9 +242,9 @@
     hideGuides();clearPreview();
     diligencePreview=document.createElement('div');
     diligencePreview.className='owDiligencePreview';
-    diligencePreview.innerHTML=`<div class="odpHead"><span>ORIGINATOR DILIGENCE</span><h3>What opens after Continue to Diligence</h3><p>These are the 12 questions completed before the deal is sent for investor review.</p></div><div class="odpBody"><div class="odpBadge">12 DILIGENCE QUESTIONS</div><div class="odpQuestions">${diligenceQuestions.map((q,i)=>`<div class="odpQ"><b>QUESTION ${i+1}</b><strong>${q}</strong><div class="odpFakeInput"></div></div>`).join('')}</div></div>`;
+    diligencePreview.innerHTML=`<div class="odpHead"><span>ORIGINATOR DILIGENCE</span><h3>What diligence is checking</h3><p>These 12 questions verify the deal before it is eligible to move into investor outreach.</p></div><div class="odpBody"><div class="odpBadge">12 DILIGENCE QUESTIONS</div><div class="odpQuestions">${diligenceQuestions.map((q,i)=>`<div class="odpQ"><b>QUESTION ${i+1}</b><strong>${q}</strong><div class="odpFakeInput"></div></div>`).join('')}</div></div>`;
     document.body.appendChild(diligencePreview);
-    setStatus('The diligence screen opens with these 12 questions');
+    setStatus('These are the questions that determine whether the deal is outreach-ready');
   }
 
   async function playDemo(){
@@ -250,7 +261,7 @@
   function render(){
     ++runToken;clearPreview();hideGuides();
     const step=steps[stepIndex];ensureSection(step.section);
-    card.innerHTML=`<div class="owEyebrow">ORIGINATOR PORTAL TUTORIAL · ${stepIndex+1} OF ${steps.length}</div><h2>${step.title}</h2><p>${step.copy}</p><div class="owDo"><strong>What to do</strong><ul>${step.actions.map(x=>`<li>${x}</li>`).join('')}</ul></div><div class="owGuide"><div><strong>ON-SCREEN GUIDE</strong><span class="owStatus">Watch the cursor move to the highlighted item.</span></div><button type="button" class="owReplay">Replay</button></div><div class="owStep"><div><button type="button" class="owSkip">Skip tutorial</button><div class="owDots">${steps.map((_,i)=>`<span class="owDot ${i===stepIndex?'active':''}"></span>`).join('')}</div></div><div class="owActions">${stepIndex?'<button type="button" class="owBtn owBack">Back</button>':''}<button type="button" class="owBtn primary owNext">${stepIndex===steps.length-1?'Finish':'Next'}</button></div></div>`;
+    card.innerHTML=`<div class="owEyebrow">ORIGINATOR PORTAL GUIDE · ${stepIndex+1} OF ${steps.length}</div><h2>${step.title}</h2><p>${step.copy}</p><div class="owDo"><strong>What matters</strong><ul>${step.actions.map(x=>`<li>${x}</li>`).join('')}</ul></div><div class="owGuide"><div><strong>ON-SCREEN GUIDE</strong><span class="owStatus">Watch the cursor move to the important item.</span></div><button type="button" class="owReplay">Replay</button></div><div class="owStep"><div><button type="button" class="owSkip">Skip guide</button><div class="owDots">${steps.map((_,i)=>`<span class="owDot ${i===stepIndex?'active':''}"></span>`).join('')}</div></div><div class="owActions">${stepIndex?'<button type="button" class="owBtn owBack">Back</button>':''}<button type="button" class="owBtn primary owNext">${stepIndex===steps.length-1?'Finish':'Next'}</button></div></div>`;
     card.querySelector('.owSkip').onclick=finish;
     card.querySelector('.owBack')?.addEventListener('click',()=>{stepIndex--;render()});
     card.querySelector('.owNext').onclick=()=>{if(stepIndex===steps.length-1)finish();else{stepIndex++;render()}};
