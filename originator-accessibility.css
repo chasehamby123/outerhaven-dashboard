@@ -1,0 +1,115 @@
+/* Originator portal readability layer
+   Keeps the current visual system but raises tiny 7–10px UI text to practical SaaS sizes. */
+
+body{font-size:16px;line-height:1.5}
+.app{grid-template-columns:260px 1fr}
+.sidebar{padding:24px 18px}
+.brand{gap:12px;padding-bottom:24px}
+.brandName{font-size:17px}
+.brandSub{font-size:13px;margin-top:2px}
+.nav{gap:7px}
+.navBtn{padding:13px 14px;font-size:15px;line-height:1.3}
+.navBtn b{font-size:12px;min-width:24px;padding:4px 7px}
+.account{gap:10px}
+.avatar{width:40px;height:40px;font-size:14px}
+.account strong{font-size:13px;max-width:165px}
+.account span{font-size:12px;max-width:165px}
+.signOut{margin-top:12px;padding:10px;font-size:13px}
+
+.main{padding:32px 34px 56px}
+.topbar{margin-bottom:28px}
+.eyebrow{font-size:11px;line-height:1.3}
+.topbar h1{font-size:32px;margin:6px 0 6px}
+.topbar p,.panelHead p{font-size:14px;line-height:1.55}
+.primaryBtn{padding:11px 15px;font-size:14px}
+.secondaryBtn{padding:9px 12px;font-size:13px}
+.textBtn{font-size:13px}
+
+.metrics{gap:14px;margin-bottom:16px}
+.metric{padding:18px}
+.metric span{font-size:11px}
+.metric strong{font-size:30px;margin-top:8px}
+.metric small{font-size:12px;margin-top:5px}
+.panel{padding:22px}
+.panelHead{margin-bottom:18px}
+.panelHead h2{font-size:19px;margin:4px 0 5px}
+.twoCol{gap:16px;margin-bottom:16px}
+
+.thesisQuick{gap:13px}
+.thesisQuickRow{padding-bottom:11px}
+.thesisQuickRow span{font-size:13px}
+.thesisQuickRow b{font-size:14px}
+.recentList{gap:10px}
+.recentItem{padding:12px}
+.recentItem strong{font-size:14px}
+.recentItem span{font-size:12px;margin-top:4px}
+.miniScore{font-size:16px}
+.empty{padding:24px;font-size:14px}
+
+.steps{gap:12px}
+.steps article{padding:16px}
+.steps article span{font-size:11px}
+.steps article b{font-size:14px;margin-top:10px}
+.steps article p{font-size:13px;line-height:1.55;margin-top:6px}
+
+.submitGrid{grid-template-columns:minmax(0,1fr) 330px;gap:16px}
+.formGrid{gap:14px}
+.formGrid label{gap:7px;font-size:13px;line-height:1.35}
+.formGrid input,.formGrid select,.formGrid textarea{padding:12px;font-size:14px;line-height:1.4}
+.moneyInput span{padding-left:12px;font-size:14px}
+.fileDrop{padding:22px}
+.fileDrop strong{font-size:14px}
+.fileDrop span{font-size:12px;margin:5px 0 12px}
+.fileList{gap:8px;margin-top:10px}
+.fileChip{padding:9px 11px;font-size:12px}
+.fileChip button{font-size:11px}
+.formActions{margin-top:17px}
+.formMessage{padding:11px 12px;font-size:13px}
+
+.scoreRing strong{font-size:30px}
+.scoreRing span{font-size:11px}
+.fitPanel h3{font-size:15px;margin:8px 0}
+.fitPanel>p{font-size:13px;line-height:1.55;margin:0 10px 16px}
+.fitChecklist{gap:8px}
+.fitCheck{padding:10px 11px;font-size:12px}
+.fitNote{font-size:12px;line-height:1.55;margin-top:14px;padding-top:12px}
+
+.submissionCards{gap:12px}
+.submissionCard{padding:16px;gap:14px}
+.submissionCard h3{font-size:16px;margin-bottom:5px}
+.submissionMeta{font-size:12px}
+.submissionSummary{font-size:13px;line-height:1.55;margin-top:10px}
+.matchPct{font-size:25px}
+.matchLabel{font-size:10px}
+.status{padding:5px 8px;font-size:11px}
+.matchWhy{font-size:12px;line-height:1.55;margin-top:10px}
+.docs{gap:6px;margin-top:10px}
+.docBtn{padding:6px 8px;font-size:11px}
+
+.thesisHero h2{font-size:28px;margin:6px 0 8px}
+.thesisHero p{font-size:15px;line-height:1.65}
+.minTicket span{font-size:11px}
+.minTicket strong{font-size:29px}
+.thesisGrid{gap:14px;margin-top:18px}
+.thesisGrid article{padding:15px}
+.thesisGrid article>span{font-size:11px;margin-bottom:9px}
+.tagList{gap:7px}
+.tag{padding:6px 9px;font-size:12px}
+.requirements{margin-top:16px;padding:16px}
+.requirements p{font-size:14px;line-height:1.6;margin-top:7px}
+
+/* Give keyboard and older/less technical users a much clearer focus state. */
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:3px solid rgba(17,19,24,.24);outline-offset:2px}
+
+@media(max-width:1050px){
+  .app{grid-template-columns:230px 1fr}
+  .main{padding:26px 22px 48px}
+  .submitGrid{grid-template-columns:1fr}
+}
+@media(max-width:760px){
+  .app{display:block}
+  .main{padding:22px 15px 42px}
+  .topbar h1{font-size:28px}
+  .navBtn{font-size:14px}
+  .panel{padding:18px}
+}
