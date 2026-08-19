@@ -3,6 +3,7 @@
   window.__outerhavenOpportunityBuyerMatches=true;
 
   const FLOOR=20000000;
+  const MATCH_THRESHOLD=75;
   let opportunityMatchMap=new Map();
   let loaded=false;
   let channel=null;
@@ -22,10 +23,9 @@
 
   function e(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
   function rec(id){return opportunityMatchMap.get(String(id))||null}
-  function floorBlocked(r){return Array.isArray(r?.buyer_match_reasons)&&r.buyer_match_reasons.includes('Below $20M network floor')}
-  function isModeled(r){return String(r?.buyer_match_label||'').startsWith('Modeled Mandate')}
-  function labelFor(r){return isModeled(r)?'Modeled Buyer Match':'Buyer Match'}
+  function floorBlocked(r){return Array.isArray(r?.buyer_match_reasons)&&r.buyer_match_reasons.some(x=>String(x).includes('below $20M network floor'))}
   function reasonText(r){return Array.isArray(r?.buyer_match_reasons)&&r.buyer_match_reasons.length?r.buyer_match_reasons.join(' · '):'Add more structured opportunity details to improve matching accuracy.'}
+  function scoreBand(v){const n=Number(v||0);if(n>=90)return'Excellent fit';if(n>=80)return'Strong fit';if(n>=75)return'Good fit';if(n>=60)return'Possible fit';return'Weak fit'}
 
   async function loadState(){
     if(typeof sb==='undefined')return false;
@@ -91,20 +91,15 @@
   };
 
   const baseRenderOps=typeof renderOps==='function'?renderOps:null;
-  if(baseRenderOps){
-    renderOps=function(){baseRenderOps();decorateCards();decorateTable()};
-  }
-
+  if(baseRenderOps){renderOps=function(){baseRenderOps();decorateCards();decorateTable()};}
   const baseOpenDetail=typeof openDetail==='function'?openDetail:null;
-  if(baseOpenDetail){
-    openDetail=function(id){baseOpenDetail(id);decorateDrawer(id)};
-  }
+  if(baseOpenDetail){openDetail=function(id){baseOpenDetail(id);decorateDrawer(id)};}
 
   function badgeHtml(r){
     if(!r||r.side!=='Sell Side')return'';
     if(floorBlocked(r))return `<div class="oppBuyerMatch floor"><span class="obmLabel">Buyer Network</span><strong class="obmScore">0%</strong><span class="obmCount">No mandate accepts opportunities below $20M</span></div>`;
     const score=Number(r.buyer_match_score||0),count=Number(r.buyer_match_count||0);
-    return `<div class="oppBuyerMatch"><span class="obmLabel">${e(labelFor(r))}</span><strong class="obmScore">${score}%</strong><span class="obmCount">${count} mandate${count===1?'':'s'} at 60%+ fit</span></div>`;
+    return `<div class="oppBuyerMatch"><span class="obmLabel">Buyer Match</span><strong class="obmScore">${score}%</strong><span class="obmCount">${scoreBand(score)} · ${count} mandate${count===1?'':'s'} at ${MATCH_THRESHOLD}%+</span></div>`;
   }
 
   function decorateCards(){
@@ -125,7 +120,7 @@
       row.querySelector('[data-obm-cell]')?.remove();
       const id=row.querySelector('[data-open]')?.dataset.open,r=rec(id);if(!id||!r)return;
       const td=document.createElement('td');td.dataset.obmCell='1';td.className='obmTable';
-      td.innerHTML=floorBlocked(r)?'<strong>0%</strong><span>$20M floor</span>':`<strong>${Number(r.buyer_match_score||0)}%</strong><span>${Number(r.buyer_match_count||0)} matches</span>`;
+      td.innerHTML=floorBlocked(r)?'<strong>0%</strong><span>$20M floor</span>':`<strong>${Number(r.buyer_match_score||0)}%</strong><span>${Number(r.buyer_match_count||0)} strong matches</span>`;
       row.insertBefore(td,row.lastElementChild);
     });
   }
@@ -147,7 +142,7 @@
     if(floorBlocked(r)){
       section.innerHTML=`<div class="detailTitle">BUYER MATCHING</div><div class="obmHero"><div class="obmHeroTop"><span>Network Eligibility</span><strong>0%</strong></div><div class="obmHeroTitle">Below the $20M buyer-network floor</div><div class="obmHeroReason">No buyer mandate in the matching universe accepts an opportunity below $20M.</div></div>`;
     }else{
-      section.innerHTML=`<div class="detailTitle">BUYER MATCHING</div><div class="obmHero"><div class="obmHeroTop"><span>${e(labelFor(r))}</span><strong>${Number(r.buyer_match_score||0)}%</strong></div><div class="obmHeroTitle">${e(r.buyer_match_label||'No mandate selected')}</div><div class="obmHeroReason">${e(reasonText(r))}</div><div id="obmTopMatches" class="obmTopList"><div class="obmTopReason">Loading top mandate fits...</div></div><div class="obmDisclosure">Modeled mandates are synthetic matching profiles used to test mandate fit. They are not representations of actual investor interest or capital commitments.</div></div>`;
+      section.innerHTML=`<div class="detailTitle">BUYER MATCHING</div><div class="obmHero"><div class="obmHeroTop"><span>${e(scoreBand(r.buyer_match_score))}</span><strong>${Number(r.buyer_match_score||0)}%</strong></div><div class="obmHeroTitle">${e(r.buyer_match_label||'No mandate selected')}</div><div class="obmHeroReason">${e(reasonText(r))}</div><div id="obmTopMatches" class="obmTopList"><div class="obmTopReason">Loading top mandate fits...</div></div><div class="obmDisclosure">Buyer Mandates 001–150 are synthetic test profiles used to validate matching logic. They do not represent confirmed investor instructions, indications of interest, or committed capital.</div></div>`;
     }
     const next=[...body.querySelectorAll('.detailSec')].find(x=>x.querySelector('.detailTitle')?.textContent==='NEXT STEP');
     next?body.insertBefore(section,next):body.appendChild(section);
@@ -165,7 +160,7 @@
     const form=document.getElementById('oppForm');if(form)form.onsubmit=saveOpp;
     loadState();
     if(!channel&&typeof sb!=='undefined'){
-      channel=sb.channel('internal-opportunity-buyer-matches-v1')
+      channel=sb.channel('internal-opportunity-buyer-matches-v2')
         .on('postgres_changes',{event:'*',schema:'public',table:'opportunities'},()=>scheduleRefresh())
         .on('postgres_changes',{event:'*',schema:'public',table:'opportunity_buyer_matches'},()=>scheduleRefresh())
         .subscribe();
