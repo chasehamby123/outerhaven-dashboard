@@ -56,7 +56,7 @@ function bind(){
   fileInput.onchange=()=>addFiles([...fileInput.files]);
   drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag')};drop.ondragleave=()=>drop.classList.remove('drag');
   drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');addFiles([...e.dataTransfer.files])};
-  ['dealTitle','dealCompany','dealAmount','dealSector','dealGeography','dealType','dealSummary'].forEach(id=>$(id).addEventListener('input',renderEstimate));
+  ['dealTitle','dealCompany','dealAmount','dealSector','dealGeography','dealSummary'].forEach(id=>$(id).addEventListener('blur',renderEstimate));
   $('dealType').addEventListener('change',renderEstimate);
   renderEstimate();
 }
@@ -128,12 +128,14 @@ function estimate(){
 }
 function renderEstimate(){
   const score=estimate(),amount=Number($('dealAmount')?.value||0),summary=$('dealSummary')?.value.trim()||'';
-  $('estimateScore').textContent=score+'%';$('estimateRing').style.setProperty('--score',score+'%');
-  let label='Complete the submission',copy='Your score updates as you add the details institutional buyers need to evaluate the opportunity.';
-  if(score>=85){label='Strong thesis fit';copy='This opportunity appears well aligned with the current Outerhaven mandate, subject to review and diligence.'}
-  else if(score>=65){label='Potential fit';copy='The opportunity has meaningful alignment, but additional scale or information may improve its institutional readiness.'}
-  else if(score>0){label='Developing fit';copy='Add missing transaction details and supporting materials to improve the fit assessment.'}
-  $('estimateLabel').textContent=label;$('estimateCopy').textContent=copy;
+  if(!window.__outerhavenOriginatorNetworkMatchesV2){
+    $('estimateScore').textContent=score+'%';$('estimateRing').style.setProperty('--score',score+'%');
+    let label='Complete the submission',copy='Your score updates as you add the details institutional buyers need to evaluate the opportunity.';
+    if(score>=85){label='Strong thesis fit';copy='This opportunity appears well aligned with the current Outerhaven mandate, subject to review and diligence.'}
+    else if(score>=65){label='Potential fit';copy='The opportunity has meaningful alignment, but additional scale or information may improve its institutional readiness.'}
+    else if(score>0){label='Developing fit';copy='Add missing transaction details and supporting materials to improve the fit assessment.'}
+    $('estimateLabel').textContent=label;$('estimateCopy').textContent=copy;
+  }
   const rows=[['$50M+ preferred scale',amount>=50000000?40:amount>=25000000?20:0,amount>=50000000?'Strong':amount?'Below thesis':'Missing'],['Sector + geography',($('dealSector')?.value.trim()?10:0)+($('dealGeography')?.value.trim()?10:0),$('dealSector')?.value.trim()&&$('dealGeography')?.value.trim()?'Complete':'Incomplete'],['Transaction structure',$('dealType')?.value?10:0,$('dealType')?.value?'Complete':'Missing'],['Opportunity context',summary.length>=120?10:summary.length>=40?6:0,summary.length>=120?'Strong':summary?'Needs detail':'Missing'],['Supporting materials',selectedFiles.length?15:0,selectedFiles.length?`${selectedFiles.length} attached`:'Not attached']];
   $('fitChecklist').innerHTML=rows.map(r=>`<div class="fitCheck ${r[1]>0?'good':'warn'}"><span>${esc(r[0])}</span><span>${esc(r[2])}</span></div>`).join('');
 }
