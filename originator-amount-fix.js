@@ -36,6 +36,13 @@
     return Number.isFinite(n)?n:0;
   }
   function display(n){if(n>=1e9)return'$'+(n/1e9).toFixed(n%1e9?1:0)+'B';if(n>=1e6)return'$'+(n/1e6).toFixed(n%1e6?1:0)+'M';return'$'+n.toLocaleString()}
+  function rangeOption(select,n){
+    if(!select||select.tagName!=='SELECT'||!n)return null;
+    return [...select.options].find(o=>{
+      const min=Number(o.dataset.min||0),max=o.dataset.max?Number(o.dataset.max):Infinity;
+      return min>0&&n>=min&&n<=max;
+    })||null;
+  }
 
   function findCapitalAsk(text){
     const clean=String(text||'').replace(/[ \t]+/g,' ').replace(/\n+/g,' ').trim();
@@ -62,9 +69,7 @@
       else if(/investment\s+sought(?:\s+is)?\s*[:\-–—]?\s*$/i.test(left))score=110;
 
       if(score===0&&/^(?:capital\s+raise|funding\s+(?:ask|requirement)|raise|being\s+raised|financing\s+sought|required\s+capital)\b/i.test(right))score=108;
-
       if(score===0&&/(?:raise|raising|capital ask|funding ask|funding requirement|capital requirement|seeking capital|seeking funding|amount sought)/i.test(around))score=72;
-
       if(/\b(?:revenue|ebitda|sales|valuation|enterprise value|gross development value|gdv|project value|project cost|market size|aum|assets under management|total assets)\b/i.test(around)&&score<108)score-=60;
       if(score>=100)candidates.push({n,score,index:m.index});
     }
@@ -81,18 +86,31 @@
     const amount=document.getElementById('dealAmount');
     if(!amount||!activeFile||!strictReady||userEdited||correcting)return;
     correcting=true;
-    amount.value=strictAsk?String(strictAsk):'';
-    amount.dispatchEvent(new Event('input',{bubbles:true}));
+    if(strictAsk){
+      if(amount.tagName==='SELECT'){
+        const option=rangeOption(amount,strictAsk);
+        amount.value=option?.value||'';
+        amount.dispatchEvent(new Event('change',{bubbles:true}));
+        if(option)setStatus(`${activeFile.name} attached. Detected exact capital ask: ${display(strictAsk)}. Selected ${option.dataset.range||option.textContent}. Review before continuing.`,'ok');
+        else setStatus(`${activeFile.name} attached. Detected exact capital ask: ${display(strictAsk)}, but it falls outside the available ranges.`,'err');
+      }else{
+        amount.value=String(strictAsk);
+        amount.dispatchEvent(new Event('input',{bubbles:true}));
+        setStatus(`${activeFile.name} attached. Detected exact capital ask: ${display(strictAsk)}. Review before continuing.`,'ok');
+      }
+    }else{
+      amount.value='';
+      amount.dispatchEvent(new Event(amount.tagName==='SELECT'?'change':'input',{bubbles:true}));
+      setStatus(`${activeFile.name} attached. We could not confidently identify an exact capital ask, so that field was left blank for confirmation.`,'err');
+    }
     correcting=false;
-    if(strictAsk)setStatus(`${activeFile.name} attached. Detected exact capital ask: ${display(strictAsk)}. Review before continuing.`,'ok');
-    else setStatus(`${activeFile.name} attached. We could not confidently identify an exact capital ask, so that field was left blank for confirmation.`,'err');
   }
 
   async function beginStrictParse(file){
     if(!file)return;
     const token=++activeToken;
     activeFile=file;strictAsk=null;strictReady=false;userEdited=false;
-    const amount=document.getElementById('dealAmount');if(amount){amount.value='';amount.dispatchEvent(new Event('input',{bubbles:true}))}
+    const amount=document.getElementById('dealAmount');if(amount){amount.value='';amount.dispatchEvent(new Event(amount.tagName==='SELECT'?'change':'input',{bubbles:true}))}
     try{
       const text=await textFrom(file);
       if(token!==activeToken)return;
@@ -108,7 +126,7 @@
     const amount=document.getElementById('dealAmount'),type=document.getElementById('dealType');if(!amount||!type)return;
     const label=amount.closest('label');if(!label)return;
     const sale=/Acquisition|Full or Partial Sale/i.test(type.value||'');
-    for(const node of label.childNodes){if(node.nodeType===Node.TEXT_NODE&&node.nodeValue.trim()){node.nodeValue=sale?'Transaction Value':'Exact Capital Ask';break}}
+    for(const node of label.childNodes){if(node.nodeType===Node.TEXT_NODE&&node.nodeValue.trim()){node.nodeValue=sale?'Transaction Value Range':'Exact Capital Ask';break}}
   }
 
   function install(){
@@ -119,7 +137,7 @@
     const oldDrop=box.ondrop;
     box.ondrop=ev=>{const file=[...(ev.dataTransfer?.files||[])][0];if(file)beginStrictParse(file);if(oldDrop)oldDrop.call(box,ev)};
 
-    amount.addEventListener('input',e=>{
+    amount.addEventListener(amount.tagName==='SELECT'?'change':'input',e=>{
       if(correcting)return;
       if(e.isTrusted){userEdited=true;return}
       if(activeFile&&strictReady)queueMicrotask(applyStrictResult);
