@@ -2,7 +2,7 @@
   if(window.__outerhavenOriginatorWalkthrough)return;
   window.__outerhavenOriginatorWalkthrough=true;
 
-  const VERSION='v10-overview-thesis';
+  const VERSION='v11-overview-first';
   let stepIndex=0;
   let rail=null;
   let card=null;
@@ -42,16 +42,17 @@
       title:'How the Portal Works',
       copy:'The portal follows one simple deal flow: understand what investors are looking for, submit the opportunity, complete diligence, then track investor activity.',
       actions:[
-        'Buyer Thesis shows what our investor network is currently searching for.',
+        'Overview gives you the current picture of your submissions and activity.',
         'Submit Opportunity is where you send a deal and its materials.',
-        'Diligence verifies the deal before investor outreach.',
-        'My Submissions is where you track whether the deal is matching, receiving interest, or needs action.'
+        'My Submissions is where you track whether the deal is matching, receiving interest, or needs action.',
+        'Buyer Thesis shows what our investor network is currently searching for.'
       ],
       section:'home',
       path:[
-        {selector:'.navBtn[data-section="thesis"]',status:'1. Check what our investor network is searching for'},
-        {selector:'.navBtn[data-section="submit"]',status:'2. Submit the opportunity and materials'},
-        {selector:'.navBtn[data-section="submissions"]',status:'3. Track the deal after submission'}
+        {selector:'.navBtn[data-section="home"]',status:'1. Overview: your current submission activity'},
+        {selector:'.navBtn[data-section="submit"]',status:'2. Submit Opportunity: send the deal and materials'},
+        {selector:'.navBtn[data-section="submissions"]',status:'3. My Submissions: track progress and required actions'},
+        {selector:'.navBtn[data-section="thesis"]',status:'4. Buyer Thesis: see what the investor network is searching for'}
       ]
     },
     {
