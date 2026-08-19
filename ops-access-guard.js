@@ -33,7 +33,7 @@
         return;
       }
       if(adminLoadData){loadData=adminLoadData;await loadData()}
-      if(adminSubscribe){adminSubscribe();}
+      if(adminSubscribe){subscribe=adminSubscribe;subscribe()}
       loadScript('/relationship-only-person-entry.js');
       loadScript('/buy-side-partner-sync.js');
       loadScript('/buy-side-thesis-status-viewer.js',()=>loadScript('/buy-side-thesis-preview-click-guard.js'));
@@ -56,4 +56,4 @@
   loadScript('/dashboard-pipeline-regression-guard.js');
   loadScript('/daily-ops-v3.js',()=>loadScript('/daily-ops-v3-adjustments.js',()=>loadScript('/daily-ops-dm-card-viewer.js',()=>loadScript('/daily-ops-post-schedule.js'))));
 })();
-// buyer matching bundle refresh v2
+// buyer matching bundle refresh v3
