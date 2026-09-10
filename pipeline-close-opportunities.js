@@ -36,6 +36,21 @@
   `;
   document.head.appendChild(style);
 
+  function patchAIQuickAdd(){
+    if(typeof window.parseEntry!=='function'||window.parseEntry.__outerhavenFamilyOfficeBuySide)return;
+    const base=window.parseEntry;
+    const wrapped=function(entry){
+      const parsed=base(entry);
+      if(/\bfam(?:ily|ly)[\s-]+offices?\b/i.test(String(entry||''))){
+        parsed.side='Buy Side';
+        parsed.type='Family Office';
+      }
+      return parsed;
+    };
+    wrapped.__outerhavenFamilyOfficeBuySide=true;
+    window.parseEntry=wrapped;
+  }
+
   function makeCloseButton(kind,id){
     const button=document.createElement('button');
     button.type='button';
@@ -129,11 +144,12 @@
 
   const observer=new MutationObserver(()=>addCloseButtons());
   function install(){
+    patchAIQuickAdd();
     const board=document.getElementById('relationshipPipeline');
     if(board)observer.observe(board,{childList:true,subtree:true});
     addCloseButtons();
     syncHiddenRecords();
-    setInterval(syncHiddenRecords,30000);
+    setInterval(()=>{patchAIQuickAdd();syncHiddenRecords()},30000);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
