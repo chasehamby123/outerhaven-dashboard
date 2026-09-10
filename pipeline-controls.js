@@ -91,3 +91,11 @@ async function revertPipelineDirect(id,button){
   };document.body.appendChild(s);
   const r=document.createElement('script');r.src='/sell-side-refine.js';r.async=false;r.onload=()=>{if(document.readyState!=='loading'){if(window.saveSourceDeal)$('sourceDealForm').onsubmit=saveSourceDeal;if(typeof currentUser!=='undefined'&&currentUser)renderAll();}};document.body.appendChild(r);
 })();
+
+(function loadPipelineCloseOpportunities(){
+  if(document.querySelector('script[src="/pipeline-close-opportunities.js"]'))return;
+  const s=document.createElement('script');
+  s.src='/pipeline-close-opportunities.js';
+  s.async=false;
+  document.body.appendChild(s);
+})();
