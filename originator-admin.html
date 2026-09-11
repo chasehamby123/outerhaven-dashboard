@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Outerhaven Originator Admin</title>
+  <link rel="stylesheet" href="/originator-admin.css">
+</head>
+<body>
+  <div id="loading" class="loading">Loading originator administration...</div>
+  <div id="adminApp" class="adminApp hidden">
+    <aside class="adminSide">
+      <div class="adminBrand"><div class="adminMark">H</div><div><strong>Outerhaven</strong><span>Originator Admin</span></div></div>
+      <nav class="adminNav">
+        <button class="active" data-section="access">Access Requests</button>
+        <button data-section="deals">Deal Review</button>
+        <button data-section="mandates">Buyer Mandates</button>
+      </nav>
+      <div class="adminFoot">
+        <div class="adminIdentity"><strong id="adminName">Administrator</strong><span id="adminEmail"></span></div>
+        <button id="adminSignout" class="adminSignout">Sign out</button>
+      </div>
+    </aside>
+    <main class="adminMain">
+      <header class="adminTop"><div><div class="eyebrow">ORIGINATOR NETWORK OPERATIONS</div><h1 id="adminTitle">Access Requests</h1><p id="adminSub">Approve, decline, or suspend originator access.</p></div></header>
+      <div id="adminMetrics" class="metrics"></div>
+
+      <section id="accessSection" class="adminSection active">
+        <div class="panel"><div class="panelHead"><div><div class="eyebrow">PARTNER ACCESS</div><h2>Originator Accounts</h2><p>Only approved pilot or paid accounts can access mandates and submit deals.</p></div></div><div id="memberRows" class="stack"></div></div>
+      </section>
+
+      <section id="dealsSection" class="adminSection">
+        <div class="panel"><div class="panelHead"><div><div class="eyebrow">SUBMISSION QUEUE</div><h2>Deal Review</h2><p>Move opportunities through review without exposing the internal Outerhaven dashboard.</p></div></div><div id="dealRows" class="stack"></div></div>
+      </section>
+
+      <section id="mandatesSection" class="adminSection">
+        <div class="mandateLayout">
+          <form id="mandateForm" class="panel formPanel">
+            <div class="panelHead"><div><div class="eyebrow">BUY BOX</div><h2 id="mandateFormTitle">New Buyer Mandate</h2><p>Published mandates are visible to approved originators.</p></div></div>
+            <input id="mandateId" type="hidden">
+            <div class="formGrid">
+              <label>Mandate Title<input id="mandateTitle" maxlength="160" required placeholder="Southeast Asia Infrastructure"></label>
+              <label>Sector<input id="mandateSector" required placeholder="Infrastructure"></label>
+              <label>Geography<input id="mandateGeography" required placeholder="Southeast Asia"></label>
+              <label>Transaction Type<input id="mandateType" required placeholder="Equity / Structured Capital"></label>
+              <div class="two"><label>Minimum Size<input id="mandateMin" inputmode="decimal" placeholder="20M"></label><label>Maximum Size<input id="mandateMax" inputmode="decimal" placeholder="150M"></label></div>
+              <div class="two"><label>Minimum EBITDA<input id="mandateEbitda" inputmode="decimal" placeholder="Optional"></label><label>Currency<input id="mandateCurrency" value="USD" maxlength="8"></label></div>
+              <label>Description<textarea id="mandateDescription" rows="4" placeholder="What the buyer is looking for..."></textarea></label>
+              <label>Additional Requirements<textarea id="mandateRequirements" rows="4" placeholder="Sponsor quality, stage, return profile, diligence requirements..."></textarea></label>
+              <label class="check"><input id="mandatePublished" type="checkbox"> Published to originators</label>
+            </div>
+            <div id="mandateMsg" class="adminMsg"></div>
+            <div class="formActions"><button id="cancelMandate" type="button" class="btn">Clear</button><button id="saveMandate" class="btn primary" type="submit">Save Mandate</button></div>
+          </form>
+          <section class="panel"><div class="panelHead"><div><div class="eyebrow">ACTIVE CRITERIA</div><h2>Buyer Mandates</h2><p>Manage what approved originators can see.</p></div></div><div id="boxRows" class="stack"></div></section>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0"></script>
+  <script src="/originator-admin.js"></script>
+</body>
+</html>
