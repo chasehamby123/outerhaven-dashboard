@@ -1,25 +1,33 @@
 (function(){
+  const SUPABASE_URL='https://xanyalooekgrywntxfxn.supabase.co';
+  const SUPABASE_KEY='sb_publishable_gERy66FrPLr7BQdAxCjnDA_78EMAWR2';
   if(!window.supabase){location.replace('/originator-login.html?mode=signin');return}
-  const client=supabase.createClient('https://nfcysxqdwpdhrdpgxrlo.supabase.co','sb_publishable_nBRZvesX4tz7zUPq5QLYfQ__in76dF5');
-  const scripts=['/originator.js','/originator-document-autofill.js','/originator-amount-fix.js','/originator-money-input.js','/originator-diligence.js','/originator-diligence-cleanup.js','/originator-network-matches-v2.js','/originator-activity.js','/originator-mandate-card-polish.js','/originator-walkthrough.js','/originator-production-hardening.js','/originator-production-activation.js'];
-  function load(src){return new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.async=false;s.onload=resolve;s.onerror=()=>reject(new Error('Could not load '+src));document.body.appendChild(s)})}
+  const client=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+  function load(src){
+    return new Promise((resolve,reject)=>{
+      const s=document.createElement('script');
+      s.src=src;s.async=false;s.onload=resolve;s.onerror=()=>reject(new Error('Could not load '+src));
+      document.body.appendChild(s);
+    });
+  }
+
   async function start(){
     try{
-      const {data:{session}}=await client.auth.getSession();
-      if(!session){location.replace('/originator-login.html?mode=signin');return}
-      const {data:role,error}=await client.rpc('dashboard_role');
+      const {data:{session},error:sessionError}=await client.auth.getSession();
+      if(sessionError||!session){location.replace('/originator-login.html?mode=signin');return}
+      const {data:member,error}=await client.from('members').select('role,status,membership').eq('id',session.user.id).maybeSingle();
       if(error)throw error;
-      if(role==='admin'||role==='ops'){location.replace('/shared.html');return}
-      if(role!=='originator'){
-        await client.auth.signOut();
-        location.replace('/originator-login.html?mode=signin');return;
-      }
-      for(const src of scripts)await load(src);
+      if(!member){await client.auth.signOut();location.replace('/originator-login.html?mode=signin');return}
+      if(member.role==='admin'&&member.status==='approved'){location.replace('/originator-admin.html');return}
+      if(member.role!=='originator'){await client.auth.signOut();location.replace('/originator-login.html?mode=signin');return}
+      if(member.status!=='approved'||!['pilot','paid'].includes(member.membership)){location.replace('/originator-pending.html');return}
+      window.__OUTERHAVEN_ORIGINATOR_SB=client;
+      await load('/originator.js');
     }catch(err){
-      console.error('partner entry',err);
+      console.error('originator entry',err);
       location.replace('/originator-login.html?mode=signin');
     }
   }
   start();
 })();
-// real deal activity timeline v9.1
