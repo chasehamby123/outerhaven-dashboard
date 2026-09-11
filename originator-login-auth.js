@@ -1,97 +1,139 @@
 (function(){
+  const SUPABASE_URL='https://xanyalooekgrywntxfxn.supabase.co';
+  const SUPABASE_KEY='sb_publishable_gERy66FrPLr7BQdAxCjnDA_78EMAWR2';
   const msg=document.getElementById('msg');
-  function show(t,type='error'){msg.textContent=t;msg.className='msg show '+type}
-  if(!window.supabase){show('Authentication service did not load. Refresh the page and try again.');return}
-
-  const URL='https://nfcysxqdwpdhrdpgxrlo.supabase.co';
-  const KEY='sb_publishable_nBRZvesX4tz7zUPq5QLYfQ__in76dF5';
-  const sb=supabase.createClient(URL,KEY);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
-  async function ensureOriginator(){
-    const {data:role,error}=await sb.rpc('dashboard_role');
-    if(error)throw error;
-    if(role!=='originator'){
-      await sb.auth.signOut();
-      throw new Error('This account does not have partner portal access.');
+  function show(text,type='error'){
+    if(!msg)return;
+    msg.textContent=text;
+    msg.className='msg show '+type;
+  }
+  if(!window.supabase){show('Authentication service did not load. Refresh the page and try again.');return}
+  const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+  async function getMember(userId){
+    for(let i=0;i<4;i++){
+      const {data,error}=await sb.from('members').select('id,email,full_name,firm,role,status,membership').eq('id',userId).maybeSingle();
+      if(error)throw error;
+      if(data)return data;
+      if(i<3)await sleep(250*(i+1));
     }
-    location.replace('/originator.html');
+    return null;
+  }
+
+  async function routeSession(session){
+    if(!session?.user)return false;
+    const member=await getMember(session.user.id);
+    if(!member){
+      await sb.auth.signOut();
+      throw new Error('Your partner profile could not be loaded. Please sign in again.');
+    }
+    if(member.role==='admin'&&member.status==='approved'){
+      location.replace('/originator-admin.html');
+      return true;
+    }
+    if(member.role!=='originator'){
+      await sb.auth.signOut();
+      throw new Error('This account is not authorized for the partner portal.');
+    }
+    if(member.status==='approved'&&['pilot','paid'].includes(member.membership)){
+      location.replace('/originator.html');
+      return true;
+    }
+    location.replace('/originator-pending.html');
+    return true;
   }
 
   const requestedMode=new URLSearchParams(location.search).get('mode');
   if(requestedMode==='create')window.setPartnerMode?.('create');
-  else if(requestedMode==='signin')window.setPartnerMode?.('signin');
+  else window.setPartnerMode?.('signin');
 
-  sb.auth.getSession().then(async({data})=>{
-    if(data.session){
-      try{await ensureOriginator()}catch{}
-    }
+  sb.auth.getSession().then(async({data,error})=>{
+    if(error||!data?.session)return;
+    try{await routeSession(data.session)}catch(err){console.error('partner route',err)}
   });
 
-  document.getElementById('signinForm').addEventListener('submit',async e=>{
-    e.preventDefault();
-    msg.className='msg';
+  document.getElementById('signinForm')?.addEventListener('submit',async e=>{
+    e.preventDefault();msg.className='msg';
     const email=document.getElementById('signinEmail').value.trim().toLowerCase();
     const password=document.getElementById('signinPassword').value;
     const btn=document.getElementById('signinBtn');
     btn.disabled=true;btn.textContent='Signing in...';
     try{
-      const {error}=await sb.auth.signInWithPassword({email,password});
+      const {data,error}=await sb.auth.signInWithPassword({email,password});
       if(error)throw error;
-      await ensureOriginator();
-    }catch(err){show(err?.message||'Could not sign in.')}
-    finally{btn.disabled=false;btn.textContent='Open Partner Dashboard'}
+      await routeSession(data.session);
+    }catch(err){
+      console.error('originator sign in',err);
+      show(err?.message||'Could not sign in.');
+    }finally{
+      btn.disabled=false;btn.textContent='Open Partner Portal';
+    }
   });
 
-  document.getElementById('createForm').addEventListener('submit',async e=>{
-    e.preventDefault();
-    msg.className='msg';
+  document.getElementById('createForm')?.addEventListener('submit',async e=>{
+    e.preventDefault();msg.className='msg';
+    const fullName=document.getElementById('createName').value.trim();
+    const firm=document.getElementById('createFirm').value.trim();
     const email=document.getElementById('createEmail').value.trim().toLowerCase();
     const password=document.getElementById('createPassword').value;
     const confirm=document.getElementById('createConfirm').value;
     const btn=document.getElementById('createBtn');
+    if(fullName.length<2){show('Enter your full name.');return}
+    if(firm.length<2){show('Enter your firm or organization.');return}
     if(password.length<8){show('Use at least 8 characters for the password.');return}
     if(password!==confirm){show('The passwords do not match.');return}
-    btn.disabled=true;btn.textContent='Creating account...';
+    btn.disabled=true;btn.textContent='Creating request...';
     try{
-      const signup=await sb.auth.signUp({email,password,options:{data:{account_type:'originator'}}});
-      if(signup.error)throw signup.error;
-      if(signup.data.session){await ensureOriginator();return}
-
-      await sleep(250);
-      const signin=await sb.auth.signInWithPassword({email,password});
-      if(signin.error){
-        if(signup.data.user&&Array.isArray(signup.data.user.identities)&&signup.data.user.identities.length===0){
-          show('This email already has an account. Use Sign In instead.','good');
-          window.setPartnerMode('signin');
-          document.getElementById('signinEmail').value=email;
-          return;
+      const {data,error}=await sb.auth.signUp({
+        email,password,
+        options:{
+          data:{full_name:fullName,firm},
+          emailRedirectTo:location.origin+'/originator-login.html?mode=signin'
         }
-        throw signin.error;
-      }
-      await ensureOriginator();
-    }catch(err){
-      const t=err?.message||'Could not create account.';
-      if(/already registered|already been registered|user already exists/i.test(t)){
-        show('This email already has an account. Use Sign In instead.','good');
-        window.setPartnerMode('signin');
+      });
+      if(error)throw error;
+      if(data?.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){
+        show('An account already exists for this email. Use Sign In instead.','info');
+        window.setPartnerMode?.('signin');
         document.getElementById('signinEmail').value=email;
-      }else show(t);
-    }finally{btn.disabled=false;btn.textContent='Create Account'}
+        return;
+      }
+      if(data?.session){
+        await routeSession(data.session);
+        return;
+      }
+      show('Account created. Confirm your email, then sign in. Your access request will remain pending until Outerhaven approves it.','good');
+      document.getElementById('createForm').reset();
+    }catch(err){
+      console.error('originator signup',err);
+      const text=err?.message||'Could not create your access request.';
+      if(/already registered|already been registered|user already exists/i.test(text)){
+        show('An account already exists for this email. Use Sign In instead.','info');
+        window.setPartnerMode?.('signin');
+        document.getElementById('signinEmail').value=email;
+      }else show(text);
+    }finally{
+      btn.disabled=false;btn.textContent='Request Partner Access';
+    }
   });
 
   document.getElementById('forgotPassword')?.addEventListener('click',async()=>{
     let email=document.getElementById('signinEmail').value.trim().toLowerCase();
     if(!email){email=String(window.prompt('Enter the email address for your partner account:')||'').trim().toLowerCase()}
     if(!email)return;
-    const btn=document.getElementById('forgotPassword');btn.disabled=true;btn.textContent='Sending reset link...';msg.className='msg';
+    const btn=document.getElementById('forgotPassword');
+    btn.disabled=true;btn.textContent='Sending reset link...';msg.className='msg';
     try{
       const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+'/originator-update-password.html'});
       if(error)throw error;
-      show('If that email has a partner account, a password reset link has been sent.','good');
+      show('If that email has an account, a password reset link has been sent.','good');
     }catch(err){
-      console.error('partner password reset',err);
-      show('We could not send the reset link right now. Try again shortly or contact Outerhaven for access help.');
-    }finally{btn.disabled=false;btn.textContent='Forgot password?'}
+      console.error('originator password reset',err);
+      show('We could not send the reset link right now. Try again or contact Outerhaven for access help.');
+    }finally{
+      btn.disabled=false;btn.textContent='Forgot password?';
+    }
   });
 })();
