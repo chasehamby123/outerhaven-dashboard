@@ -1,11 +1,12 @@
 (function(){
+  const SUPABASE_URL='https://xanyalooekgrywntxfxn.supabase.co';
+  const SUPABASE_KEY='sb_publishable_gERy66FrPLr7BQdAxCjnDA_78EMAWR2';
   const msg=document.getElementById('passwordMsg');
   const form=document.getElementById('passwordForm');
   const btn=document.getElementById('savePassword');
   function show(text,type='error'){msg.textContent=text;msg.className='msg show '+type}
   if(!window.supabase){show('Authentication service did not load. Refresh the page and try again.');form.querySelectorAll('input,button').forEach(x=>x.disabled=true);return}
-
-  const sb=supabase.createClient('https://nfcysxqdwpdhrdpgxrlo.supabase.co','sb_publishable_nBRZvesX4tz7zUPq5QLYfQ__in76dF5');
+  const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
   let recoveryReady=false;
 
   async function checkSession(){
