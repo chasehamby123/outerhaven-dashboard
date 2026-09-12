@@ -26,10 +26,13 @@
       await load('/originator.js');
       await load('/originator-pdf-import.js');
       await load('/originator-pdf-intelligence-v2.js');
+      await load('/outerhaven-matcher-v3.js');
+      await load('/originator-matching-ui-v3.js');
       await load('/originator-mandate-tabs.js');
       await load('/originator-institutional.js');
       await load('/originator-capital-suite.js');
-      await load('/originator-capital-documents-v2.js');
+      await load('/originator-capital-suite-matching-v3.js');
+      await load('/originator-capital-documents-v3.js');
       await load('/originator-nav-guards.js');
     }catch(err){
       console.error('originator entry',err);
