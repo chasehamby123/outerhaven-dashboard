@@ -30,10 +30,9 @@
       await load('/outerhaven-matcher-v4.js');
       await load('/originator-matching-ui-v3.js');
       await load('/originator-mandate-tabs.js');
-      await load('/originator-institutional.js');
       await load('/originator-capital-suite.js');
       await load('/originator-capital-documents-v9.js');
-      await load('/originator-investor-suite-v11-advisor.js');
+      await load('/originator-advisor-workspace-v12.js');
       await load('/originator-nav-guards.js');
       await load('/originator-tutorial.js');
     }catch(err){
