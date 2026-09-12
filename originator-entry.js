@@ -24,6 +24,7 @@
       if(member.status!=='approved'||!['pilot','paid'].includes(member.membership)){location.replace('/originator-pending.html');return}
       window.__OUTERHAVEN_ORIGINATOR_SB=client;
       await load('/originator.js');
+      await load('/originator-matching-core.js');
     }catch(err){
       console.error('originator entry',err);
       location.replace('/originator-login.html?mode=signin');
