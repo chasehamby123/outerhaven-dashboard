@@ -34,7 +34,8 @@
       await load('/originator-capital-suite.js');
       await load('/originator-capital-suite-matching-v3.js');
       await load('/originator-auto-fix-v3.js');
-      await load('/originator-capital-documents-v5.js');
+      await load('/originator-investor-suite-v6.js');
+      await load('/originator-capital-documents-v6.js');
       await load('/originator-nav-guards.js');
     }catch(err){
       console.error('originator entry',err);
