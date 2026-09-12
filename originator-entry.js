@@ -37,6 +37,7 @@
       await load('/originator-investor-teaser-v3.js');
       await load('/originator-investor-doc-specializer-v2.js');
       await load('/originator-capital-suite-v17.js');
+      await load('/originator-output-role-copy-v1.js');
       await load('/originator-nav-guards.js');
       await load('/originator-tutorial.js');
     }catch(err){
