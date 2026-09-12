@@ -1,135 +1,127 @@
 (function(){
-  const SUPABASE_URL='https://xanyalooekgrywntxfxn.supabase.co';
-  const SUPABASE_KEY='sb_publishable_gERy66FrPLr7BQdAxCjnDA_78EMAWR2';
-  if(!window.supabase){location.replace('/originator-login.html?mode=signin');return}
-  const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-  const $=id=>document.getElementById(id);
-  const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
-  const cap=v=>String(v||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  if(window.__outerhavenOriginatorAdmin)return;
+  window.__outerhavenOriginatorAdmin=true;
+  if(window.__outerhavenDashboardRole!=='admin')return;
+
+  let accessRows=[],profiles=[],submissions=[],documents=[],thesis=null,loading=false;
+  const money=n=>{n=Number(n||0);if(!n)return'—';if(n>=1e9)return'$'+(n/1e9).toFixed(n%1e9?1:0)+'B';return'$'+(n/1e6).toFixed(n%1e6?1:0)+'M'};
   const date=v=>v?new Date(v).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):'—';
-  let session=null,me=null,members=[],deals=[],boxes=[];
+  const avg=a=>a.length?Math.round(a.reduce((s,x)=>s+Number(x.match_score||0),0)/a.length):0;
+  const escA=v=>typeof esc==='function'?esc(v):String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 
-  function parseMoney(value){
-    const raw=String(value||'').trim().toLowerCase().replace(/[$,\s]/g,'');
-    if(!raw)return null;
-    const m=raw.match(/^(\d+(?:\.\d+)?)(k|m|b|thousand|million|billion)?$/i);if(!m)return Number(raw)||null;
-    let n=Number(m[1]),s=(m[2]||'').toLowerCase();
-    if(s==='k'||s==='thousand')n*=1e3;if(s==='m'||s==='million')n*=1e6;if(s==='b'||s==='billion')n*=1e9;
-    return Number.isFinite(n)?n:null;
+  const style=document.createElement('style');
+  style.textContent=`
+    #originatorsView .oaHero{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:16px}.oaHeroActions{display:flex;gap:8px;flex-wrap:wrap}
+    .oaMetrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}.oaMetric{background:#fff;border:1px solid #e3e6ea;border-radius:13px;padding:14px}.oaMetric span{display:block;font-size:9px;font-weight:850;color:#747c87;text-transform:uppercase;letter-spacing:.06em}.oaMetric strong{display:block;font-size:24px;margin-top:5px;letter-spacing:-.03em}.oaMetric small{font-size:9px;color:#8a929d}
+    .oaGrid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(330px,.85fr);gap:16px}.oaStack{display:grid;gap:16px}.oaPanel{background:#fff;border:1px solid #e3e6ea;border-radius:14px;padding:15px}.oaPanelHead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.oaPanelHead h2{font-size:15px;margin:0}.oaPanelHead p{font-size:9px;color:#808893;margin:4px 0 0}.oaEyebrow{font-size:8px;font-weight:900;letter-spacing:.09em;color:#858d98;margin-bottom:4px}
+    .oaAccessList,.oaSubmissionList{display:grid;gap:9px}.oaAccess{border:1px solid #e7eaee;border-radius:11px;padding:11px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center}.oaAccess strong{font-size:11px}.oaAccess span{display:block;font-size:9px;color:#7b838e;margin-top:3px}.oaAccessStats{display:flex;gap:14px;text-align:right}.oaAccessStats b{display:block;font-size:13px}.oaAccessStats small{font-size:8px;color:#87909a}.oaPending{color:#9a6a17!important}.oaLive{color:#25734b!important}
+    .oaSubmission{border:1px solid #e6e9ed;border-radius:11px;padding:12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px}.oaSubmission h3{font-size:11px;margin:0}.oaSubmissionMeta{font-size:8.5px;color:#7f8791;margin-top:4px;line-height:1.5}.oaSubmissionWhy{font-size:9px;color:#636c77;line-height:1.45;margin-top:7px}.oaScore{text-align:right;min-width:86px}.oaScore strong{font-size:20px}.oaScore span{display:block;font-size:8px;color:#818a95}.oaStatus{display:inline-block;margin-top:7px;font-size:8px;font-weight:850;padding:5px 7px;border-radius:7px;background:#f1f3f5;color:#5f6873}.oaOpen{margin-top:8px;white-space:nowrap}
+    .oaForm{display:grid;gap:9px}.oaFormGrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.oaForm label{font-size:8px;font-weight:850;color:#69717d;display:grid;gap:4px}.oaForm input,.oaForm textarea{width:100%;box-sizing:border-box;border:1px solid #d8dde3;border-radius:8px;padding:8px;font:inherit;font-size:10px}.oaForm .span2{grid-column:1/3}.oaFormMsg{min-height:14px;font-size:9px;color:#6f7782}.oaFormMsg.error{color:#a33333}.oaFormMsg.ok{color:#247247}
+    .oaThesisSummary{border:1px solid #e6e9ed;border-radius:10px;padding:10px;background:#fafbfc;margin-bottom:10px}.oaThesisSummary strong{font-size:18px}.oaThesisSummary span{font-size:8px;color:#7d8590;margin-left:5px}.oaTags{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.oaTag{font-size:8px;padding:4px 6px;border-radius:6px;background:#f0f2f4;color:#606975}
+    .oaDashboardMount{margin-top:16px}.oaDashRow{display:flex;align-items:center;justify-content:space-between;gap:16px}.oaDashMetrics{display:flex;gap:24px;flex-wrap:wrap}.oaDashMetric span{display:block;font-size:8px;color:#858d98}.oaDashMetric strong{font-size:17px}.oaEmpty{font-size:9px;color:#828b96;padding:14px 2px}.oaCopyNotice{font-size:9px;color:#26734b;margin-top:7px;min-height:13px}
+    @media(max-width:980px){.oaGrid{grid-template-columns:1fr}.oaMetrics{grid-template-columns:repeat(2,1fr)}}@media(max-width:650px){.oaMetrics,.oaFormGrid{grid-template-columns:1fr}.oaForm .span2{grid-column:1}.oaAccess,.oaSubmission{grid-template-columns:1fr}.oaAccessStats,.oaScore{text-align:left}.oaHero{flex-direction:column}.oaDashRow{align-items:flex-start;flex-direction:column}}
+  `;
+  document.head.appendChild(style);
+
+  function install(){
+    if(document.getElementById('originatorsView'))return;
+    const nav=document.querySelector('.sidebar .nav');
+    const peopleBtn=nav?.querySelector('[data-view="people"]');
+    if(!nav)return;
+    const btn=document.createElement('button');btn.className='navBtn';btn.dataset.view='originators';btn.innerHTML='<span>Originators</span><span id="navOriginators" class="navCount">0</span>';
+    peopleBtn?peopleBtn.insertAdjacentElement('afterend',btn):nav.appendChild(btn);
+    btn.onclick=()=>showView();
+
+    const main=document.querySelector('main.main');
+    const ai=document.getElementById('aiView');
+    const view=document.createElement('section');view.id='originatorsView';view.className='view';
+    view.innerHTML=`<div class="oaHero"><div><div class="oaEyebrow">PARTNER NETWORK</div><h2 style="margin:0;font-size:19px">Originator Administration</h2><p style="font-size:10px;color:#7c8490;margin:5px 0 0">Manage partner access, submitted deals, materials, and the thesis originators are scored against.</p></div><div class="oaHeroActions"><button id="oaCopyLogin" class="ghost">Copy Partner Login</button><button id="oaApproveTop" class="primary">+ Approve Originator</button></div></div><div id="oaMetrics" class="oaMetrics"></div><div class="oaGrid"><div class="oaStack"><section class="oaPanel"><div class="oaPanelHead"><div><div class="oaEyebrow">ACCESS</div><h2>Deal Originators</h2><p>Approved partner accounts and their submission activity.</p></div></div><div id="oaAccessList" class="oaAccessList"></div></section><section class="oaPanel"><div class="oaPanelHead"><div><div class="oaEyebrow">SUBMISSIONS</div><h2>Originator Opportunities</h2><p>Deals entering Outerhaven through the partner portal.</p></div></div><div id="oaSubmissionList" class="oaSubmissionList"></div></section></div><div class="oaStack"><section id="oaApprovePanel" class="oaPanel"><div class="oaPanelHead"><div><div class="oaEyebrow">INVITE</div><h2>Approve Originator</h2><p>Grant an email access to create an Originator Portal account.</p></div></div><form id="oaApproveForm" class="oaForm"><div class="oaFormGrid"><label>Full Name<input id="oaApproveName" required placeholder="Eduardo Smith"></label><label>Email<input id="oaApproveEmail" type="email" required placeholder="eduardo@firm.com"></label></div><button class="primary" type="submit">Approve Partner Access</button><div id="oaApproveMsg" class="oaFormMsg"></div></form></section><section class="oaPanel"><div class="oaPanelHead"><div><div class="oaEyebrow">BUY-SIDE MANDATE</div><h2>Originator Buyer Thesis</h2><p>This is the thesis shown in the partner portal and used for match scoring.</p></div></div><button id="oaEditThesis" class="ghost">Edit</button></div><div id="oaThesisRead"></div><form id="oaThesisForm" class="oaForm" style="display:none"><div class="oaFormGrid"><label class="span2">Title<input id="oaThesisTitle"></label><label>Minimum Transaction Size<input id="oaThesisMin" type="number" step="1000000"></label><label>Sectors<input id="oaThesisSectors" placeholder="Sector agnostic"></label><label class="span2">Summary<textarea id="oaThesisSummary" rows="3"></textarea></label><label class="span2">Geographies<input id="oaThesisGeo" placeholder="Global"></label><label class="span2">Structures<textarea id="oaThesisStructures" rows="3"></textarea></label><label class="span2">Requirements<textarea id="oaThesisRequirements" rows="4"></textarea></label></div><div style="display:flex;gap:7px"><button class="primary" type="submit">Save Thesis</button><button id="oaCancelThesis" class="ghost" type="button">Cancel</button></div><div id="oaThesisMsg" class="oaFormMsg"></div></form></section></div></div>`;
+    ai?main.insertBefore(view,ai):main.appendChild(view);
+
+    const dash=document.getElementById('dashboardView');
+    if(dash){const panel=document.createElement('section');panel.className='panel oaDashboardMount';panel.id='oaDashboardMount';panel.innerHTML='<div class="panelHeader"><div><h2>Originator Network</h2><p>Partner submissions entering the opportunity workflow.</p></div><button id="oaDashOpen" class="textBtn">Open admin view</button></div><div id="oaDashBody"></div>';dash.appendChild(panel);document.getElementById('oaDashOpen').onclick=showView}
+
+    document.getElementById('oaApproveTop').onclick=()=>{showView();document.getElementById('oaApprovePanel')?.scrollIntoView({behavior:'smooth',block:'center'});document.getElementById('oaApproveName')?.focus()};
+    document.getElementById('oaCopyLogin').onclick=copyLogin;
+    document.getElementById('oaApproveForm').onsubmit=approveOriginator;
+    document.getElementById('oaEditThesis').onclick=()=>toggleThesis(true);
+    document.getElementById('oaCancelThesis').onclick=()=>toggleThesis(false);
+    document.getElementById('oaThesisForm').onsubmit=saveThesis;
+    load();
+    setInterval(()=>{if(window.__outerhavenDashboardRole==='admin')load(false)},60000);
   }
-  function money(v){const n=Number(v||0);if(!n)return'—';if(n>=1e9)return'$'+(n/1e9).toFixed(n%1e9?1:0)+'B';if(n>=1e6)return'$'+(n/1e6).toFixed(n%1e6?1:0)+'M';if(n>=1e3)return'$'+(n/1e3).toFixed(n%1e3?1:0)+'K';return'$'+n.toLocaleString()}
-  function range(b){if(b.min_size&&b.max_size)return`${money(b.min_size)}–${money(b.max_size)}`;if(b.min_size)return`${money(b.min_size)}+`;if(b.max_size)return`Up to ${money(b.max_size)}`;return'Flexible'}
 
-  async function init(){
+  function showView(){
+    document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.navBtn').forEach(x=>x.classList.remove('active'));
+    document.getElementById('originatorsView')?.classList.add('active');
+    document.querySelector('.navBtn[data-view="originators"]')?.classList.add('active');
+    document.getElementById('pageTitle').textContent='Originators';
+    document.getElementById('pageSub').textContent='Manage partner access, submitted opportunities, match scores, and the buyer thesis.';
+    load();
+  }
+
+  async function load(render=true){
+    if(loading)return;loading=true;
     try{
-      const auth=await sb.auth.getSession();session=auth.data.session;
-      if(auth.error||!session){location.replace('/originator-login.html?mode=signin');return}
-      const mine=await sb.from('members').select('*').eq('id',session.user.id).maybeSingle();
-      if(mine.error)throw mine.error;me=mine.data;
-      if(!me){await sb.auth.signOut();location.replace('/originator-login.html?mode=signin');return}
-      if(me.role!=='admin'||me.status!=='approved'){location.replace(me.status==='approved'?'/originator.html':'/originator-pending.html');return}
-      $('adminName').textContent=me.full_name||'Administrator';$('adminEmail').textContent=me.email||session.user.email||'';
-      bind();await loadData();
-      $('loading').classList.add('hidden');$('adminApp').classList.remove('hidden');
-    }catch(err){console.error('originator admin init',err);location.replace('/originator-login.html?mode=signin')}
+      const [a,p,s,d,t]=await Promise.all([
+        sb.rpc('admin_list_originator_access'),
+        sb.from('originator_profiles').select('*').order('created_at',{ascending:false}),
+        sb.from('originator_submissions').select('*').order('created_at',{ascending:false}),
+        sb.from('originator_documents').select('*').order('created_at',{ascending:false}),
+        sb.from('originator_buyer_thesis').select('*').eq('singleton_key','outerhaven').maybeSingle()
+      ]);
+      const err=a.error||p.error||s.error||d.error||t.error;if(err)throw err;
+      accessRows=a.data||[];profiles=p.data||[];submissions=s.data||[];documents=d.data||[];thesis=t.data||null;
+      if(render)renderAll();else renderAll();
+    }catch(e){console.error('originator admin',e)}finally{loading=false}
   }
 
-  function bind(){
-    document.querySelectorAll('.adminNav button').forEach(b=>b.onclick=()=>showSection(b.dataset.section));
-    $('adminSignout').onclick=async()=>{await sb.auth.signOut();location.replace('/originator-login.html?mode=signin')};
-    $('mandateForm').onsubmit=saveMandate;$('cancelMandate').onclick=clearMandateForm;
-  }
-
-  function showSection(section){
-    document.querySelectorAll('.adminSection').forEach(x=>x.classList.remove('active'));
-    document.querySelectorAll('.adminNav button').forEach(x=>x.classList.toggle('active',x.dataset.section===section));
-    $(section+'Section').classList.add('active');
-    const labels={access:['Access Requests','Approve, decline, or suspend originator access.'],deals:['Deal Review','Review submitted opportunities and update partner-facing status.'],mandates:['Buyer Mandates','Publish and manage the criteria approved originators can see.']};
-    $('adminTitle').textContent=labels[section][0];$('adminSub').textContent=labels[section][1];window.scrollTo({top:0,behavior:'smooth'});
-  }
-
-  async function loadData(){
-    const [mr,dr,br]=await Promise.all([
-      sb.from('members').select('*').order('created_at',{ascending:false}),
-      sb.from('deals').select('*').order('created_at',{ascending:false}),
-      sb.from('buy_boxes').select('*').order('created_at',{ascending:false})
-    ]);
-    if(mr.error)throw mr.error;if(dr.error)throw dr.error;if(br.error)throw br.error;
-    members=mr.data||[];deals=dr.data||[];boxes=br.data||[];renderAll();
-  }
-
+  function profileForEmail(email){return profiles.find(p=>String(p.email).toLowerCase()===String(email).toLowerCase())||null}
+  function subsForProfile(p){return p?submissions.filter(s=>s.originator_user_id===p.user_id):[]}
+  function displayName(a,p){return p?.full_name||a.full_name||a.email}
   function renderAll(){
-    const pending=members.filter(m=>m.role==='originator'&&m.status==='pending').length;
-    const approved=members.filter(m=>m.role==='originator'&&m.status==='approved').length;
-    const review=deals.filter(d=>['submitted','reviewing','info_requested'].includes(d.status)).length;
-    const published=boxes.filter(b=>b.published).length;
-    $('adminMetrics').innerHTML=[['Pending Access',pending],['Approved Originators',approved],['Deals in Review',review],['Published Mandates',published]].map(x=>`<article class="metric"><span>${esc(x[0])}</span><strong>${x[1]}</strong></article>`).join('');
-    renderMembers();renderDeals();renderBoxes();
+    const active=submissions.filter(s=>['Matching','Buyer Interest','Engagement Active'].includes(s.status)).length;
+    const buyer=submissions.filter(s=>['Buyer Interest','Engagement Active'].includes(s.status)).length;
+    document.getElementById('navOriginators').textContent=accessRows.length;
+    document.getElementById('oaMetrics').innerHTML=[['Approved Originators',accessRows.length,'Partner access'],['Submitted Deals',submissions.length,'All originator submissions'],['Average Match',avg(submissions)+'%','Current buyer thesis'],['Buyer Interest',buyer,'Interest or engagement']].map(x=>`<article class="oaMetric"><span>${x[0]}</span><strong>${x[1]}</strong><small>${x[2]}</small></article>`).join('');
+    document.getElementById('oaAccessList').innerHTML=accessRows.length?accessRows.map(a=>{const p=profileForEmail(a.email),ss=subsForProfile(p),last=ss[0];return `<article class="oaAccess"><div><strong>${escA(displayName(a,p))}</strong><span>${escA(a.email)}${p?.company_name?` · ${escA(p.company_name)}`:''}</span><span class="${p?'oaLive':'oaPending'}">${p?'Portal account active':'Approved · account not created yet'}</span></div><div class="oaAccessStats"><div><b>${ss.length}</b><small>Submissions</small></div><div><b>${avg(ss)}%</b><small>Avg match</small></div><div><b>${last?date(last.created_at):'—'}</b><small>Last deal</small></div></div></article>`}).join(''):'<div class="oaEmpty">No originators approved yet.</div>';
+    document.getElementById('oaSubmissionList').innerHTML=submissions.length?submissions.map(s=>{const p=profiles.find(x=>x.user_id===s.originator_user_id),docs=documents.filter(d=>d.submission_id===s.id);return `<article class="oaSubmission"><div><h3>${escA(s.title)}</h3><div class="oaSubmissionMeta">${escA(p?.full_name||p?.email||'Originator')} · ${escA(money(s.capital_amount))} · ${escA(s.sector||'Sector not specified')} · ${escA(s.geography||'Geography not specified')} · ${docs.length} document${docs.length===1?'':'s'} · ${escA(date(s.created_at))}</div><div class="oaSubmissionWhy">${escA(s.match_explanation||'Match analysis pending.')}</div></div><div class="oaScore"><strong>${Number(s.match_score||0)}%</strong><span>Thesis Match</span><span class="oaStatus">${escA(s.status||'Received')}</span>${s.internal_opportunity_id?`<button class="ghost oaOpen" data-oa-open="${s.internal_opportunity_id}">Open Opportunity</button>`:''}</div></article>`}).join(''):'<div class="oaEmpty">No originator submissions yet.</div>';
+    document.querySelectorAll('[data-oa-open]').forEach(b=>b.onclick=()=>{const id=b.dataset.oaOpen;if(typeof openDetail==='function')openDetail(id)});
+    renderThesis();renderDashboardMount(active);
   }
 
-  function renderMembers(){
-    const rows=members.filter(m=>m.role==='originator');
-    $('memberRows').innerHTML=rows.length?rows.map(m=>`<article class="memberRow"><div><div class="rowTitle">${esc(m.full_name||m.email)} <span class="pill ${esc(m.status)}">${esc(cap(m.status))}</span></div><div class="rowMeta">${esc(m.email)} · ${esc(m.firm||'Firm not provided')} · Requested ${esc(date(m.created_at))}</div></div><div class="rowActions"><select data-membership="${m.id}"><option value="pilot" ${m.membership==='pilot'?'selected':''}>Pilot</option><option value="paid" ${m.membership==='paid'?'selected':''}>Paid</option><option value="inactive" ${m.membership==='inactive'?'selected':''}>Inactive</option></select>${m.status!=='approved'?`<button class="btn good" data-member-action="approve" data-id="${m.id}">Approve</button>`:''}${m.status!=='declined'?`<button class="btn bad" data-member-action="decline" data-id="${m.id}">Decline</button>`:''}${m.status==='approved'?`<button class="btn" data-member-action="suspend" data-id="${m.id}">Suspend</button>`:''}${m.status==='suspended'?`<button class="btn good" data-member-action="approve" data-id="${m.id}">Restore</button>`:''}</div></article>`).join(''):'<div class="empty">No originator accounts yet.</div>';
-    $('memberRows').querySelectorAll('[data-member-action]').forEach(b=>b.onclick=()=>updateMember(b.dataset.id,b.dataset.memberAction,b));
-    $('memberRows').querySelectorAll('[data-membership]').forEach(s=>s.onchange=()=>updateMembership(s.dataset.membership,s.value,s));
+  function renderDashboardMount(active){
+    const el=document.getElementById('oaDashBody');if(!el)return;
+    el.innerHTML=`<div class="oaDashRow"><div class="oaDashMetrics"><div class="oaDashMetric"><span>Approved Originators</span><strong>${accessRows.length}</strong></div><div class="oaDashMetric"><span>Submitted Deals</span><strong>${submissions.length}</strong></div><div class="oaDashMetric"><span>Active Matching</span><strong>${active}</strong></div><div class="oaDashMetric"><span>Average Match</span><strong>${avg(submissions)}%</strong></div></div><div style="font-size:9px;color:#7e8792">New portal submissions automatically enter your sell-side workflow at Opportunity Received.</div></div>`;
   }
 
-  async function updateMember(id,action,button){
-    const status={approve:'approved',decline:'declined',suspend:'suspended'}[action];if(!status)return;
-    button.disabled=true;
-    const selector=document.querySelector(`[data-membership="${id}"]`);const membership=selector?.value||'pilot';
-    const {error}=await sb.from('members').update({status,membership}).eq('id',id);
-    if(error){alert(error.message);button.disabled=false;return}
-    await loadData();
+  function renderThesis(){
+    const t=thesis||{};const read=document.getElementById('oaThesisRead');if(!read)return;
+    read.innerHTML=`<div class="oaThesisSummary"><strong>${escA(money(t.min_transaction_size||50000000))}+</strong><span>Preferred institutional scale</span><div style="font-size:9px;color:#67717c;margin-top:7px;line-height:1.5">${escA(t.summary||'Broad, sector-agnostic institutional opportunities.')}</div></div><div class="oaEyebrow">SECTORS</div><div class="oaTags">${(t.sectors||['Sector agnostic']).map(x=>`<span class="oaTag">${escA(x)}</span>`).join('')}</div><div class="oaEyebrow" style="margin-top:10px">GEOGRAPHY</div><div class="oaTags">${(t.geographies||['Global']).map(x=>`<span class="oaTag">${escA(x)}</span>`).join('')}</div><div class="oaEyebrow" style="margin-top:10px">STRUCTURES</div><div class="oaTags">${(t.structures||[]).map(x=>`<span class="oaTag">${escA(x)}</span>`).join('')}</div><div style="font-size:9px;color:#68717c;line-height:1.5;margin-top:11px">${escA(t.requirements||'')}</div>`;
   }
 
-  async function updateMembership(id,membership,select){
-    select.disabled=true;const {error}=await sb.from('members').update({membership}).eq('id',id);if(error)alert(error.message);select.disabled=false;if(!error)await loadData();
+  function toggleThesis(editing){
+    const form=document.getElementById('oaThesisForm'),read=document.getElementById('oaThesisRead');form.style.display=editing?'grid':'none';read.style.display=editing?'none':'';document.getElementById('oaEditThesis').style.display=editing?'none':'';
+    if(editing){const t=thesis||{};document.getElementById('oaThesisTitle').value=t.title||'';document.getElementById('oaThesisMin').value=t.min_transaction_size||50000000;document.getElementById('oaThesisSectors').value=(t.sectors||[]).join(', ');document.getElementById('oaThesisSummary').value=t.summary||'';document.getElementById('oaThesisGeo').value=(t.geographies||[]).join(', ');document.getElementById('oaThesisStructures').value=(t.structures||[]).join(', ');document.getElementById('oaThesisRequirements').value=t.requirements||''}
   }
 
-  function renderDeals(){
-    $('dealRows').innerHTML=deals.length?deals.map(d=>{
-      const owner=members.find(m=>m.id===d.owner_id);const statuses=['submitted','reviewing','info_requested','accepted','declined','withdrawn'];
-      return`<article class="dealRow"><div><div class="rowTitle">${esc(d.title)} <span class="pill ${esc(d.status)}">${esc(cap(d.status))}</span></div><div class="rowMeta">${esc(owner?.full_name||owner?.email||'Unknown originator')} · ${esc(owner?.firm||'')}<br>${esc(money(d.deal_size))} · ${esc(d.sector)} · ${esc(d.geography)} · ${esc(d.transaction_type)}<br>${esc(d.company)} · ${esc(d.seller_relationship)} · ${esc(date(d.created_at))}</div></div><div class="rowActions"><select data-deal-status="${d.id}" ${d.status==='draft'?'disabled':''}>${statuses.map(s=>`<option value="${s}" ${d.status===s?'selected':''}>${cap(s)}</option>`).join('')}</select></div></article>`;
-    }).join(''):'<div class="empty">No submitted deals yet.</div>';
-    $('dealRows').querySelectorAll('[data-deal-status]').forEach(s=>s.onchange=()=>updateDealStatus(s.dataset.dealStatus,s.value,s));
+  async function saveThesis(e){
+    e.preventDefault();const msg=document.getElementById('oaThesisMsg');msg.textContent='Saving...';msg.className='oaFormMsg';
+    const split=id=>document.getElementById(id).value.split(',').map(x=>x.trim()).filter(Boolean);
+    const payload={title:document.getElementById('oaThesisTitle').value.trim(),min_transaction_size:Number(document.getElementById('oaThesisMin').value||50000000),sectors:split('oaThesisSectors'),summary:document.getElementById('oaThesisSummary').value.trim(),geographies:split('oaThesisGeo'),structures:split('oaThesisStructures'),requirements:document.getElementById('oaThesisRequirements').value.trim(),updated_at:new Date().toISOString()};
+    const {error}=await sb.from('originator_buyer_thesis').update(payload).eq('singleton_key','outerhaven');if(error){msg.textContent=error.message;msg.className='oaFormMsg error';return}msg.textContent='Buyer thesis updated. Existing match scores were recalculated.';msg.className='oaFormMsg ok';await load();setTimeout(()=>toggleThesis(false),700);
   }
 
-  async function updateDealStatus(id,status,select){
-    select.disabled=true;const {error}=await sb.from('deals').update({status}).eq('id',id);if(error){alert(error.message);select.disabled=false;return}await loadData();
+  async function approveOriginator(e){
+    e.preventDefault();const name=document.getElementById('oaApproveName').value.trim(),email=document.getElementById('oaApproveEmail').value.trim().toLowerCase(),msg=document.getElementById('oaApproveMsg'),btn=e.submitter;btn.disabled=true;msg.textContent='Approving...';msg.className='oaFormMsg';
+    try{const {error}=await sb.rpc('admin_approve_originator',{input_email:email,input_full_name:name});if(error)throw error;msg.textContent=`${name||email} is approved. Send them the Partner Login link.`;msg.className='oaFormMsg ok';e.target.reset();await load()}catch(err){msg.textContent=err?.message||String(err);msg.className='oaFormMsg error'}finally{btn.disabled=false}
   }
 
-  function renderBoxes(){
-    $('boxRows').innerHTML=boxes.length?boxes.map(b=>`<article class="boxRow"><div><div class="rowTitle">${esc(b.title)} <span class="pill ${b.published?'approved':'withdrawn'}">${b.published?'Published':'Hidden'}</span></div><div class="rowMeta">${esc(b.sector)} · ${esc(b.geography)} · ${esc(b.transaction_type)} · ${esc(range(b))}${b.min_ebitda?` · EBITDA ${esc(money(b.min_ebitda))}+`:''}</div></div><div class="rowActions"><button class="btn" data-edit-box="${b.id}">Edit</button><button class="btn bad" data-delete-box="${b.id}">Delete</button></div></article>`).join(''):'<div class="empty">No buyer mandates yet.</div>';
-    $('boxRows').querySelectorAll('[data-edit-box]').forEach(b=>b.onclick=()=>editBox(b.dataset.editBox));
-    $('boxRows').querySelectorAll('[data-delete-box]').forEach(b=>b.onclick=()=>deleteBox(b.dataset.deleteBox,b));
+  async function copyLogin(){
+    const url=location.origin+'/originator-login.html',notice=document.getElementById('oaApproveMsg');
+    try{await navigator.clipboard.writeText(url);if(notice){notice.textContent='Partner login link copied.';notice.className='oaFormMsg ok'}}catch{prompt('Copy partner login link:',url)}
   }
 
-  function editBox(id){
-    const b=boxes.find(x=>x.id===id);if(!b)return;
-    $('mandateId').value=b.id;$('mandateTitle').value=b.title||'';$('mandateSector').value=b.sector||'';$('mandateGeography').value=b.geography||'';$('mandateType').value=b.transaction_type||'';$('mandateMin').value=b.min_size||'';$('mandateMax').value=b.max_size||'';$('mandateEbitda').value=b.min_ebitda||'';$('mandateCurrency').value=b.currency||'USD';$('mandateDescription').value=b.description||'';$('mandateRequirements').value=b.requirements||'';$('mandatePublished').checked=!!b.published;$('mandateFormTitle').textContent='Edit Buyer Mandate';$('saveMandate').textContent='Update Mandate';$('mandateMsg').textContent='';window.scrollTo({top:0,behavior:'smooth'});
-  }
-
-  function clearMandateForm(){
-    $('mandateForm').reset();$('mandateId').value='';$('mandateCurrency').value='USD';$('mandateFormTitle').textContent='New Buyer Mandate';$('saveMandate').textContent='Save Mandate';$('mandateMsg').textContent='';
-  }
-
-  async function saveMandate(e){
-    e.preventDefault();$('mandateMsg').textContent='';const btn=$('saveMandate');btn.disabled=true;
-    const id=$('mandateId').value;
-    const payload={title:$('mandateTitle').value.trim(),sector:$('mandateSector').value.trim(),geography:$('mandateGeography').value.trim(),transaction_type:$('mandateType').value.trim(),currency:$('mandateCurrency').value.trim()||'USD',min_size:parseMoney($('mandateMin').value),max_size:parseMoney($('mandateMax').value),min_ebitda:parseMoney($('mandateEbitda').value),description:$('mandateDescription').value.trim(),requirements:$('mandateRequirements').value.trim(),published:$('mandatePublished').checked};
-    if(payload.min_size&&payload.max_size&&payload.max_size<payload.min_size){$('mandateMsg').textContent='Maximum size cannot be below minimum size.';btn.disabled=false;return}
-    try{
-      const result=id?await sb.from('buy_boxes').update(payload).eq('id',id):await sb.from('buy_boxes').insert(payload);
-      if(result.error)throw result.error;clearMandateForm();await loadData();
-    }catch(err){$('mandateMsg').textContent=err?.message||'Could not save mandate.'}
-    finally{btn.disabled=false}
-  }
-
-  async function deleteBox(id,button){
-    const b=boxes.find(x=>x.id===id);if(!b||!confirm(`Delete buyer mandate "${b.title}"?`))return;
-    button.disabled=true;const {error}=await sb.from('buy_boxes').delete().eq('id',id);if(error){alert(error.message);button.disabled=false;return}if($('mandateId').value===id)clearMandateForm();await loadData();
-  }
-
-  init();
+  install();
 })();
