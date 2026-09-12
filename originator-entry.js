@@ -25,9 +25,11 @@
       window.__OUTERHAVEN_ORIGINATOR_SB=client;
       await load('/originator.js');
       await load('/originator-pdf-import.js');
+      await load('/originator-pdf-intelligence-v2.js');
       await load('/originator-mandate-tabs.js');
       await load('/originator-institutional.js');
       await load('/originator-capital-suite.js');
+      await load('/originator-capital-documents-v2.js');
       await load('/originator-nav-guards.js');
     }catch(err){
       console.error('originator entry',err);
