@@ -25,6 +25,7 @@
       window.__OUTERHAVEN_ORIGINATOR_SB=client;
       await load('/originator.js');
       await load('/originator-mandate-tabs.js');
+      await load('/originator-institutional.js');
     }catch(err){
       console.error('originator entry',err);
       location.replace('/originator-login.html?mode=signin');
