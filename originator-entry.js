@@ -35,6 +35,7 @@
       await load('/originator-capital-documents-v7.js');
       await load('/originator-investor-suite-v10-core.js');
       await load('/originator-nav-guards.js');
+      await load('/originator-tutorial.js');
     }catch(err){
       console.error('originator entry',err);
       location.replace('/originator-login.html?mode=signin');
