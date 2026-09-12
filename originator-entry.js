@@ -33,8 +33,8 @@
       await load('/originator-institutional.js');
       await load('/originator-capital-suite.js');
       await load('/originator-capital-suite-matching-v3.js');
-      await load('/originator-done-for-you-v2.js');
-      await load('/originator-capital-documents-v3.js');
+      await load('/originator-auto-fix-v3.js');
+      await load('/originator-capital-documents-v4.js');
       await load('/originator-nav-guards.js');
     }catch(err){
       console.error('originator entry',err);
