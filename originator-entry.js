@@ -31,7 +31,7 @@
       await load('/originator-matching-ui-v3.js');
       await load('/originator-mandate-tabs.js');
       await load('/originator-capital-suite.js');
-      await load('/originator-capital-documents-v10.js');
+      await load('/originator-capital-documents-v11.js');
       await load('/originator-capital-generation-v2.js');
       await load('/originator-capital-suite-v17.js');
       await load('/originator-nav-guards.js');
