@@ -26,6 +26,7 @@
       await load('/originator.js');
       await load('/originator-mandate-tabs.js');
       await load('/originator-institutional.js');
+      await load('/originator-capital-suite.js');
     }catch(err){
       console.error('originator entry',err);
       location.replace('/originator-login.html?mode=signin');
