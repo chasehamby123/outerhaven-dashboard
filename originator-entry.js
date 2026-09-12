@@ -37,6 +37,7 @@
       await load('/originator-investor-suite-v6-guard.js');
       await load('/originator-investor-suite-v6.js');
       await load('/originator-capital-documents-v6.js');
+      await load('/originator-investor-suite-v7-value.js');
       await load('/originator-nav-guards.js');
     }catch(err){
       console.error('originator entry',err);
