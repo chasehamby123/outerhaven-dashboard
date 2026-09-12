@@ -32,8 +32,7 @@
       await load('/originator-mandate-tabs.js');
       await load('/originator-capital-suite.js');
       await load('/originator-capital-documents-v9.js');
-      await load('/originator-advisor-workspace-v13.js');
-      await load('/originator-advisor-v13-cleanup.js');
+      await load('/originator-advisor-workspace-v14.js');
       await load('/originator-nav-guards.js');
       await load('/originator-tutorial.js');
     }catch(err){
