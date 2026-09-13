@@ -32,6 +32,17 @@
     if(b){const old=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=old||'Copy Text',1200)}
   }
 
+  function canonicalizeApi(){
+    const live=api();if(!live)return null;
+    live.print=printCurrent;
+    window.OuterHavenCapitalDocsV11=live;
+    window.OuterHavenCapitalDocsV10=live;
+    window.OuterHavenCapitalDocsV9=live;
+    window.OuterHavenCapitalDocsV8=live;
+    window.OuterHavenCapitalDocs=live;
+    return live;
+  }
+
   function installExportControls(){
     const oldDownload=$('capitalDownload');
     if(oldDownload){
@@ -47,21 +58,21 @@
       oldCopy.textContent='Copy Text';
       oldCopy.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();copyCurrent()});
     }
+    canonicalizeApi();
   }
 
-  window.OuterHavenCapitalDocs=api();
+  canonicalizeApi();
 
-  // V17 still references a legacy V9 alias. Intercept its document buttons at
-  // the window capture phase and route them through the canonical live API.
+  // V17 still contains a legacy alias reference. Intercept its document buttons
+  // at the window capture phase and route them through the canonical live API.
   window.addEventListener('click',e=>{
     const btn=e.target?.closest?.('[data-v17-doc]');
     if(!btn)return;
-    const live=api();
+    const live=canonicalizeApi();
     if(!live?.renderAsset)return;
     e.preventDefault();
     e.stopPropagation();
-    const type=btn.dataset.v17Doc;
-    live.renderAsset(type);
+    live.renderAsset(btn.dataset.v17Doc);
     setTimeout(installExportControls,0);
   },true);
 
