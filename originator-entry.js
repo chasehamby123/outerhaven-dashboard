@@ -30,7 +30,7 @@
       await load('/outerhaven-matcher-v4.js');
       await load('/originator-matching-ui-v3.js');
       await load('/originator-mandate-tabs.js');
-      await load('/originator-capital-suite.js');
+      await load('/originator-capital-shell-v1.js');
       await load('/originator-capital-documents-v11.js');
       await load('/originator-capital-generation-v5.js');
       await load('/originator-investor-name-cleaner-v1.js');
