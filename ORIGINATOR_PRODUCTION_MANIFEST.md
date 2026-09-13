@@ -31,11 +31,30 @@ Current portal layers:
 12. `originator-investor-teaser-v3.js` - transaction-aware teaser specialization
 13. `originator-investor-doc-specializer-v2.js` - memo/capital/diligence specialization
 14. `originator-capital-suite-v17.js` - live Capital Suite workflow
-15. `originator-required-fact-validator-v2.js` - field-specific package-readiness validation
+15. `originator-required-fact-validator-v3.js` - universal core diligence plus transaction-specific package-readiness validation
 16. `originator-output-role-copy-v1.js` - output-role UI copy
 17. `originator-document-controller-v1.js` - canonical document routing and visible-preview export
 18. `originator-nav-guards-v2.js` - Capital Suite navigation guard
 19. `originator-tutorial-v6.js` - current guided walkthrough
+
+## Universal core diligence
+
+Every deal must have the following twelve diligence questions addressed. Capital Suite should first use the original deal record and extracted core-document text. It should only ask the user questions that remain unanswered, one at a time.
+
+1. Total project / transaction size
+2. Exact capital ask
+3. Capital structure: equity, debt, mezzanine or combination
+4. Basic sources and uses
+5. Direct sponsor / management access
+6. Signed exclusive mandate status
+7. Time in market
+8. Number of other firms representing / circulating the opportunity
+9. Prior investor, bank, family-office or institutional exposure
+10. Lead investor, term sheet or committed-capital status
+11. Sponsor / management track record
+12. Sponsor capital invested / committed
+
+A negative answer is still an answer. For example, "No exclusive mandate," "Not yet marketed," "No lead investor," or "No other firms" should satisfy the diligence question while remaining visible as the factual answer. Do not invent positive answers from weak source language.
 
 ## Investor-output rules
 
@@ -65,6 +84,7 @@ This includes, but is not limited to:
 - old capital-generation v1-v4 files
 - old teaser v1-v2 files
 - old document-specializer v1
+- `originator-required-fact-validator-v2.js`, superseded by v3 universal diligence logic
 - old auto-fix / done-for-you / service-request UI layers
 - `originator-preview.js`, which belongs to a retired legacy preview architecture and must not be loaded by the current external portal
 
