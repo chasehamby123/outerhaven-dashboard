@@ -11,25 +11,37 @@
   function cleanName(v){const o=String(v||'').replace(/\s+/g,' ').trim();if(!o)return'';let s=o.replace(/\.(?:pdf|pptx?|docx?)$/i,'').trim();s=s.replace(/\s*(?:[-–—|:]\s*)?(?:investor\s+pitch\s+deck|pitch\s+deck|investor\s+presentation|investment\s+presentation|investor\s+deck|investment\s+deck|confidential\s+information\s+memorandum|information\s+memorandum|investment\s+memorandum|investor\s+teaser|investment\s+teaser|teaser|cim)\s*$/i,'').trim();return s||o}
   function clean(v){let s=String(v||'').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim();s=s.replace(/^\s*(?:the\s+)?investment\s+case\s*[:\-–—]?\s*/i,'');return s.trim()}
   function match(text,re,g=1){const m=String(text||'').match(re);return m?String(m[g]||'').trim():''}
-  function flags(d){const t=norm(d?.transaction_type),all=norm(`${d?.sector||''} ${d?.title||''} ${d?.company||''} ${d?.summary||''}`);return{debt:/debt|loan|credit|refinanc|unitranche|mezz/.test(t),acq:/acquisition|buyout|purchase|m a/.test(t),sale:/sale|sell side|divest|exit/.test(t),re:/real estate|hospitality|hotel|resort|property|multifamily|self storage|commercial property|branded residence|villa/.test(all),hospitality:/hospitality|hotel|resort|branded residence|villa/.test(all),development:/development|construction|ground up|ground-up|pre sale|pre-sale|presale|pre sold|pre-sold/.test(all)} }
+  function flags(d){const t=norm(d?.transaction_type),all=norm(`${d?.sector||''} ${d?.title||''} ${d?.company||''} ${d?.summary||''}`);return{debt:/debt|loan|credit|refinanc|unitranche|mezz/.test(t),acq:/acquisition|buyout|purchase|m a/.test(t),sale:/sale|sell side|divest|exit/.test(t),re:/real estate|hospitality|hotel|resort|property|multifamily|self storage|commercial property|branded residence|villa/.test(all),hospitality:/hospitality|hotel|resort|branded residence|villa/.test(all),development:/development|construction|ground up|ground-up|pre sale|pre-sale|presale|pre sold|pre-sold|pre sells|pre-sells/.test(all)} }
   function presaleContext(s){
     const normalized=String(s||'').replace(/\s+/g,' ').trim();
     if(!normalized)return'';
-    const sentences=normalized.split(/(?<=[.!?;])\s+/).filter(x=>/(?:pre[- ]?sold|pre[- ]?sale|presale|reservation|contracted sales)/i.test(x));
+    const presaleRe=/(?:pre[- ]?sold|pre[- ]?sale|presale|pre[- ]?sell(?:s|ing)?|reservation|contracted sales)/i;
+    const sentences=normalized.split(/(?<=[.!?;])\s+/).filter(x=>presaleRe.test(x));
     if(sentences.length){
       return sentences.sort((a,b)=>{
         const score=x=>(/\$\s*[\d,.]+\s*(?:M|B)/i.test(x)?3:0)+(/\bLOI\b|executed|signed|contracted|binding|deposit|collection|paid|funded/i.test(x)?2:0)+(/\d+\s+of\s+\d+\s+villas?/i.test(x)?1:0);
         return score(b)-score(a);
       })[0];
     }
-    const m=normalized.match(/.{0,140}(?:pre[- ]?sold|pre[- ]?sale|presale|reservation|contracted sales).{0,240}/i);
+    const m=normalized.match(/.{0,140}(?:pre[- ]?sold|pre[- ]?sale|presale|pre[- ]?sell(?:s|ing)?|reservation|contracted sales).{0,240}/i);
     return m?m[0]:'';
+  }
+  function presaleAmount(pre,s){
+    const amount='(\\$\\s*[\\d,.]+\\s*(?:M|B))';
+    const marker='(?:pre[- ]?sold|pre[- ]?sale|presale|pre[- ]?sell(?:s|ing)?|reservation)';
+    const patterns=[
+      new RegExp(amount+'\\s*'+marker,'i'),
+      new RegExp(marker+'[^$]{0,60}'+amount,'i'),
+      new RegExp(amount+'[^$]{0,90}'+marker,'i')
+    ];
+    for(const re of patterns){const v=match(pre,re,1)||match(s,re,1);if(v)return v}
+    return'';
   }
   function facts(d){
     const s=clean(d?.summary||'');
     const moic=match(s,/(\d+(?:\.\d+)?)x\s+(?:LP\s+)?MOIC/i),irr=match(s,/(\d{1,3}(?:\.\d+)?)%\s+(?:LP\s+)?IRR/i),hold=match(s,/(\d+(?:\.\d+)?)\s*[- ]?year\s+hold/i);
     const pre=presaleContext(s);
-    const presaleAmt=match(pre,/(\$\s*[\d,.]+\s*(?:M|B))/i)||match(s,/(\$\s*[\d,.]+\s*(?:M|B))\s+(?:pre[- ]?sold|pre[- ]?sales?|presales?)/i);
+    const presaleAmt=presaleAmount(pre,s);
     const soldCount=match(pre||s,/(\d+)\s+of\s+(\d+)\s+villas?/i,1),soldTotal=match(pre||s,/(\d+)\s+of\s+(\d+)\s+villas?/i,2);
     const presalePct=match(pre||s,/(\d{1,3}(?:\.\d+)?)%\s+of\s+(?:the\s+)?residential\s+pipeline/i);
     const pipeline=match(s,/(\$\s*[\d,.]+\s*(?:M|B))\s+(?:gross\s+)?residential\s+pipeline/i);
