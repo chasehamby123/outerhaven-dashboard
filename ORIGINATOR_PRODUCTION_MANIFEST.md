@@ -31,10 +31,11 @@ Current portal layers:
 12. `originator-investor-teaser-v3.js` - transaction-aware teaser specialization
 13. `originator-investor-doc-specializer-v2.js` - memo/capital/diligence specialization
 14. `originator-capital-suite-v17.js` - live Capital Suite workflow
-15. `originator-output-role-copy-v1.js` - output-role UI copy
-16. `originator-document-controller-v1.js` - canonical document routing and visible-preview export
-17. `originator-nav-guards-v2.js` - Capital Suite navigation guard
-18. `originator-tutorial-v6.js` - current guided walkthrough
+15. `originator-required-fact-validator-v2.js` - field-specific package-readiness validation
+16. `originator-output-role-copy-v1.js` - output-role UI copy
+17. `originator-document-controller-v1.js` - canonical document routing and visible-preview export
+18. `originator-nav-guards-v2.js` - Capital Suite navigation guard
+19. `originator-tutorial-v6.js` - current guided walkthrough
 
 ## Investor-output rules
 
@@ -45,6 +46,7 @@ All generated outputs are investor-facing by default.
 - Keep private notes and mandate-fit intelligence out of investor materials.
 - The teaser, memo, capital summary and diligence package have different jobs and must not be four rewrites of the same summary.
 - Real-estate pre-sales must distinguish LOI/reservation, contracted sale, and funded/collected proceeds.
+- Required facts must be validated by field meaning, not merely by text length. A reference to construction costs does not equal a complete development budget, for example.
 
 ## Legacy quarantine
 
@@ -62,6 +64,7 @@ This includes, but is not limited to:
 - old capital-generation v1-v4 files
 - old teaser v1-v2 files
 - old document-specializer v1
+- `originator-required-fact-validator-v1.js`
 - old auto-fix / done-for-you / service-request UI layers
 - `originator-preview.js`, which belongs to a retired legacy preview architecture and must not be loaded by the current external portal
 
