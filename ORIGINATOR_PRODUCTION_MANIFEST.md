@@ -24,7 +24,7 @@ Current portal layers:
 5. `outerhaven-matcher-v4.js` - canonical mandate matching model
 6. `originator-matching-ui-v3.js` - matcher presentation
 7. `originator-mandate-tabs.js` - mandate geography tabs
-8. `originator-capital-suite.js` - legacy shell dependency for the Capital Suite mount/output container only
+8. `originator-capital-shell-v1.js` - lightweight Capital Suite navigation, deal selector and output container
 9. `originator-capital-documents-v11.js` - base investor-document renderer/API
 10. `originator-capital-generation-v5.js` - transaction-aware narrative generation
 11. `originator-investor-name-cleaner-v1.js` - investor-facing entity-name cleanup
@@ -54,6 +54,7 @@ The repository contains historical versions retained for reference. They must no
 
 This includes, but is not limited to:
 
+- `originator-capital-suite.js`, the retired original Capital Suite runtime
 - `originator-advisor-workspace-v12.js`
 - `originator-advisor-workspace-v13.js`
 - `originator-advisor-workspace-v14.js`
@@ -64,7 +65,6 @@ This includes, but is not limited to:
 - old capital-generation v1-v4 files
 - old teaser v1-v2 files
 - old document-specializer v1
-- `originator-required-fact-validator-v1.js`
 - old auto-fix / done-for-you / service-request UI layers
 - `originator-preview.js`, which belongs to a retired legacy preview architecture and must not be loaded by the current external portal
 
