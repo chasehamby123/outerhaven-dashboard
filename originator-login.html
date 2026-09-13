@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>Outerhaven Partner Network</title>
+  <title>Outerhaven Capital Suite</title>
   <style>
     @import url('/outerhaven-theme.css');
     :root{--bg:#f4f1eb;--text:#171511;--muted:#71695f;--border:#ded3c5;--dark:#171511}*{box-sizing:border-box}
@@ -30,21 +30,21 @@
     <section class="intro">
       <div>
         <div class="mark">H</div>
-        <h1>Outerhaven Partner Network</h1>
-        <p>A private workspace for qualified originators, advisors, sponsors, and sell-side partners to submit opportunities directly into Outerhaven's institutional review process.</p>
+        <h1>Outerhaven Capital Suite</h1>
+        <p>A private transaction workspace for founders, sponsors, advisors, and sell-side partners preparing opportunities for institutional capital.</p>
         <div class="points">
-          <div class="point"><b>Submit private opportunities</b><span>Provide core transaction details and supporting diligence materials through a private account.</span></div>
-          <div class="point"><b>See active buyer mandates</b><span>Review the criteria Outerhaven is actively sourcing against before submitting an opportunity.</span></div>
-          <div class="point"><b>Track review and communication</b><span>Follow each submission from initial review through information requests, acceptance, or decline.</span></div>
+          <div class="point"><b>Start with the source material</b><span>Bring in the current deck or transaction materials once. Capital Suite reuses what is already known instead of making you rebuild the deal manually.</span></div>
+          <div class="point"><b>Complete only what is missing</b><span>Work through one necessary diligence item at a time, or send a secure one-question request directly to the sponsor or management team.</span></div>
+          <div class="point"><b>Build investor-ready materials</b><span>Prepare a distinct teaser, investment memorandum, capital summary, and diligence package while keeping internal deal intelligence separate.</span></div>
         </div>
       </div>
-      <div class="introFoot">Access is reviewed and approved by Outerhaven before submissions are enabled.</div>
+      <div class="introFoot">Access is reviewed and approved by Outerhaven before private deal and buyer-mandate features are enabled.</div>
     </section>
 
     <section class="login">
-      <div class="eyebrow">PRIVATE PARTNER ACCESS</div>
-      <h2>Partner Portal</h2>
-      <p>Sign in to an approved account or request access to the Outerhaven originator network.</p>
+      <div class="eyebrow">PRIVATE CAPITAL WORKSPACE</div>
+      <h2>Capital Suite</h2>
+      <p>Sign in to an approved account or request access to the Outerhaven private-markets workspace.</p>
       <div class="tabs">
         <button id="signinTab" type="button" class="tab active" onclick="setPartnerMode('signin')">Sign In</button>
         <button id="createTab" type="button" class="tab" onclick="setPartnerMode('create')">Request Access</button>
@@ -53,7 +53,7 @@
       <form id="signinForm" class="active">
         <label>Email<input id="signinEmail" type="email" required autocomplete="email"></label>
         <label>Password<input id="signinPassword" type="password" minlength="8" required autocomplete="current-password"></label>
-        <button id="signinBtn" class="primary" type="submit">Open Partner Portal</button>
+        <button id="signinBtn" class="primary" type="submit">Open Capital Suite</button>
         <button id="forgotPassword" class="forgot" type="button">Forgot password?</button>
       </form>
 
@@ -65,8 +65,8 @@
         <label>Email<input id="createEmail" type="email" required autocomplete="email"></label>
         <label>Password<input id="createPassword" type="password" minlength="8" required autocomplete="new-password"></label>
         <label>Confirm Password<input id="createConfirm" type="password" minlength="8" required autocomplete="new-password"></label>
-        <button id="createBtn" class="primary" type="submit">Request Partner Access</button>
-        <div class="finePrint">Creating an account does not grant portal access. Outerhaven reviews each request before submissions and buyer mandates become available.</div>
+        <button id="createBtn" class="primary" type="submit">Request Access</button>
+        <div class="finePrint">Creating an account does not grant access automatically. Outerhaven reviews each request before private deal, Capital Suite, and buyer-mandate features are enabled.</div>
       </form>
       <div id="msg" class="msg" role="status" aria-live="polite"></div>
     </section>
