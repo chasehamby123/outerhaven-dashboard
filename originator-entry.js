@@ -36,13 +36,10 @@
       await load('/originator-investor-name-cleaner-v1.js');
       await load('/originator-investor-teaser-v3.js');
       await load('/originator-investor-doc-specializer-v2.js');
-      await load('/originator-capital-suite-v17.js');
-      await load('/originator-concise-answer-v1.js');
-      await load('/originator-required-fact-validator-v3.js');
-      await load('/originator-output-role-copy-v1.js');
+      await load('/originator-capital-suite-v18.js');
       await load('/originator-document-controller-v1.js');
       await load('/originator-nav-guards-v2.js');
-      await load('/originator-tutorial-v6.js');
+      await load('/originator-tutorial-v7.js');
     }catch(err){
       console.error('originator entry',err);
       location.replace('/originator-login.html?mode=signin');
