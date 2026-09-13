@@ -3,86 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Outerhaven Originator Portal Preview</title>
-  <link rel="stylesheet" href="/originator.css">
-  <style>
-    .adminPreviewBar{position:sticky;top:0;z-index:1000;background:#111318;color:#fff;padding:10px 18px;display:flex;align-items:center;gap:12px;justify-content:space-between;box-shadow:0 1px 10px rgba(0,0,0,.15)}
-    .adminPreviewLeft{display:flex;align-items:center;gap:10px;min-width:0}.adminPreviewBadge{font-size:9px;font-weight:900;letter-spacing:.08em;background:#fff;color:#111318;padding:5px 7px;border-radius:7px;white-space:nowrap}.adminPreviewCopy{font-size:10px;color:#c5cad1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.adminPreviewActions{display:flex;align-items:center;gap:8px}.adminPreviewActions select{min-width:220px;background:#20242a;color:#fff;border:1px solid #3a414a;border-radius:8px;padding:7px 9px;font-size:10px}.adminPreviewActions button{border:1px solid #3a414a;background:#20242a;color:#fff;border-radius:8px;padding:7px 10px;font-size:9px;font-weight:800;cursor:pointer}
-    body.previewMode #submitSection{display:none!important}body.previewMode [data-section="submit"],body.previewMode [data-go="submit"],body.previewMode #topSubmit{display:none!important}body.previewMode #signOut{display:none!important}
-    @media(max-width:760px){.adminPreviewBar{align-items:flex-start;flex-direction:column}.adminPreviewActions{width:100%}.adminPreviewActions select{min-width:0;flex:1}.adminPreviewCopy{white-space:normal}}
-  </style>
+  <meta name="robots" content="noindex,nofollow">
+  <title>Outerhaven Partner Portal Preview Retired</title>
+  <meta http-equiv="refresh" content="0;url=/originator-admin.html">
+  <style>body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f5f1eb;color:#211d19;display:grid;min-height:100vh;place-items:center}.card{max-width:520px;margin:24px;padding:28px;border:1px solid #d8cec2;border-radius:16px;background:#fff}.eyebrow{font-size:8px;font-weight:800;letter-spacing:.12em;color:#8a745b;text-transform:uppercase}.card h1{font-size:24px;margin:8px 0}.card p{font-size:12px;line-height:1.6;color:#6c6157}.card a{color:#211d19;font-weight:800}</style>
 </head>
-<body class="previewMode">
-  <div class="adminPreviewBar"><div class="adminPreviewLeft"><span class="adminPreviewBadge">ADMIN PREVIEW</span><span class="adminPreviewCopy">Read-only view of exactly what an originator sees after login.</span></div><div class="adminPreviewActions"><select id="previewOriginator"><option value="">Empty first-login view</option></select><button id="backToAdmin" type="button">Back to Dashboard</button></div></div>
-  <div id="loading" class="loadingScreen"><div class="loadingMark">O</div><div>Loading partner preview...</div></div>
-  <div id="app" class="app hidden">
-    <aside class="sidebar">
-      <div class="brand"><div class="brandMark">O</div><div><div class="brandName">Outerhaven</div><div class="brandSub">Originator Portal</div></div></div>
-      <nav class="nav">
-        <button class="navBtn active" data-section="home"><span>Overview</span></button>
-        <button class="navBtn" data-section="submit"><span>Submit Opportunity</span></button>
-        <button class="navBtn" data-section="submissions"><span>My Submissions</span><b id="navSubmissionCount">0</b></button>
-        <button class="navBtn" data-section="thesis"><span>Buyer Thesis</span></button>
-      </nav>
-      <div class="sideBottom">
-        <div class="account"><div class="avatar" id="avatar">O</div><div><strong id="accountName">Originator</strong><span id="accountEmail"></span></div></div>
-        <button id="signOut" class="signOut">Sign out</button>
-      </div>
-    </aside>
-
-    <main class="main">
-      <header class="topbar">
-        <div><div class="eyebrow">OUTERHAVEN PARTNER NETWORK</div><h1 id="pageTitle">Originator Overview</h1><p id="pageSub">Submit institutional opportunities and track their fit with our current buy-side mandate.</p></div>
-        <button class="primaryBtn" id="topSubmit">+ Submit Opportunity</button>
-      </header>
-
-      <section id="homeSection" class="section active">
-        <div id="metrics" class="metrics"></div>
-        <div class="twoCol">
-          <section class="panel thesisPreview">
-            <div class="panelHead"><div><div class="eyebrow">CURRENT MANDATE</div><h2>Outerhaven Buyer Thesis</h2></div><button class="textBtn" data-go="thesis">View full thesis</button></div>
-            <div id="homeThesis"></div>
-          </section>
-          <section class="panel">
-            <div class="panelHead"><div><div class="eyebrow">YOUR PIPELINE</div><h2>Recent Submissions</h2></div><button class="textBtn" data-go="submissions">View all</button></div>
-            <div id="recentSubmissions" class="recentList"></div>
-          </section>
-        </div>
-        <section class="panel howItWorks">
-          <div class="panelHead"><div><div class="eyebrow">PROCESS</div><h2>How submissions move</h2></div></div>
-          <div class="steps">
-            <article><span>01</span><b>Submit</b><p>Add the opportunity details and attach your one-pager, deck, or supporting materials.</p></article>
-            <article><span>02</span><b>Match</b><p>The portal scores the opportunity against Outerhaven's current institutional buyer thesis.</p></article>
-            <article><span>03</span><b>Review</b><p>Outerhaven reviews the materials and determines whether the opportunity should enter active matching.</p></article>
-            <article><span>04</span><b>Progress</b><p>Your portal status updates as the opportunity moves into matching, buyer interest, or engagement.</p></article>
-          </div>
-        </section>
-      </section>
-
-      <section id="submitSection" class="section"></section>
-
-      <section id="submissionsSection" class="section">
-        <section class="panel">
-          <div class="panelHead"><div><div class="eyebrow">YOUR OPPORTUNITIES</div><h2>Submitted Deals</h2><p>You only see opportunities submitted through your account.</p></div><button class="primaryBtn" data-go="submit">+ New Submission</button></div>
-          <div id="submissionCards" class="submissionCards"></div>
-        </section>
-      </section>
-
-      <section id="thesisSection" class="section">
-        <section class="panel fullThesis">
-          <div class="thesisHero"><div><div class="eyebrow">CURRENT BUY-SIDE THESIS</div><h2 id="thesisTitle">Outerhaven Institutional Buyer Thesis</h2><p id="thesisSummary"></p></div><div class="minTicket"><span>Preferred Scale</span><strong id="thesisMin">$50M+</strong></div></div>
-          <div class="thesisGrid">
-            <article><span>Sector</span><div id="thesisSectors" class="tagList"></div></article>
-            <article><span>Geography</span><div id="thesisGeographies" class="tagList"></div></article>
-            <article class="wide"><span>Structures</span><div id="thesisStructures" class="tagList"></div></article>
-          </div>
-          <div class="requirements"><div class="eyebrow">WHAT MAKES AN OPPORTUNITY REVIEWABLE</div><p id="thesisRequirements"></p></div>
-        </section>
-      </section>
-    </main>
-  </div>
-
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/originator-preview.js"></script>
+<body>
+  <main class="card">
+    <div class="eyebrow">LEGACY PREVIEW RETIRED</div>
+    <h1>This preview is no longer part of the Partner Portal.</h1>
+    <p>The previous preview used an older portal architecture and is intentionally disabled to prevent it from being confused with the current production system.</p>
+    <p><a href="/originator-admin.html">Return to Originator Admin</a></p>
+  </main>
+  <script>location.replace('/originator-admin.html')</script>
 </body>
 </html>
