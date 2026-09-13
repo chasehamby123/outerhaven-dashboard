@@ -1,6 +1,6 @@
 # OuterHaven Originator Portal Production Manifest
 
-This file defines the supported external Originator / Partner Portal architecture.
+This file defines the supported external Partner Portal / Capital Suite architecture.
 
 ## System boundary
 
@@ -17,7 +17,7 @@ Only scripts explicitly loaded by `originator-entry.js` are part of the producti
 
 Current portal layers:
 
-1. `originator.js` - core account, deal submission, submissions, messages and mandate UI
+1. `originator.js` - core account, deal submission, deal records, messages and mandate UI
 2. `originator-pdf-import.js` - PDF import surface
 3. `originator-pdf-intelligence-v2.js` - deterministic PDF extraction + OCR fallback
 4. `originator-location-normalizer-v4.js` - conservative geography normalization
@@ -31,9 +31,17 @@ Current portal layers:
 12. `originator-investor-teaser-v3.js` - transaction-aware teaser specialization
 13. `originator-investor-doc-specializer-v2.js` - memo/capital/diligence specialization
 14. `originator-capital-suite-v18.js` - consolidated deal-centric Capital Suite workflow, core diligence, transaction diligence, source management and internal deal intelligence
-15. `originator-document-controller-v1.js` - canonical document routing and visible-preview export
-16. `originator-nav-guards-v2.js` - Capital Suite navigation guard
-17. `originator-tutorial-v7.js` - current guided walkthrough
+15. `originator-secure-request-v1.js` - creates secure one-question sponsor / management request links from the current missing diligence item
+16. `originator-document-controller-v1.js` - canonical document routing and visible-preview export
+17. `originator-nav-guards-v2.js` - Capital Suite navigation and product-positioning copy guard
+18. `originator-tutorial-v7.js` - current guided walkthrough
+
+Public request surface:
+
+- `capital-request.html`
+- `capital-request.js`
+- Supabase Edge Function `capital-request`
+- private table `public.capital_requests`
 
 ## Product interaction rule
 
@@ -48,6 +56,20 @@ The primary flow is:
 5. Sources and later diligence
 
 Do not put multiple simultaneous diligence tasks in front of the user. Do not require narrative-length answers when a short factual answer is sufficient. Captured information may be marked as thin or worth strengthening internally, but a concise factual answer should not trap the user on the same step.
+
+When the current user does not know the answer, the workflow may create a secure one-question request link for the sponsor or management team. The recipient must not need an OuterHaven account and must never see buyer mandates, other deals, private notes, owner IDs, or unrelated diligence questions.
+
+## Secure request rules
+
+- Store only a SHA-256 hash of the random request token in the database.
+- Raw tokens exist only in the generated share URL.
+- Links expire after seven days.
+- Creating a replacement link revokes the previous pending link for the same deal/question.
+- Browser roles have no direct privileges on `public.capital_requests`.
+- The table has RLS enabled and is accessed only through the server-side request endpoint.
+- The request endpoint uses custom auth because it supports both authenticated Capital Suite actions and public token-authenticated responses.
+- Public recipients receive only the clean deal name, the single question, and expiry metadata.
+- A late external response must not overwrite a value that was completed in Capital Suite after the request link was created. Preserve the external response as provenance instead.
 
 ## Universal core diligence
 
