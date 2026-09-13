@@ -63,16 +63,16 @@
 
   canonicalizeApi();
 
-  // V17 still contains a legacy alias reference. Intercept its document buttons
-  // at the window capture phase and route them through the canonical live API.
   window.addEventListener('click',e=>{
-    const btn=e.target?.closest?.('[data-v17-doc]');
+    const btn=e.target?.closest?.('[data-capital-doc],[data-v17-doc]');
     if(!btn)return;
     const live=canonicalizeApi();
     if(!live?.renderAsset)return;
+    const type=btn.dataset.capitalDoc||btn.dataset.v17Doc;
+    if(!type)return;
     e.preventDefault();
     e.stopPropagation();
-    live.renderAsset(btn.dataset.v17Doc);
+    live.renderAsset(type);
     setTimeout(installExportControls,0);
   },true);
 
