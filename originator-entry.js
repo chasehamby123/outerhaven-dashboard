@@ -26,7 +26,7 @@
       await load('/originator.js');
       await load('/originator-pdf-import.js');
       await load('/originator-pdf-intelligence-v2.js');
-      await load('/originator-location-normalizer-v3.js');
+      await load('/originator-location-normalizer-v4.js');
       await load('/outerhaven-matcher-v4.js');
       await load('/originator-matching-ui-v3.js');
       await load('/originator-mandate-tabs.js');
@@ -38,8 +38,9 @@
       await load('/originator-investor-doc-specializer-v2.js');
       await load('/originator-capital-suite-v17.js');
       await load('/originator-output-role-copy-v1.js');
-      await load('/originator-nav-guards.js');
-      await load('/originator-tutorial.js');
+      await load('/originator-document-controller-v1.js');
+      await load('/originator-nav-guards-v2.js');
+      await load('/originator-tutorial-v6.js');
     }catch(err){
       console.error('originator entry',err);
       location.replace('/originator-login.html?mode=signin');
