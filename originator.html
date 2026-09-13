@@ -4,33 +4,33 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>Outerhaven Originator Portal</title>
+  <title>Outerhaven Capital Suite</title>
   <link rel="stylesheet" href="/originator.css">
   <link rel="stylesheet" href="/originator-accessibility.css">
   <link rel="stylesheet" href="/originator-professional.css">
   <link rel="stylesheet" href="/originator-production.css">
 </head>
 <body>
-  <div id="loading" class="loadingScreen"><div class="loadingMark">H</div><div>Loading partner workspace...</div></div>
+  <div id="loading" class="loadingScreen"><div class="loadingMark">H</div><div>Loading Capital Suite...</div></div>
   <div id="app" class="app hidden">
     <aside class="sidebar">
-      <div class="brand"><div class="brandMark">H</div><div><div class="brandName">Outerhaven</div><div class="brandSub">Originator Portal</div></div></div>
+      <div class="brand"><div class="brandMark">H</div><div><div class="brandName">Outerhaven</div><div class="brandSub">Capital Suite</div></div></div>
       <nav class="nav">
         <button class="navBtn active" data-section="home"><span>Overview</span></button>
-        <button class="navBtn" data-section="submit"><span>Submit Opportunity</span></button>
-        <button class="navBtn" data-section="submissions"><span>My Submissions</span><b id="navSubmissionCount">0</b></button>
+        <button class="navBtn" data-section="submit"><span>New Deal</span></button>
+        <button class="navBtn" data-section="submissions"><span>Deals</span><b id="navSubmissionCount">0</b></button>
         <button class="navBtn" data-section="mandates"><span>Buyer Mandates</span><b id="navMandateCount">0</b></button>
       </nav>
       <div class="sideBottom">
-        <div class="account"><div class="avatar" id="avatar">H</div><div><strong id="accountName">Originator</strong><span id="accountEmail"></span></div></div>
+        <div class="account"><div class="avatar" id="avatar">H</div><div><strong id="accountName">Partner</strong><span id="accountEmail"></span></div></div>
         <button id="signOut" class="signOut">Sign out</button>
       </div>
     </aside>
 
     <main class="main">
       <header class="topbar">
-        <div><div class="eyebrow">OUTERHAVEN PARTNER NETWORK</div><h1 id="pageTitle">Originator Overview</h1><p id="pageSub">Submit private opportunities, review active mandates, and track Outerhaven's review process.</p></div>
-        <button class="primaryBtn" id="topSubmit">+ Submit Opportunity</button>
+        <div><div class="eyebrow">OUTERHAVEN PRIVATE MARKETS</div><h1 id="pageTitle">Overview</h1><p id="pageSub">Bring in a deal once. Build the package, complete diligence, and move it toward qualified capital.</p></div>
+        <button class="primaryBtn" id="topSubmit">+ New Deal</button>
       </header>
 
       <section id="homeSection" class="section active">
@@ -38,21 +38,21 @@
         <div id="metrics" class="metrics"></div>
         <div class="twoCol">
           <section class="panel">
-            <div class="panelHead"><div><div class="eyebrow">ACTIVE DEMAND</div><h2>Current Buyer Mandates</h2><p>Published criteria currently visible to approved originators.</p></div><button class="textBtn" data-go="mandates">View mandates</button></div>
+            <div class="panelHead"><div><div class="eyebrow">ACTIVE DEMAND</div><h2>Current Buyer Mandates</h2><p>Published criteria currently visible to approved partners.</p></div><button class="textBtn" data-go="mandates">View mandates</button></div>
             <div id="homeMandates"></div>
           </section>
           <section class="panel">
-            <div class="panelHead"><div><div class="eyebrow">YOUR PIPELINE</div><h2>Recent Submissions</h2><p>Your most recent opportunities and current review status.</p></div><button class="textBtn" data-go="submissions">View all</button></div>
+            <div class="panelHead"><div><div class="eyebrow">YOUR PIPELINE</div><h2>Recent Deals</h2><p>Your most recent opportunities and current review status.</p></div><button class="textBtn" data-go="submissions">View all</button></div>
             <div id="recentSubmissions" class="recentList"></div>
           </section>
         </div>
         <section class="panel howItWorks">
-          <div class="panelHead"><div><div class="eyebrow">PROCESS</div><h2>How submissions move</h2></div></div>
+          <div class="panelHead"><div><div class="eyebrow">PROCESS</div><h2>How a deal moves</h2></div></div>
           <div class="steps">
-            <article><span>01</span><b>Submit</b><p>Provide the transaction details, seller relationship, and any supporting diligence materials.</p></article>
-            <article><span>02</span><b>Review</b><p>Outerhaven reviews the opportunity for quality, direct access, and relevance to active mandates.</p></article>
-            <article><span>03</span><b>Clarify</b><p>If more information is required, the opportunity reopens for edits and direct communication.</p></article>
-            <article><span>04</span><b>Decision</b><p>Accepted opportunities can move forward into active matching and engagement outside the portal.</p></article>
+            <article><span>01</span><b>Bring in the source</b><p>Start with the current deck, CIM, memorandum, or the core transaction details.</p></article>
+            <article><span>02</span><b>Structure the deal</b><p>Capital Suite reuses what is already known and asks only for the missing facts that matter.</p></article>
+            <article><span>03</span><b>Build the package</b><p>Generate a distinct teaser, investment memo, capital summary, and diligence package for investor review.</p></article>
+            <article><span>04</span><b>Move to capital</b><p>Outerhaven reviews access, market exposure, mandate fit, and the package before qualified investor conversations.</p></article>
           </div>
         </section>
       </section>
@@ -60,7 +60,7 @@
       <section id="submitSection" class="section">
         <div class="submitGrid">
           <form id="submissionForm" class="panel formPanel">
-            <div class="panelHead"><div><div class="eyebrow">NEW OPPORTUNITY</div><h2>Submit for Review</h2><p>Provide enough detail for Outerhaven to understand the transaction and your relationship to the seller side.</p></div></div>
+            <div class="panelHead"><div><div class="eyebrow">NEW DEAL</div><h2>Add a Deal</h2><p>Start with source material or add the core transaction details manually. Capital Suite will handle the rest of the workflow.</p></div></div>
             <div class="formGrid">
               <label class="span2">Opportunity / Project Name<input id="dealTitle" required maxlength="160" placeholder="Example: Southeast Asia Luxury Resort Portfolio"></label>
               <label>Company / Sponsor<input id="dealCompany" required maxlength="180" placeholder="Company or sponsor name"></label>
@@ -71,12 +71,12 @@
               <label>Seller Relationship<select id="sellerRelationship" required><option value="">Select relationship</option><option>Direct seller engagement</option><option>Exclusive sell-side advisor</option><option>Authorized intermediary</option><option>Direct sponsor / ownership relationship</option><option>Other authorized relationship</option></select></label>
               <label>Revenue <span class="optional">Optional</span><div class="moneyInput"><span>$</span><input id="dealRevenue" type="text" inputmode="decimal" placeholder="25M"></div></label>
               <label>EBITDA <span class="optional">Optional</span><div class="moneyInput"><span>$</span><input id="dealEbitda" type="text" inputmode="decimal" placeholder="3M"></div></label>
-              <label class="span2">Opportunity Summary<textarea id="dealSummary" rows="7" required minlength="40" maxlength="20000" placeholder="Describe the opportunity, transaction rationale, use of proceeds, current ownership or sponsor, and the information an institutional buyer should understand before reviewing it."></textarea><span class="helper">Minimum 40 characters. This becomes part of the review record.</span></label>
+              <label class="span2">Opportunity Summary<textarea id="dealSummary" rows="7" required minlength="40" maxlength="20000" placeholder="Describe the opportunity, transaction rationale, use of proceeds, current ownership or sponsor, and the information an institutional investor should understand before reviewing it."></textarea><span class="helper">Minimum 40 characters. Capital Suite will reuse this information rather than ask for it again.</span></label>
               <label class="checkLabel"><input id="authorityConfirmed" type="checkbox" required><span><strong>Seller-side authority confirmation.</strong> I confirm that I have direct seller access or authorization to present this opportunity and that it is not simply a public listing being recirculated without seller-side access.</span></label>
-              <label class="span2">Supporting Materials <span class="optional">Optional</span><div id="fileDrop" class="fileDrop" tabindex="0"><input id="dealFiles" type="file" multiple accept=".pdf,.docx,.xlsx" hidden><strong>Drop a one-pager, CIM, financials, or supporting diligence</strong><span>PDF, DOCX, or XLSX · up to 10 MB each</span><button id="chooseFiles" type="button" class="secondaryBtn">Choose files</button></div><div id="fileList" class="fileList"></div></label>
+              <label class="span2">Supporting Materials <span class="optional">Optional</span><div id="fileDrop" class="fileDrop" tabindex="0"><input id="dealFiles" type="file" multiple accept=".pdf,.docx,.xlsx" hidden><strong>Drop a one-pager, CIM, financials, model, or supporting diligence</strong><span>PDF, DOCX, or XLSX · up to 10 MB each</span><button id="chooseFiles" type="button" class="secondaryBtn">Choose files</button></div><div id="fileList" class="fileList"></div></label>
             </div>
             <div id="submitMessage" class="formMessage" role="status" aria-live="polite"></div>
-            <div class="formActions"><button id="submitDeal" class="primaryBtn" type="submit">Submit Opportunity</button></div>
+            <div class="formActions"><button id="submitDeal" class="primaryBtn" type="submit">Add Deal</button></div>
           </form>
 
           <aside class="panel fitPanel">
@@ -93,14 +93,14 @@
 
       <section id="submissionsSection" class="section">
         <section class="panel">
-          <div class="panelHead"><div><div class="eyebrow">YOUR OPPORTUNITIES</div><h2>Submitted Deals</h2><p>Only opportunities owned by your account are visible here.</p></div><button class="primaryBtn" data-go="submit">+ New Submission</button></div>
+          <div class="panelHead"><div><div class="eyebrow">YOUR PIPELINE</div><h2>Deals</h2><p>Only opportunities owned by your account are visible here.</p></div><button class="primaryBtn" data-go="submit">+ New Deal</button></div>
           <div id="submissionCards" class="submissionCards"></div>
         </section>
       </section>
 
       <section id="mandatesSection" class="section">
         <section class="panel">
-          <div class="panelHead"><div><div class="eyebrow">PUBLISHED BUY BOXES</div><h2>Active Buyer Mandates</h2><p>Use these criteria to determine whether an opportunity is worth submitting before sending materials.</p></div></div>
+          <div class="panelHead"><div><div class="eyebrow">PUBLISHED BUY BOXES</div><h2>Active Buyer Mandates</h2><p>Use these criteria to understand current demand before moving a deal into investor conversations.</p></div></div>
           <div id="mandateCards" class="mandateCards"></div>
         </section>
       </section>
@@ -109,7 +109,7 @@
 
   <div id="dealModalOverlay" class="modalOverlay hidden" aria-hidden="true">
     <section class="dealModal" role="dialog" aria-modal="true" aria-labelledby="dealModalTitle">
-      <header class="dealModalHead"><div><div class="eyebrow">OPPORTUNITY RECORD</div><h2 id="dealModalTitle">Opportunity</h2></div><button id="closeDealModal" class="closeBtn" aria-label="Close">×</button></header>
+      <header class="dealModalHead"><div><div class="eyebrow">DEAL RECORD</div><h2 id="dealModalTitle">Opportunity</h2></div><button id="closeDealModal" class="closeBtn" aria-label="Close">×</button></header>
       <div id="dealModalBody" class="dealModalBody"></div>
     </section>
   </div>
