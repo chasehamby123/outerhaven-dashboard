@@ -30,12 +30,24 @@ Current portal layers:
 11. `originator-investor-name-cleaner-v1.js` - investor-facing entity-name cleanup
 12. `originator-investor-teaser-v3.js` - transaction-aware teaser specialization
 13. `originator-investor-doc-specializer-v2.js` - memo/capital/diligence specialization
-14. `originator-capital-suite-v17.js` - live Capital Suite workflow
-15. `originator-required-fact-validator-v3.js` - universal core diligence plus transaction-specific package-readiness validation
-16. `originator-output-role-copy-v1.js` - output-role UI copy
-17. `originator-document-controller-v1.js` - canonical document routing and visible-preview export
-18. `originator-nav-guards-v2.js` - Capital Suite navigation guard
-19. `originator-tutorial-v6.js` - current guided walkthrough
+14. `originator-capital-suite-v18.js` - consolidated deal-centric Capital Suite workflow, core diligence, transaction diligence, source management and internal deal intelligence
+15. `originator-document-controller-v1.js` - canonical document routing and visible-preview export
+16. `originator-nav-guards-v2.js` - Capital Suite navigation guard
+17. `originator-tutorial-v7.js` - current guided walkthrough
+
+## Product interaction rule
+
+Capital Suite should feel like one intelligent workspace, not a collection of modules.
+
+The primary flow is:
+
+1. Source material first
+2. One next action
+3. Investor package
+4. Deal intelligence
+5. Sources and later diligence
+
+Do not put multiple simultaneous diligence tasks in front of the user. Do not require narrative-length answers when a short factual answer is sufficient. Captured information may be marked as thin or worth strengthening internally, but a concise factual answer should not trap the user on the same step.
 
 ## Universal core diligence
 
@@ -54,18 +66,18 @@ Every deal must have the following twelve diligence questions addressed. Capital
 11. Sponsor / management track record
 12. Sponsor capital invested / committed
 
-A negative answer is still an answer. For example, "No exclusive mandate," "Not yet marketed," "No lead investor," or "No other firms" should satisfy the diligence question while remaining visible as the factual answer. Do not invent positive answers from weak source language.
+A negative answer is still an answer. For example, `No exclusive mandate`, `Not yet marketed`, `No lead investor`, or `No other firms` should satisfy the diligence question while remaining visible as the factual answer. Do not invent positive answers from weak source language.
 
 ## Investor-output rules
 
 All generated outputs are investor-facing by default.
 
-- Do not show placeholders such as "not provided", "not added", "source required", or internal workflow commentary.
+- Do not show placeholders such as `not provided`, `not added`, `source required`, or internal workflow commentary.
 - Omit unavailable metrics cleanly.
-- Keep private notes and mandate-fit intelligence out of investor materials.
+- Keep private notes, market-exposure intelligence and mandate-fit intelligence out of investor materials.
 - The teaser, memo, capital summary and diligence package have different jobs and must not be four rewrites of the same summary.
 - Real-estate pre-sales must distinguish LOI/reservation, contracted sale, and funded/collected proceeds.
-- Required facts must be validated by field meaning, not merely by text length. A reference to construction costs does not equal a complete development budget, for example.
+- The exact investor-document preview shown to the user is the canonical print / save-PDF output.
 
 ## Legacy quarantine
 
@@ -79,12 +91,17 @@ This includes, but is not limited to:
 - `originator-advisor-workspace-v14.js`
 - `originator-capital-suite-v15.js`
 - `originator-capital-suite-v16.js`
+- `originator-capital-suite-v17.js`
+- `originator-required-fact-validator-v2.js`
+- `originator-required-fact-validator-v3.js`, consolidated into v18
+- `originator-concise-answer-v1.js`, consolidated into v18
+- `originator-output-role-copy-v1.js`, consolidated into v18
+- `originator-tutorial-v6.js`, superseded by v7
 - old investor-suite v6-v11 files
 - old capital-document v2-v10 files
 - old capital-generation v1-v4 files
 - old teaser v1-v2 files
 - old document-specializer v1
-- `originator-required-fact-validator-v2.js`, superseded by v3 universal diligence logic
 - old auto-fix / done-for-you / service-request UI layers
 - `originator-preview.js`, which belongs to a retired legacy preview architecture and must not be loaded by the current external portal
 
