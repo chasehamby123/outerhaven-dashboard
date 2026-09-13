@@ -1,0 +1,79 @@
+# OuterHaven Originator Portal Production Manifest
+
+This file defines the supported external Originator / Partner Portal architecture.
+
+## System boundary
+
+The external portal is isolated from the internal OuterHaven employee dashboard.
+
+- External Supabase project: `xanyalooekgrywntxfxn`
+- External portal entry: `originator-entry.js`
+- External admin entry: `originator-admin.html` + `originator-portal-admin.js`
+- Do not use the internal dashboard database, internal dashboard scripts, or `originator-admin.js` for the external portal.
+
+## Production source of truth
+
+Only scripts explicitly loaded by `originator-entry.js` are part of the production user portal. A file existing in the repository does not make it production code.
+
+Current portal layers:
+
+1. `originator.js` - core account, deal submission, submissions, messages and mandate UI
+2. `originator-pdf-import.js` - PDF import surface
+3. `originator-pdf-intelligence-v2.js` - deterministic PDF extraction + OCR fallback
+4. `originator-location-normalizer-v4.js` - conservative geography normalization
+5. `outerhaven-matcher-v4.js` - canonical mandate matching model
+6. `originator-matching-ui-v3.js` - matcher presentation
+7. `originator-mandate-tabs.js` - mandate geography tabs
+8. `originator-capital-suite.js` - legacy shell dependency for the Capital Suite mount/output container only
+9. `originator-capital-documents-v11.js` - base investor-document renderer/API
+10. `originator-capital-generation-v5.js` - transaction-aware narrative generation
+11. `originator-investor-name-cleaner-v1.js` - investor-facing entity-name cleanup
+12. `originator-investor-teaser-v3.js` - transaction-aware teaser specialization
+13. `originator-investor-doc-specializer-v2.js` - memo/capital/diligence specialization
+14. `originator-capital-suite-v17.js` - live Capital Suite workflow
+15. `originator-output-role-copy-v1.js` - output-role UI copy
+16. `originator-document-controller-v1.js` - canonical document routing and visible-preview export
+17. `originator-nav-guards-v2.js` - Capital Suite navigation guard
+18. `originator-tutorial-v6.js` - current guided walkthrough
+
+## Investor-output rules
+
+All generated outputs are investor-facing by default.
+
+- Do not show placeholders such as "not provided", "not added", "source required", or internal workflow commentary.
+- Omit unavailable metrics cleanly.
+- Keep private notes and mandate-fit intelligence out of investor materials.
+- The teaser, memo, capital summary and diligence package have different jobs and must not be four rewrites of the same summary.
+- Real-estate pre-sales must distinguish LOI/reservation, contracted sale, and funded/collected proceeds.
+
+## Legacy quarantine
+
+The repository contains historical versions retained for reference. They must not be added to `originator-entry.js` without a deliberate migration and regression review.
+
+This includes, but is not limited to:
+
+- `originator-advisor-workspace-v12.js`
+- `originator-advisor-workspace-v13.js`
+- `originator-advisor-workspace-v14.js`
+- `originator-capital-suite-v15.js`
+- `originator-capital-suite-v16.js`
+- old investor-suite v6-v11 files
+- old capital-document v2-v10 files
+- old capital-generation v1-v4 files
+- old teaser v1-v2 files
+- old document-specializer v1
+- old auto-fix / done-for-you / service-request UI layers
+- `originator-preview.js`, which belongs to a retired legacy preview architecture and must not be loaded by the current external portal
+
+The known v13 Advisor Workspace build is specifically quarantined because it previously caused an empty Capital Suite after a JavaScript failure.
+
+## Change discipline
+
+Before changing production portal behavior:
+
+1. Confirm the change is for the external portal, not the internal dashboard.
+2. Check this manifest and the current `originator-entry.js` load path.
+3. Avoid adding broad `MutationObserver` loops to areas the same script mutates.
+4. Prefer one canonical implementation over another patch layer.
+5. Verify the production Vercel deployment and live file after merge.
+6. Treat deployment READY as deployment verification, not authenticated browser E2E verification.
