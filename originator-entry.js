@@ -37,6 +37,7 @@
       await load('/originator-investor-teaser-v3.js');
       await load('/originator-investor-doc-specializer-v2.js');
       await load('/originator-capital-suite-v18.js');
+      await load('/originator-secure-request-v1.js');
       await load('/originator-document-controller-v1.js');
       await load('/originator-nav-guards-v2.js');
       await load('/originator-tutorial-v7.js');
