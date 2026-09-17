@@ -54,6 +54,6 @@
   loadScript('/revenue-dashboard.js');
   loadScript('/ai-image-quick-add.js');
   loadScript('/dashboard-pipeline-regression-guard.js');
-  loadScript('/daily-ops-v4.js',()=>loadScript('/daily-ops-weekly-calendar.js',()=>loadScript('/daily-ops-owner-followups.js')));
+  loadScript('/daily-ops-v4.js',()=>loadScript('/daily-ops-weekly-calendar.js',()=>loadScript('/daily-ops-owner-followups.js',()=>loadScript('/daily-ops-linkedin-sync-ui.js'))));
 })();
-// Daily Ops v4 command center + exact GMT+8 weekly posting calendar; Prosp follow-ups remain owner-managed
+// Daily Ops v4 command center + GMT+8 posting calendar + backend LinkedIn post/comment sync; Prosp follow-ups remain owner-managed
