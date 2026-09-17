@@ -33,7 +33,7 @@
         return;
       }
       if(adminLoadData){loadData=adminLoadData;await loadData()}
-      if(adminSubscribe){subscribe=adminSubscribe;subscribe()}
+      if(adminSubscribe){adminSubscribe()}
       loadScript('/relationship-only-person-entry.js');
       loadScript('/buy-side-partner-sync.js');
       loadScript('/buy-side-thesis-status-viewer.js',()=>loadScript('/buy-side-thesis-preview-click-guard.js'));
@@ -54,6 +54,6 @@
   loadScript('/revenue-dashboard.js');
   loadScript('/ai-image-quick-add.js');
   loadScript('/dashboard-pipeline-regression-guard.js');
-  loadScript('/daily-ops-v4.js',()=>loadScript('/daily-ops-weekly-calendar.js'));
+  loadScript('/daily-ops-v4.js',()=>loadScript('/daily-ops-weekly-calendar.js',()=>loadScript('/daily-ops-owner-followups.js')));
 })();
-// Daily Ops v4 command center + exact GMT+8 weekly posting calendar
+// Daily Ops v4 command center + exact GMT+8 weekly posting calendar; Prosp follow-ups remain owner-managed
