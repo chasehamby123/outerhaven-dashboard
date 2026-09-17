@@ -23,12 +23,11 @@
       if(member.role!=='originator'){await client.auth.signOut();location.replace('/originator-login.html?mode=signin');return}
       if(member.status!=='approved'||!['pilot','paid'].includes(member.membership)){location.replace('/originator-pending.html');return}
       window.__OUTERHAVEN_ORIGINATOR_SB=client;
+
+      await load('/outerhaven-matcher.js');
       await load('/originator.js');
-      await load('/originator-pdf-import.js');
-      await load('/originator-pdf-intelligence-v2.js');
+      await load('/originator-pdf-intelligence.js');
       await load('/originator-location-normalizer-v4.js');
-      await load('/outerhaven-matcher-v4.js');
-      await load('/originator-matching-ui-v3.js');
       await load('/originator-mandate-tabs.js');
       await load('/originator-capital-shell-v1.js');
       await load('/originator-capital-documents-v11.js');
@@ -41,7 +40,6 @@
       await load('/originator-document-controller-v1.js');
       await load('/originator-nav-guards-v2.js');
       await load('/originator-tutorial-v7.js');
-      await load('/originator-deal-passport-v2.js');
     }catch(err){
       console.error('originator entry',err);
       location.replace('/originator-login.html?mode=signin');
