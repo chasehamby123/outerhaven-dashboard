@@ -41,6 +41,7 @@
       await load('/originator-document-controller-v1.js');
       await load('/originator-nav-guards-v2.js');
       await load('/originator-tutorial-v7.js');
+      await load('/originator-deal-passport-v1.js');
     }catch(err){
       console.error('originator entry',err);
       location.replace('/originator-login.html?mode=signin');
