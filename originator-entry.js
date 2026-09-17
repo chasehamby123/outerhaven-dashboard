@@ -26,6 +26,7 @@
 
       await load('/outerhaven-matcher.js');
       await load('/originator.js');
+      await load('/originator-related-mandates.js');
       await load('/originator-pdf-intelligence.js');
       await load('/originator-location-normalizer-v4.js');
       await load('/originator-mandate-tabs.js');
