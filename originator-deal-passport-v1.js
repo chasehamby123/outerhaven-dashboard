@@ -62,9 +62,9 @@
   .dealPassportFooter{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:14px 22px}
   .dealPassportFootMeta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:9px;color:#7d8794}
   .dealPassportActions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-  .dealPassportOpen{border:0;border-radius:9px;background:#151a22;color:#fff;padding:9px 13px;font-size:9px;font-weight:900;letter-spacing:.01em;cursor:pointer}
+  .dealPassportOpen{border:0;border-radius:9px;background:#151a22;color:#fff;padding:9px 13px;font-size:9px;font-weight:900;letter-spacing:.01em;cursor:pointer;position:relative;z-index:2}
   .dealPassportOpen:hover{background:#242b36}
-  .dealPassportManage{display:flex;align-items:center;gap:7px}
+  .dealPassportManage{display:flex;align-items:center;gap:7px;position:relative;z-index:2}
   .dealPassportAuthority{display:inline-flex;align-items:center;gap:5px;font-weight:800;color:#536170}
   .dealPassportAuthority:before{content:'✓';display:inline-grid;place-items:center;width:14px;height:14px;border-radius:50%;background:#eef7f1;color:#297345;font-size:8px}
   .dealModalHead .eyebrow[data-passport-label='1']{letter-spacing:.13em}
@@ -99,14 +99,22 @@
 
   function transformCard(card,d){
     if(!card||!d||card.dataset.dealPassportV1==='1')return;
+    if(typeof card.onclick!=='function'){setTimeout(scheduleApply,30);return}
+
+    const originalOpen=card.onclick;
+    const oldEdit=card.querySelector('[data-edit-deal]');
+    const oldWithdraw=card.querySelector('[data-withdraw-deal]');
+    const editHandler=typeof oldEdit?.onclick==='function'?oldEdit.onclick:null;
+    const withdrawHandler=typeof oldWithdraw?.onclick==='function'?oldWithdraw.onclick:null;
+
     card.dataset.dealPassportV1='1';
     card.classList.add('dealPassportCard');
 
-    const preserved=[...card.querySelectorAll('[data-edit-deal],[data-withdraw-deal]')];
     const fit=bestFit(d);
     const fitValue=fit?`${fit.score}%`:'—';
     const fitTitle=fit?.box?.title||'No published mandate';
-    const authority=d.authority_confirmed?'Seller access confirmed':(d.seller_relationship||'Seller relationship not provided');
+    const canEdit=!!editHandler;
+    const canWithdraw=!!withdrawHandler;
 
     card.innerHTML=`
       <div class="dealPassportHead">
@@ -127,11 +135,24 @@
       </div>
       <div class="dealPassportFooter">
         <div class="dealPassportFootMeta"><span>Submitted ${esc(date(d.created_at))}</span><span>•</span><span title="${esc(fitTitle)}">${fit?`Best fit: ${esc(fitTitle)}`:'No published mandate fit'}</span>${d.authority_confirmed?'<span class="dealPassportAuthority">Authority confirmed</span>':''}</div>
-        <div class="dealPassportActions"><div class="dealPassportManage"></div><button type="button" class="dealPassportOpen">Deal Passport →</button></div>
+        <div class="dealPassportActions"><div class="dealPassportManage">${canEdit?`<button type="button" class="miniBtn" data-passport-edit="${esc(d.id)}">Edit & Resubmit</button>`:''}${canWithdraw?`<button type="button" class="miniBtn danger" data-passport-withdraw="${esc(d.id)}">Withdraw</button>`:''}</div><button type="button" class="dealPassportOpen" data-passport-open="${esc(d.id)}">Deal Passport →</button></div>
       </div>`;
 
-    const manage=card.querySelector('.dealPassportManage');
-    preserved.forEach(btn=>manage?.appendChild(btn));
+    const openBtn=card.querySelector('[data-passport-open]');
+    if(openBtn)openBtn.onclick=e=>{
+      e.preventDefault();e.stopPropagation();
+      originalOpen({target:card});
+    };
+    const editBtn=card.querySelector('[data-passport-edit]');
+    if(editBtn&&editHandler)editBtn.onclick=e=>{
+      e.preventDefault();e.stopPropagation();
+      editHandler.call(oldEdit,e);
+    };
+    const withdrawBtn=card.querySelector('[data-passport-withdraw]');
+    if(withdrawBtn&&withdrawHandler)withdrawBtn.onclick=e=>{
+      e.preventDefault();e.stopPropagation();
+      withdrawHandler.call(oldWithdraw,e);
+    };
   }
 
   function applyModalLabel(){
