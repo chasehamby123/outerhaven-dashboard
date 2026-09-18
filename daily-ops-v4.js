@@ -1,7 +1,7 @@
 (function(){
 if(window.__outerhavenDailyOpsV4)return;window.__outerhavenDailyOpsV4=true;
 const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
-const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+const today=()=>{const p=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()),o={};p.forEach(x=>o[x.type]=x.value);return `${o.year}-${o.month}-${o.day}`};
 const fmtTime=v=>{if(!v)return'—';const [h,m]=String(v).split(':');const d=new Date();d.setHours(+h,+m||0,0,0);return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})};
 const fmtDate=v=>v?new Date(v).toLocaleDateString([],{month:'short',day:'numeric'}):'—';
 const DAY=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
