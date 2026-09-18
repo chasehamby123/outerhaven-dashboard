@@ -1,8 +1,9 @@
 (function(){
 if(window.__outerhavenDailyOpsV4)return;window.__outerhavenDailyOpsV4=true;
 const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
-const today=()=>{const p=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()),o={};p.forEach(x=>o[x.type]=x.value);return `${o.year}-${o.month}-${o.day}`};
+const today=()=>{const p=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(Date.now()-2*60*60*1000)),o={};p.forEach(x=>o[x.type]=x.value);return `${o.year}-${o.month}-${o.day}`};
 const fmtTime=v=>{if(!v)return'—';const [h,m]=String(v).split(':');const d=new Date();d.setHours(+h,+m||0,0,0);return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})};
+const opsSortMin=v=>{const [h,m]=String(v||'00:00').split(':');let n=Number(h)*60+Number(m||0);if(n<120)n+=1440;return n};
 const fmtDate=v=>v?new Date(v).toLocaleDateString([],{month:'short',day:'numeric'}):'—';
 const DAY=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 let role=null,accounts=[],posts=[],commenters=[],dms=[],schedule=[],experiments=[],refs=[],busy=false,activeTab='today',channel=null;
@@ -20,7 +21,7 @@ async function load(){if(busy||typeof sb==='undefined')return;busy=true;try{awai
  sb.from('daily_ops_experiments').select('*').order('started_at',{ascending:false}),
  sb.from('daily_ops_creative_refs').select('*').order('created_at',{ascending:false})
 ]);
- [a,p,c,d,s,e,r].forEach(x=>{if(x.error)console.error('Daily Ops v4',x.error)});accounts=a.data||[];posts=p.data||[];commenters=c.data||[];dms=d.data||[];schedule=s.data||[];experiments=e.data||[];refs=r.data||[];render();realtime()}finally{busy=false}}
+ [a,p,c,d,s,e,r].forEach(x=>{if(x.error)console.error('Daily Ops v4',x.error)});accounts=a.data||[];posts=p.data||[];commenters=c.data||[];dms=d.data||[];schedule=(s.data||[]).sort((x,y)=>opsSortMin(x.start_time)-opsSortMin(y.start_time));experiments=e.data||[];refs=r.data||[];render();realtime()}finally{busy=false}}
 function todayPosts(){return posts.filter(p=>p.work_date===today()||String(p.posted_at||'').slice(0,10)===today())}
 function postReplies(p){return Math.max(0,Number(p.unreplied_count||0))}
 function pendingDms(){return dms.filter(d=>!['whatsapp','ignored'].includes(String(d.status||'').toLowerCase())&&!d.whatsapp_added_at&&!d.ignored_at)}
