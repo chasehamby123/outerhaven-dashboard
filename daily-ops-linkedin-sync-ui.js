@@ -42,8 +42,8 @@
       if(s)s.textContent='Step 2/3 · Refreshing recent posts from all 9 mapped LinkedIn profiles…';
       const posts=await invoke({mode:'posts',post_refresh_limit:5});
       if(s)s.textContent=`Step 3/3 · ${Number(posts.posts_saved||0)} posts checked. Refreshing comment threads that changed…`;
-      const comments=await invoke({mode:'comments',comment_batch_limit:8});
-      if(s){s.className='opsLinkedInSyncStatus good';s.textContent=`Sync complete · ${Number(posts.profiles_checked||0)} profiles · ${Number(posts.posts_saved||0)} recent posts updated · ${Number(comments.comment_posts_processed||0)} comment threads refreshed · ${Number(comments.comment_records_saved||0)} comment/reply records · ${Number(comments.unreplied_total||0)} unreplied comments in refreshed threads`}
+      const comments=await invoke({mode:'comments',comment_batch_limit:50});
+      if(s){s.className='opsLinkedInSyncStatus good';const skipped=comments.apify_run_skipped?' · comment scrape skipped because nothing changed':'';s.textContent=`Sync complete · ${Number(posts.profiles_checked||0)} profiles · ${Number(posts.posts_saved||0)} recent posts updated · ${Number(posts.changed_posts||0)} posts changed · ${Number(comments.comment_posts_processed||0)}/${Number(comments.comment_posts_queued||0)} changed comment threads refreshed · ${Number(comments.comment_records_saved||0)} comment/reply records · ${Number(comments.unreplied_total||0)} unreplied${skipped}`}
       const refresh=document.querySelector('#ops4Refresh');if(refresh)refresh.click();
     }catch(e){console.error('LinkedIn sync',e);if(s){s.className='opsLinkedInSyncStatus bad';s.textContent=`Sync failed: ${e?.message||String(e)}`}}
     finally{b.disabled=false;b.textContent='Sync LinkedIn'}
