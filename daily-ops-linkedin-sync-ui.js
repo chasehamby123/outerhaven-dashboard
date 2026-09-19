@@ -19,7 +19,7 @@
       let tools=head.querySelector('.opsLinkedInTools');
       if(!tools){tools=document.createElement('div');tools.className='opsLinkedInTools';tools.style.cssText='display:flex;gap:7px;align-items:center;flex-wrap:wrap';const existing=head.querySelector('#ops4Refresh');if(existing)tools.appendChild(existing);head.appendChild(tools)}
       if(!tools.querySelector('#opsLinkedInSync')){const b=document.createElement('button');b.id='opsLinkedInSync';b.className='opsLinkedInSyncBtn';b.textContent='Sync LinkedIn';b.onclick=runSync;tools.prepend(b)}
-      if(!panel.querySelector('#opsLinkedInSyncStatus')){const s=document.createElement('div');s.id='opsLinkedInSyncStatus';s.className='opsLinkedInSyncStatus';s.textContent='LinkedIn sync runs in stages: connection check, recent posts, then changed comment threads.';head.insertAdjacentElement('afterend',s)}
+      if(!panel.querySelector('#opsLinkedInSyncStatus')){const s=document.createElement('div');s.id='opsLinkedInSyncStatus';s.className='opsLinkedInSyncStatus';s.textContent='LinkedIn sync checks one latest post per mapped account, then refreshes that account's current comment thread.';head.insertAdjacentElement('afterend',s)}
     }finally{applying=false}
   }
   async function invoke(body){
@@ -39,11 +39,11 @@
     try{
       if(s){s.className='opsLinkedInSyncStatus';s.textContent='Step 1/3 · Verifying Apify connection…'}
       await invoke({mode:'health'});
-      if(s)s.textContent='Step 2/3 · Refreshing recent posts from all 9 mapped LinkedIn profiles…';
-      const posts=await invoke({mode:'posts',post_refresh_limit:5});
-      if(s)s.textContent=`Step 3/3 · ${Number(posts.posts_saved||0)} posts checked. Refreshing comment threads that changed…`;
-      const comments=await invoke({mode:'comments',comment_batch_limit:50});
-      if(s){s.className='opsLinkedInSyncStatus good';const skipped=comments.apify_run_skipped?' · comment scrape skipped because nothing changed':'';s.textContent=`Sync complete · ${Number(posts.profiles_checked||0)} profiles · ${Number(posts.posts_saved||0)} recent posts updated · ${Number(posts.changed_posts||0)} posts changed · ${Number(comments.comment_posts_processed||0)}/${Number(comments.comment_posts_queued||0)} changed comment threads refreshed · ${Number(comments.comment_records_saved||0)} comment/reply records · ${Number(comments.unreplied_total||0)} unreplied${skipped}`}
+      if(s)s.textContent='Step 2/3 · Checking the latest post from every mapped LinkedIn profile…';
+      const posts=await invoke({mode:'posts'});
+      if(s)s.textContent=`Step 3/3 · ${Number(posts.posts_saved||0)} latest posts checked. Refreshing the current comment thread for every mapped account…`;
+      const comments=await invoke({mode:'comments'});
+      if(s){const issues=[...(posts.missing_profiles||[]),...(comments.missing_accounts||[]),...(comments.incomplete_accounts||[])];const uniqueIssues=[...new Set(issues.filter(Boolean))];if(uniqueIssues.length){s.className='opsLinkedInSyncStatus bad';s.textContent=`Sync finished with incomplete data · ${Number(posts.posts_saved||0)}/${Number(posts.profiles_checked||0)} latest posts matched · ${Number(comments.comment_posts_processed||0)}/${Number(comments.comment_posts_queued||0)} comment threads fully refreshed · Check: ${uniqueIssues.join(', ')}`}else{s.className='opsLinkedInSyncStatus good';s.textContent=`Sync complete · ${Number(posts.profiles_checked||0)} profiles checked · ${Number(posts.posts_saved||0)} latest posts updated · ${Number(comments.comment_posts_processed||0)}/${Number(comments.comment_posts_queued||0)} comment threads refreshed · ${Number(comments.comment_records_saved||0)} comment/reply records · ${Number(comments.unreplied_total||0)} unreplied`}}
       const refresh=document.querySelector('#ops4Refresh');if(refresh)refresh.click();
     }catch(e){console.error('LinkedIn sync',e);if(s){s.className='opsLinkedInSyncStatus bad';s.textContent=`Sync failed: ${e?.message||String(e)}`}}
     finally{b.disabled=false;b.textContent='Sync LinkedIn'}
