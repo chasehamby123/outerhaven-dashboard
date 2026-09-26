@@ -45,3 +45,43 @@
 .industryDetail li{font-size:9px;color:#4f5963;padding:7px 0;border-bottom:1px solid #e3e0d9}
 @media(max-width:1000px){.practiceGrid{grid-template-columns:1fr}.clientGrid{grid-template-columns:repeat(2,1fr)}.capabilityDetail{grid-template-columns:1fr;gap:40px}.capabilityColumns{grid-template-columns:1fr}}
 @media(max-width:760px){.clientGrid{grid-template-columns:1fr}.industryRows a{grid-template-columns:1fr 20px;gap:8px 14px}.industryRows b{grid-column:1}.industryRows i{grid-column:2;grid-row:1}.practiceCard{min-height:auto;padding:27px 22px}.industryDetail{grid-template-columns:40px 1fr}.industryDetail ul{grid-template-columns:1fr}.capabilityColumns>div{min-height:auto}}
+
+
+/* Responsive desktop typography: keep large displays readable without changing the mobile design */
+@media (min-width: 1200px) {
+  .siteWrap{width:min(clamp(1220px,82vw,1500px),calc(100% - 72px))}
+  .siteNavInner{height:clamp(76px,5vw,88px)}
+  .siteBrandText strong{font-size:clamp(18px,.98vw,22px)}
+  .siteBrandText span{font-size:clamp(7.2px,.42vw,10px)}
+  .siteNavLinks{gap:clamp(28px,1.65vw,38px)}
+  .siteNavLinks a,.navText{font-size:clamp(10px,.58vw,13px)}
+  .navCta{font-size:clamp(9px,.52vw,12px);min-height:clamp(42px,2.5vw,48px);padding-inline:clamp(17px,1vw,22px)}
+  .eyebrow{font-size:clamp(9px,.52vw,12px)}
+  .financeHeroLead{font-size:clamp(15px,.9vw,18px)}
+  .financeHeroLinks a{font-size:clamp(9px,.52vw,12px)}
+  .metric strong{font-size:clamp(47px,3.1vw,62px)}
+  .metric span{font-size:clamp(8px,.48vw,11px)}
+  .metric small{font-size:clamp(8px,.48vw,11px)}
+  .sectionHead p,.firmCopy,.capitalCopy,.methodLead p,.imageBandContent p,.quietAccess p,.closing p,.pageHero p,.textColumns .copy p{font-size:clamp(10px,.64vw,14px)}
+  .serviceRow p,.principleRow span,.capitalRow span,.methodLine p,.clientCard p,.industryRows b,.capabilityIntro p,.capabilityColumns p,.industryDetail p,.industryDetail li,.pillarCard>p,.pillarList span,.situationCard p,.darkCapability p,.practiceCard p,.practiceCard li{font-size:clamp(9px,.56vw,12px)}
+  .serviceRow h3{font-size:clamp(27px,1.55vw,34px)}
+  .principleRow strong,.methodLine strong,.capitalRow strong{font-size:clamp(10px,.62vw,14px)}
+  .capitalRow strong{font-size:clamp(21px,1.2vw,27px)}
+  .methodLine{grid-template-columns:clamp(55px,3.4vw,70px) clamp(160px,9vw,190px) 1fr}
+  .methodLine b{font-size:clamp(17px,1vw,22px)}
+  .imageBandContent h2{font-size:clamp(46px,4.1vw,78px)}
+  .closing h2{font-size:clamp(43px,4.3vw,74px)}
+  .footerNav a,.footerLegal{font-size:clamp(9px,.5vw,11px)}
+  .pillarCard h3{font-size:clamp(30px,2.35vw,44px)}
+  .situationCard strong{font-size:clamp(24px,1.55vw,30px)}
+  .darkCapability h3{font-size:clamp(31px,2vw,38px)}
+  .practiceCard h3{font-size:clamp(30px,2.35vw,44px)}
+  .clientCard span,.industryRows span{font-size:clamp(23px,1.45vw,29px)}
+  .capabilityIntro h2{font-size:clamp(42px,3.8vw,64px)}
+  .capabilityColumns h3{font-size:clamp(25px,1.6vw,31px)}
+  .industryDetail h3{font-size:clamp(33px,2.05vw,40px)}
+}
+
+@media (min-width: 1800px) {
+  .siteWrap{width:min(1500px,calc(100% - 96px))}
+}
