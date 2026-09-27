@@ -1,0 +1,70 @@
+// HQ entry: auth gate, routing, sidebar.
+import { $, $$, esc, state, authenticate, signIn, signOut } from './core.js';
+import { store, load, loadSheet, subscribe, onChange } from './data.js';
+import { renderOverview } from './overview.js';
+import { renderGrowth } from './growth.js';
+
+const ROUTES = {
+  overview: { label: 'Overview', render: r => renderOverview(r) },
+  growth: { label: 'Growth', render: (r, sub) => renderGrowth(r, sub) },
+};
+
+function route() {
+  const [, page = 'overview', sub] = (location.hash || '#/overview').split('/');
+  return { page: ROUTES[page] ? page : 'overview', sub };
+}
+
+let lastScroll = 0;
+function render() {
+  const { page, sub } = route(), main = $('#view');
+  lastScroll = window.scrollY;
+  $$('.nav a[data-page]').forEach(a => a.classList.toggle('on', a.dataset.page === page));
+  if (document.querySelector('.modal')) return; // don't yank a form out from under the user
+  ROUTES[page].render(main, sub);
+  window.scrollTo(0, lastScroll);
+}
+
+function shell() {
+  $('#app').innerHTML = `<div class="app">
+    <aside class="side">
+      <div class="brand"><b>O</b><span>Outerhaven</span></div>
+      <nav class="nav">
+        <a href="#/overview" data-page="overview">Overview</a>
+        <a href="#/growth/posts" data-page="growth">Growth</a>
+        <small>Legacy</small>
+        <a href="/shared.html">Pipeline <em>↗</em></a>
+      </nav>
+      <div class="sideFoot"><span>${esc(state.user?.email || '')}</span><button class="link s" id="signOut">Sign out</button></div>
+    </aside>
+    <main class="main" id="view"></main></div>`;
+  $('#signOut').onclick = signOut;
+}
+
+function authScreen(msg = '') {
+  $('#app').innerHTML = `<div class="auth"><div class="card"><div class="brand" style="padding:0"><b>O</b><span>Outerhaven</span></div>
+    <h1>Sign in</h1><p>Team members only.</p>
+    <form id="authForm"><label class="field">Email<input class="input" id="aEmail" type="email" autocomplete="email" required></label>
+    <label class="field">Password<input class="input" id="aPass" type="password" autocomplete="current-password" required></label>
+    <div class="msg" id="aMsg">${esc(msg)}</div><button class="btn primary" type="submit">Sign in</button></form></div></div>`;
+  $('#authForm').onsubmit = async e => {
+    e.preventDefault(); const b = e.submitter; b.disabled = true;
+    const err = await signIn($('#aEmail').value, $('#aPass').value);
+    if (err) { $('#aMsg').textContent = err; b.disabled = false; return; }
+    start();
+  };
+}
+
+async function start() {
+  const r = await authenticate();
+  if (!r.ok) return authScreen(r.msg);
+  shell();
+  $('#view').innerHTML = '<div class="empty">Loading…</div>';
+  onChange(render);
+  window.addEventListener('hq:modalclosed', render);
+  window.addEventListener('hashchange', () => { window.scrollTo(0, 0); lastScroll = 0; render(); });
+  await Promise.all([load(), loadSheet()]);
+  subscribe();
+}
+
+start();
+window.__hq = { store }; // handy for debugging in the console
