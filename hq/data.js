@@ -4,7 +4,7 @@ import { loadWeekly } from './sheet.js';
 import { toPost } from './insights.js';
 
 export const store = {
-  accounts: [], rawPosts: [], experiments: [], meetings: [], sheet: null, sheetError: null, settings: null, runs: [],
+  accounts: [], rawPosts: [], experiments: [], meetings: [], sheet: null, sheetError: null, settings: null, scrapeLog: [], scrapeLatest: null,
   missing: new Set(), // tables/columns that need the migration
   posts: [], // engine-shaped posts
 };
@@ -18,7 +18,10 @@ export const accountName = id => store.accounts.find(a => a.id === id)?.owner_na
 function rebuildPosts() {
   const counts = {};
   for (const m of store.meetings) if (m.post_id && m.status !== 'cancelled') counts[m.post_id] = (counts[m.post_id] || 0) + 1;
-  store.posts = store.rawPosts.map(r => toPost(r, accountName(r.account_id), counts[r.id] || 0));
+  // Reshares are stored as separate rows sharing the original's post_key: they are the "boosts".
+  const sharers = {};
+  for (const r of store.rawPosts) if (r.is_repost && r.post_key) (sharers[r.post_key] ||= new Set()).add(accountName(r.account_id));
+  store.posts = store.rawPosts.filter(r => !r.is_repost).map(r => toPost(r, accountName(r.account_id), counts[r.id] || 0, [...(sharers[r.post_key] || [])]));
 }
 
 export async function loadSheet() {
@@ -28,18 +31,19 @@ export async function loadSheet() {
 }
 
 export async function load() {
-  const [a, p, e, m, st, rn] = await Promise.all([
+  const [a, p, e, m, st, rn, lt] = await Promise.all([
     sb.from('daily_ops_accounts').select('*').order('sort_order'),
     sb.from('daily_ops_posts').select('*').order('posted_at', { ascending: false }).limit(500),
     sb.from('daily_ops_experiments').select('*').order('started_at', { ascending: false }),
     sb.from('growth_meetings').select('*').order('meeting_date', { ascending: false }).limit(1000),
     sb.from('growth_settings').select('*').eq('id', 1).maybeSingle(),
-    sb.from('growth_scrape_runs').select('*').order('started_at', { ascending: false }).limit(200),
+    sb.from('daily_ops_linkedin_auto_log').select('*').neq('run_mode', 'skip_pace').order('created_at', { ascending: false }).limit(200),
+    sb.from('daily_ops_linkedin_auto_log').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle(),
   ]);
   store.missing.clear();
   if (m.error) store.missing.add('growth_meetings');
   if (st.error) store.missing.add('scraper_settings');
-  store.settings = st.data || null; store.runs = rn.data || [];
+  store.settings = st.data || null; store.scrapeLog = rn.data || []; store.scrapeLatest = lt.data || null;
   if (p.data?.length && !('tags' in p.data[0])) store.missing.add('post_tags');
   if (e.data?.length && !('assets' in e.data[0])) store.missing.add('experiment_assets');
   [a, p, e].forEach(x => x.error && console.error(x.error));
@@ -52,7 +56,7 @@ export function subscribe() {
   if (channel) return;
   const soon = () => { clearTimeout(timer); timer = setTimeout(load, 400); };
   channel = sb.channel('hq-live');
-  ['daily_ops_posts', 'daily_ops_experiments', 'growth_meetings', 'daily_ops_accounts', 'growth_settings', 'growth_scrape_runs'].forEach(t => channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, soon));
+  ['daily_ops_posts', 'daily_ops_experiments', 'growth_meetings', 'daily_ops_accounts', 'growth_settings', 'daily_ops_linkedin_auto_log'].forEach(t => channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, soon));
   channel.subscribe();
 }
 

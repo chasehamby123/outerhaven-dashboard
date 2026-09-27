@@ -1,57 +1,56 @@
-// LinkedIn scraper controls: auto on/off, schedule, budget, manual run, run log.
-import { sb, state, esc, $, $$, toast, fail, opts } from './core.js';
+// LinkedIn scraper controls, on top of the existing daily-ops-linkedin-auto function.
+// pg_cron calls it every 30 min; it paces Apify spend across the month and obeys growth_settings.
+import { sb, state, esc, $, toast, fail } from './core.js';
 import { store, load } from './data.js';
 
-const FREQ = [['daily', 'Once a day'], ['twice_daily', 'Twice a day'], ['every_6h', 'Every 6 hours'], ['weekly', 'Once a week (Monday)']];
-const hourLabel = h => `${((h + 11) % 12) + 1}:00 ${h >= 12 ? 'PM' : 'AM'}`;
 const money = n => '$' + Number(n || 0).toFixed(2);
 const ago = t => { if (!t) return 'never'; const m = Math.round((Date.now() - new Date(t)) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
+const isRun = r => !String(r.run_mode).startsWith('skip');
+const isError = r => String(r.run_mode).startsWith('error');
+const LABEL = { posts: 'Posts', comments: 'Comments', manual_posts: 'Posts (manual)', manual_comments: 'Comments (manual)', skip_budget: 'Skipped: budget', skip_disabled: 'Auto scraping off', skip_pace: 'Waiting (pacing)' };
+const label = m => LABEL[m] || LABEL[m.replace(/_partial$/, '')] ? (LABEL[m] || LABEL[m.replace(/_partial$/, '')] + ' · partial') : m.startsWith('error_') ? `Failed: ${LABEL[m.slice(6)] || m.slice(6)}` : m;
 
-export function monthSpend() {
-  const start = new Date(); start.setDate(1); start.setHours(0, 0, 0, 0);
-  const runs = store.runs.filter(r => r.status !== 'skipped' && new Date(r.started_at) >= start);
-  return { runs: runs.length, spent: runs.reduce((n, r) => n + Number(r.cost_usd || 0), 0) };
+// Real cost per run, measured from Apify usage between consecutive runs in the same cycle.
+export function costPerRun() {
+  const runs = store.scrapeLog.filter(isRun).filter(r => r.usage_before != null).slice(0, 30);
+  const diffs = [];
+  for (let i = 0; i < runs.length - 1; i++) { const d = Number(runs[i].usage_before) - Number(runs[i + 1].usage_before); if (d > 0 && d < 2) diffs.push(d); }
+  if (!diffs.length) return null;
+  diffs.sort((a, b) => a - b); return diffs[diffs.length >> 1];
 }
-function nextRun(s) {
-  if (!s?.scrape_enabled) return null;
-  const f = FREQ.find(x => x[0] === s.scrape_frequency)?.[1] || s.scrape_frequency;
-  return s.scrape_frequency === 'every_6h' ? f : `${f} at ${hourLabel(s.scrape_hour)}${s.scrape_frequency === 'twice_daily' ? ` and ${hourLabel((s.scrape_hour + 12) % 24)}` : ''}`;
-}
+function latestStatus() { const r = store.scrapeLatest; return r?.detail || null; }
 
-// One-line status used in page headers.
 export function scraperStatus() {
   const s = store.settings; if (!s) return '';
-  const last = store.runs.find(r => r.status !== 'skipped');
-  return `<a class="row s" href="#/growth/scraper" style="text-decoration:none"><i class="dot ${s.scrape_enabled ? 'ok' : ''}"></i><span>Scraper ${s.scrape_enabled ? 'on' : 'off'} · last run ${esc(ago(last?.started_at))}</span></a>`;
+  const lastRun = store.scrapeLog.find(isRun);
+  const failing = lastRun && isError(lastRun);
+  return `<a class="row s" href="#/growth/scraper" style="text-decoration:none"><i class="dot ${failing ? 'err' : s.scrape_enabled ? 'ok' : ''}"></i><span>Scraper ${s.scrape_enabled ? 'on' : 'off'}${failing ? ' · last run failed' : ` · last run ${esc(ago(lastRun?.created_at))}`}</span></a>`;
 }
 
 let running = false;
 async function invoke(body) {
-  const { data, error } = await sb.functions.invoke('daily-ops-linkedin-sync', { body });
-  if (error) { let d = ''; try { const j = await error.context?.json?.(); d = j?.detail || j?.error || j?.message || ''; } catch { } throw new Error(d || error.message || 'Scraper request failed'); }
-  if (!data?.ok) throw new Error(data?.detail || data?.message || data?.error || 'Scraper returned an error');
+  const { data, error } = await sb.functions.invoke('daily-ops-linkedin-auto', { body });
+  if (error) { let d = ''; try { const j = await error.context?.json?.(); d = j?.detail || j?.error || ''; } catch { } throw new Error(d || error.message); }
+  if (data?.ran === false && data?.reason) throw new Error(data.detail || data.reason.replaceAll('_', ' '));
+  if (data?.ok === false) throw new Error(data.detail || data.error || 'Scraper error');
   return data;
 }
 
 async function runNow(btn, statusEl) {
-  const s = store.settings || { cost_per_run: 0.19, monthly_budget: 15 }, m = monthSpend();
-  const over = m.spent + Number(s.cost_per_run) > Number(s.monthly_budget);
-  if (!confirm(`Run the LinkedIn scraper now?\n\nCost: ${money(s.cost_per_run)}\nSpent this month: ${money(m.spent)} of ${money(s.monthly_budget)}${over ? '\n\nThis goes over your monthly budget.' : ''}`)) return;
+  const st = latestStatus(), cpr = costPerRun() ?? 0.1, used = Number(st?.usage_usd || 0), budget = Number(store.settings?.monthly_budget || 19);
+  if (!confirm(`Run the LinkedIn scraper now?\n\nPosts + comments: about ${money(cpr * 2)} (2 runs at ~${money(cpr)})\nApify spend this billing month: ${money(used)} of ${money(budget)}`)) return;
   running = true; btn.disabled = true; btn.textContent = 'Running…';
-  const log = await sb.from('growth_scrape_runs').insert({ trigger: 'manual', stage: 'posts', cost_usd: s.cost_per_run }).select().single();
-  const runId = log.data?.id;
-  const setStatus = t => { if (statusEl) statusEl.textContent = t; };
+  const say = t => { if (statusEl) statusEl.textContent = t; };
   try {
-    setStatus('1/3 · Checking the scraper connection…'); await invoke({ mode: 'health' });
-    setStatus('2/3 · Fetching the latest post from each account…'); const posts = await invoke({ mode: 'posts' });
-    setStatus(`3/3 · ${posts.posts_saved || 0} posts updated. Refreshing comments…`); const comments = await invoke({ mode: 'comments' });
-    const issues = [...new Set([...(posts.missing_profiles || []), ...(comments.missing_accounts || []), ...(comments.incomplete_accounts || [])].filter(Boolean))];
-    if (runId) await sb.from('growth_scrape_runs').update({ status: issues.length ? 'partial' : 'ok', stage: 'done', finished_at: new Date().toISOString(), posts_saved: posts.posts_saved ?? null, profiles_checked: posts.profiles_checked ?? null, comment_threads: comments.comment_posts_processed ?? null, detail: { posts, comments, issues } }).eq('id', runId);
-    toast(issues.length ? `Done, with gaps: ${issues.join(', ')}` : 'Scrape complete');
-  } catch (e) {
-    if (runId) await sb.from('growth_scrape_runs').update({ status: 'failed', finished_at: new Date().toISOString(), detail: { error: e.message } }).eq('id', runId);
-    toast('Scrape failed: ' + e.message);
-  } finally { running = false; await load(); }
+    say('1/2 · Fetching the latest post from every account (about a minute)…');
+    const p = await invoke({ mode: 'posts' });
+    say(`2/2 · ${p.result?.posts_saved ?? 0} posts updated. Fetching comments…`);
+    const c = await invoke({ mode: 'comments' });
+    const errs = [...(p.result?.errors || []), ...(c.result?.errors || [])];
+    say(errs.length ? `Done with ${errs.length} problem(s): ${errs.join('; ')}` : `Done · ${p.result?.posts_saved ?? 0} posts, ${c.result?.comment_posts_processed ?? 0} comment threads refreshed.`);
+    toast(errs.length ? 'Scrape finished with problems' : 'Scrape complete');
+  } catch (e) { say('Failed: ' + e.message); toast('Scrape failed: ' + e.message); }
+  finally { running = false; btn.disabled = false; await load(); }
 }
 
 async function saveSettings(patch) {
@@ -61,42 +60,41 @@ async function saveSettings(patch) {
 
 export function scraperView(body) {
   const s = store.settings, admin = state.role === 'admin';
-  if (!s) { body.innerHTML = `<div class="card"><div class="empty">Scraper controls need the database update (growth_settings table).</div></div>`; return; }
-  const m = monthSpend(), budgetPct = Math.min(100, m.spent / Math.max(0.01, s.monthly_budget) * 100);
-  const lastAuto = store.runs.find(r => r.trigger === 'auto' && r.status !== 'skipped');
-  const enabledFor = Date.now() - new Date(s.updated_at || 0), window_ = (s.scrape_frequency === 'weekly' ? 8 : 1.5) * 864e5;
-  const stalled = s.scrape_enabled && enabledFor > window_ && (!lastAuto || Date.now() - new Date(lastAuto.started_at) > (s.scrape_frequency === 'weekly' ? 8 : 1.5) * 864e5);
-  body.innerHTML = `<div class="cols-2">
-  <section class="card"><header><div><h2>Automatic scraping</h2><p>Runs on the server, so it works even when nobody has the dashboard open.</p></div></header>
+  if (!s) { body.innerHTML = `<div class="card"><div class="empty">Scraper controls need the database update (growth_settings).</div></div>`; return; }
+  const st = latestStatus(), used = Number(st?.usage_usd ?? 0), budget = Number(s.monthly_budget), cpr = costPerRun();
+  const pct = Math.min(100, used / Math.max(0.01, budget) * 100);
+  const runs = store.scrapeLog.filter(isRun), lastRun = runs[0], lastOk = runs.find(r => !isError(r));
+  let streak = 0; for (const r of runs) { if (isError(r)) streak++; else break; }
+  const interval = st?.recommended_average_interval_minutes, resets = st?.usage_cycle_end ? new Date(st.usage_cycle_end).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null;
+  body.innerHTML = `${streak >= 2 ? `<div class="card" style="border-color:#f1c7c3;background:var(--bad-bg);margin-bottom:20px"><div class="body s"><b>The last ${streak} runs failed</b> and each still used Apify credit. Latest error: ${esc(lastRun?.detail?.error || '')}. Last successful run: ${esc(ago(lastOk?.created_at))}.</div></div>` : ''}
+  <div class="cols-2">
+  <section class="card"><header><div><h2>Automatic scraping</h2><p>Runs on the server every 30 minutes when it's on. Nobody needs to be logged in.</p></div></header>
     <div class="body stack" style="gap:18px">
-      <label class="switch"><input type="checkbox" id="scOn" ${s.scrape_enabled ? 'checked' : ''} ${admin ? '' : 'disabled'}><span></span><b>${s.scrape_enabled ? 'On' : 'Off'}</b><span class="muted s">${s.scrape_enabled ? esc(nextRun(s)) + ' · Malaysia time' : 'Nothing runs automatically. Use Run now when you need fresh data.'}</span></label>
-      ${stalled ? `<div class="tag bad" style="height:auto;padding:6px 8px;white-space:normal">Auto scraping is on but hasn't run recently. The server timer may not be set up yet.</div>` : ''}
-      <div class="form">
-        <label class="field">How often<select class="select" id="scFreq" ${admin ? '' : 'disabled'}>${opts(FREQ, s.scrape_frequency)}</select></label>
-        <label class="field">At<select class="select" id="scHour" ${admin ? '' : 'disabled'}>${opts([...Array(24).keys()].map(h => [h, hourLabel(h)]), s.scrape_hour)}</select></label>
-        <label class="field">Cost per run ($)<input class="input" type="number" step="0.01" min="0" id="scCost" value="${esc(s.cost_per_run)}" ${admin ? '' : 'disabled'}></label>
-        <label class="field">Monthly budget cap ($)<input class="input" type="number" step="1" min="0" id="scBudget" value="${esc(s.monthly_budget)}" ${admin ? '' : 'disabled'}></label>
-      </div>
-      <div class="s muted">When the month's spend reaches the cap, automatic runs stop until the 1st. Manual runs ask first.</div>
+      <label class="switch"><input type="checkbox" id="scOn" ${s.scrape_enabled ? 'checked' : ''} ${admin ? '' : 'disabled'}><span></span><b>${s.scrape_enabled ? 'On' : 'Off'}</b><span class="muted s">${s.scrape_enabled ? `Spreads the budget evenly over the month${interval ? `: about one run every ${interval >= 90 ? (interval / 60).toFixed(1) + ' hours' : Math.round(interval) + ' min'}` : ''}.` : 'Nothing runs on its own. Use Run now when you want fresh data.'}</span></label>
+      <div class="form"><label class="field">Monthly budget ($)<input class="input" type="number" min="0" step="1" id="scBudget" value="${esc(budget)}" ${admin ? '' : 'disabled'}></label>
+        <div class="field">Cost per run<div class="s" style="padding-top:8px">${cpr ? `about <b>${money(cpr)}</b>, measured from recent runs` : 'Not enough runs to measure yet'}</div></div></div>
+      <div class="s muted">Automatic runs stop once Apify spend reaches the budget, then resume when Apify's billing month resets${resets ? ` (${esc(resets)})` : ''}. Each run does either posts or comments, whichever is due.</div>
     </div></section>
-  <section class="card"><header><div><h2>This month</h2><p>${m.runs} run${m.runs === 1 ? '' : 's'}</p></div></header>
+  <section class="card"><header><div><h2>Apify spend this billing month</h2><p>Read live from your Apify account</p></div></header>
     <div class="body stack" style="gap:14px">
-      <div><div class="row"><b style="font-size:26px;font-weight:500">${money(m.spent)}</b><span class="muted">of ${money(s.monthly_budget)} budget</span></div><div class="bar" style="margin-top:8px"><i style="width:${budgetPct}%;${budgetPct >= 90 ? 'background:var(--bad)' : ''}"></i></div></div>
-      <div class="row"><button class="btn primary" id="scRun" ${admin && !running ? '' : 'disabled'}>${running ? 'Running…' : `Run now · ${money(s.cost_per_run)}`}</button></div>
-      <div class="s muted" id="scStatus">Scrapes the latest post and comments for every mapped LinkedIn account.</div>
+      <div><div class="row"><b style="font-size:26px;font-weight:500">${st ? money(used) : '—'}</b><span class="muted">of ${money(budget)} budget</span></div><div class="bar" style="margin-top:8px"><i style="width:${pct}%;${pct >= 90 ? 'background:var(--bad)' : ''}"></i></div></div>
+      <div class="row"><button class="btn primary" id="scRun" ${admin && !running ? '' : 'disabled'}>${running ? 'Running…' : 'Run now'}</button><span class="s muted">Posts, then comments${cpr ? ` · about ${money(cpr * 2)}` : ''}</span></div>
+      <div class="s muted" id="scStatus">Last run ${esc(ago(lastRun?.created_at))}${lastRun ? ` (${esc(label(lastRun.run_mode))})` : ''}.</div>
     </div></section></div>
-  <section class="card" style="margin-top:24px"><header><div><h2>Run history</h2><p>Every scrape, what it cost and what came back</p></div></header>
-    <div class="body flush scroll"><table class="tbl"><thead><tr><th>When</th><th>Type</th><th>Result</th><th class="n">Posts</th><th class="n">Comment threads</th><th class="n">Cost</th><th>Notes</th></tr></thead><tbody>
-    ${store.runs.slice(0, 40).map(r => `<tr><td class="muted" style="white-space:nowrap">${new Date(r.started_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</td><td>${r.trigger === 'auto' ? 'Auto' : 'Manual'}</td>
-      <td><span class="tag ${r.status === 'ok' ? 'good' : r.status === 'failed' ? 'bad' : r.status === 'running' ? '' : 'warn'}">${r.status === 'running' ? `running · ${esc(r.stage || '')}` : esc(r.status)}</span></td>
-      <td class="n">${r.posts_saved ?? '—'}</td><td class="n">${r.comment_threads ?? '—'}</td><td class="n">${r.status === 'skipped' ? '—' : money(r.cost_usd)}</td>
-      <td class="s muted" style="max-width:320px">${esc(r.detail?.error || r.detail?.reason || (r.detail?.issues?.length ? 'Check: ' + r.detail.issues.join(', ') : ''))}</td></tr>`).join('')}
-    </tbody></table>${!store.runs.length ? '<div class="empty">No runs yet.</div>' : ''}</div></section>`;
+  <section class="card" style="margin-top:24px"><header><div><h2>Run history</h2><p>Every run with its Apify cost. Pacing checks are hidden.</p></div></header>
+    <div class="body flush scroll"><table class="tbl"><thead><tr><th>When</th><th>Run</th><th class="n">Posts</th><th class="n">Comment threads</th><th class="n">Cost</th><th>Notes</th></tr></thead><tbody>
+    ${store.scrapeLog.slice(0, 60).map((r, i, arr) => {
+      const res = r.detail?.result || {}, next = arr.slice(i + 1).find(x => x.usage_before != null);
+      const cost = r.usage_after != null && r.usage_after > r.usage_before ? r.usage_after - r.usage_before : (isRun(r) && next && r.usage_before != null ? Number(r.usage_before) - Number(next.usage_before) : null);
+      const note = r.detail?.error || (res.errors?.length ? res.errors.join('; ') : '') || (res.missing_profiles?.length ? 'No post found: ' + res.missing_profiles.join(', ') : '') || (r.run_mode === 'skip_budget' ? `Budget reached (${money(r.usage_before)})` : '');
+      return `<tr><td class="muted" style="white-space:nowrap">${new Date(r.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</td>
+        <td><span class="tag ${isError(r) ? 'bad' : r.run_mode.endsWith('partial') ? 'warn' : isRun(r) ? 'good' : ''}">${esc(label(r.run_mode))}</span>${r.detail?.by ? `<div class="s muted">${esc(r.detail.by)}</div>` : ''}</td>
+        <td class="n">${res.posts_saved ?? '—'}</td><td class="n">${res.comment_posts_processed ?? '—'}</td><td class="n">${cost != null && cost >= 0 && cost < 2 ? money(cost) : '—'}</td>
+        <td class="s muted" style="max-width:380px">${esc(note)}</td></tr>`;
+    }).join('')}
+    </tbody></table>${!store.scrapeLog.length ? '<div class="empty">No runs logged yet.</div>' : ''}</div></section>`;
   if (!admin) return;
   $('#scOn', body).onchange = e => saveSettings({ scrape_enabled: e.target.checked });
-  $('#scFreq', body).onchange = e => saveSettings({ scrape_frequency: e.target.value });
-  $('#scHour', body).onchange = e => saveSettings({ scrape_hour: Number(e.target.value) });
-  $('#scCost', body).onchange = e => saveSettings({ cost_per_run: Number(e.target.value) || 0 });
-  $('#scBudget', body).onchange = e => saveSettings({ monthly_budget: Number(e.target.value) || 0 });
+  $('#scBudget', body).onchange = e => saveSettings({ monthly_budget: Math.max(0, Number(e.target.value) || 0) });
   $('#scRun', body).onclick = e => runNow(e.target, $('#scStatus', body));
 }

@@ -9,8 +9,9 @@ import { scraperView, scraperStatus } from './scraper.js';
 const TABS = [['scraper', 'Scraper'], ['posts', 'Posts'], ['experiments', 'Experiments'], ['insights', 'Insights'], ['meetings', 'Meetings'], ['sheet', 'Sheet history']];
 const EXP_METRICS = [['impressions', 'Impressions'], ['sent', 'Messages sent'], ['comments', 'Comments'], ['reactions', 'Reactions'], ['saves', 'Saves'], ['sends', 'Sends (shares)'], ['replies', 'Replies'], ['dms', 'Inbound DMs'], ['meetings', 'Meetings']];
 const VARIABLES = [...Object.values(DIMENSIONS).map(d => d.label), 'Account', 'Boost', 'Other'];
-let insightMetric = 'comments';
+let insightMetric = 'engagement';
 
+const isTagged = p => ['hook', 'creative', 'cta', 'length', 'topic'].some(k => p.tags[k]) || (p.tags.format && !p.autoFormat);
 const accountNames = () => store.accounts.map(a => a.owner_name).filter(Boolean);
 
 function migrationBanner() {
@@ -31,19 +32,19 @@ export function renderGrowth(root, tab = 'posts') {
 // ---------------- Posts ----------------
 function tagSummary(p) {
   const t = p.tags, bits = ['format', 'hook', 'creative', 'cta'].map(k => t[k]).filter(Boolean);
-  if (p.boostedBy.length) bits.push('Boost: ' + p.boostedBy.join(', '));
+  if (p.boostedBy.length) bits.push('Boosted: ' + p.boostedBy.join(', '));
   return bits.length ? bits.map(b => `<span class="tag">${esc(b)}</span>`).join(' ') : '<span class="s muted">Untagged</span>';
 }
 function postsView(body) {
-  const posts = store.posts, tagged = posts.filter(p => Object.keys(p.tags).some(k => k !== 'timeslot' && p.tags[k])).length;
-  const avg = posts.length ? posts.reduce((n, p) => n + p.m.comments, 0) / posts.length : 0;
-  body.innerHTML = `<section class="card"><header><div><h2>Posts</h2><p>${posts.length} posts · ${tagged} tagged. Tag posts so Insights can explain why they worked.</p></div><div class="row"><select class="select sm" id="pAcct" style="width:auto"><option value="">All accounts</option>${opts(accountNames())}</select></div></header>
-  <div class="body flush scroll"><table class="tbl"><thead><tr><th>Post</th><th>Account</th><th>Date</th><th class="n">Impr.</th><th class="n">Comments</th><th class="n">vs avg</th><th class="n">Eng. rate</th><th class="n">Meetings</th><th>Tags</th><th></th></tr></thead><tbody id="pRows"></tbody></table>${!posts.length ? '<div class="empty">No posts yet. They appear here as the LinkedIn sync picks them up.</div>' : ''}</div></section>`;
+  const posts = store.posts, tagged = posts.filter(isTagged).length;
+  const avg = posts.length ? posts.reduce((n, p) => n + METRIC_DEFS.engagement.get(p), 0) / posts.length : 0;
+  body.innerHTML = `<section class="card"><header><div><h2>Posts</h2><p>${posts.length} original posts, scraped automatically. Reshares count as boosts. Add tags so Insights can explain why posts worked.</p></div><div class="row"><select class="select sm" id="pAcct" style="width:auto"><option value="">All accounts</option>${opts(accountNames())}</select></div></header>
+  <div class="body flush scroll"><table class="tbl"><thead><tr><th>Post</th><th>Account</th><th>Date</th><th class="n">Comments</th><th class="n">Reactions</th><th class="n">Reposts</th><th class="n">vs avg</th><th class="n">Meetings</th><th>Tags</th><th></th></tr></thead><tbody id="pRows"></tbody></table>${!posts.length ? '<div class="empty">No posts yet. They appear here as the LinkedIn sync picks them up.</div>' : ''}</div></section>`;
   const draw = () => {
     const f = $('#pAcct', body).value;
     $('#pRows', body).innerHTML = posts.filter(p => !f || p.account === f).map(p => {
-      const d = avg ? Math.round((p.m.comments - avg) / avg * 100) : 0, er = METRIC_DEFS.engagementRate.get(p);
-      return `<tr><td style="max-width:280px">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a>` : esc(p.name)}${p.group ? `<div class="s muted">Creative: ${esc(p.group)}</div>` : ''}</td><td>${esc(p.account)}</td><td class="muted" style="white-space:nowrap">${fmtDate(p.date)}</td><td class="n">${p.m.impressions ? fmt(p.m.impressions) : '<span class="muted">—</span>'}</td><td class="n strong">${fmt(p.m.comments)}</td><td class="n ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '+' : ''}${d}%</td><td class="n">${er == null ? '—' : (er * 100).toFixed(1) + '%'}</td><td class="n">${p.meetings || '<span class="muted">0</span>'}</td><td>${tagSummary(p)}</td><td><button class="btn sm" data-edit="${p.id}">Tag</button></td></tr>`;
+      const eng = METRIC_DEFS.engagement.get(p), d = avg ? Math.round((eng - avg) / avg * 100) : 0;
+      return `<tr><td style="max-width:280px">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a>` : esc(p.name)}${p.group ? `<div class="s muted">Creative: ${esc(p.group)}</div>` : ''}</td><td>${esc(p.account)}</td><td class="muted" style="white-space:nowrap">${fmtDate(p.date)}</td><td class="n strong">${fmt(p.m.comments)}</td><td class="n">${fmt(p.m.reactions)}</td><td class="n">${fmt(p.m.reposts)}</td><td class="n ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '+' : ''}${d}%</td><td class="n">${p.meetings || '<span class="muted">0</span>'}</td><td>${tagSummary(p)}</td><td><button class="btn sm" data-edit="${p.id}">Tag</button></td></tr>`;
     }).join('');
     $$('[data-edit]', body).forEach(b => b.onclick = () => editPost(b.dataset.edit));
   };
@@ -59,16 +60,17 @@ function editPost(id) {
   modal({ title: p.name, wide: true, submit: 'Save tags', body: `
     <div class="form">
       ${sel('format')}${sel('creative')}${sel('hook')}${sel('cta')}${sel('length')}${sel('topic')}
-      <label class="field full">Boosted by (accounts that engaged early)<div class="checks">${accountNames().filter(n => n !== p.account).map(n => `<label><input type="checkbox" name="boost" value="${esc(n)}" ${(t.boosted_by || []).includes(n) ? 'checked' : ''}>${esc(n)}</label>`).join('') || '<span class="muted">No other accounts</span>'}</div></label>
+      <label class="field full">Boosted by<span class="muted" style="font-weight:400">${p.resharedBy.length ? `Reshared by ${esc(p.resharedBy.join(', '))} (detected automatically). Tick anyone else who commented or liked early.` : 'Tick accounts that commented or liked early. Reshares are detected automatically.'}</span><div class="checks">${accountNames().filter(n => n !== p.account && !p.resharedBy.includes(n)).map(n => `<label><input type="checkbox" name="boost" value="${esc(n)}" ${(t.boosted_by || []).includes(n) ? 'checked' : ''}>${esc(n)}</label>`).join('')}</div></label>
       <label class="field full">Creative ID <span class="muted" style="font-weight:400">· use the same ID when the same creative + copy runs on several accounts</span><input class="input" name="group" list="groupList" value="${esc(t.creative_group || '')}" placeholder="e.g. 900-family-offices-map"><datalist id="groupList">${groups.map(g => `<option value="${esc(g)}">`).join('')}</datalist></label>
-      ${inp('impressions', 'Impressions')}${inp('comments', 'Comments')}${inp('reactions', 'Reactions')}${inp('saves', 'Saves')}${inp('sends', 'Sends')}${inp('reposts', 'Reposts')}
+      <div class="full s muted">Comments, reactions and reposts are scraped. Add the numbers LinkedIn only shows the account owner:</div>
+      ${inp('impressions', 'Impressions')}${inp('saves', 'Saves')}${inp('sends', 'Sends')}
       <label class="field full">Notes<textarea class="textarea" name="notes" placeholder="Why do you think it did well or badly?">${esc(t.notes || '')}</textarea></label>
     </div>`,
     onSubmit: async fd => {
       const tags = { ...t };
       for (const k of Object.keys(DIMENSIONS)) if (k !== 'timeslot') { const v = fd.get('t_' + k); if (v) tags[k] = v; else delete tags[k]; }
       tags.boosted_by = fd.getAll('boost'); tags.creative_group = String(fd.get('group') || '').trim() || null; tags.notes = String(fd.get('notes') || '').trim() || null;
-      const metrics = { ...m }; for (const k of ['impressions', 'comments', 'reactions', 'saves', 'sends', 'reposts']) { const v = fd.get('m_' + k); if (v === '' || v == null) delete metrics[k]; else metrics[k] = num(v); }
+      const metrics = { ...m }; for (const k of ['impressions', 'saves', 'sends']) { const v = fd.get('m_' + k); if (v === '' || v == null) delete metrics[k]; else metrics[k] = num(v); }
       if (fail(await savePost(id, { tags, metrics }), 'Save tags')) return false;
       toast('Tags saved'); await load();
     } });
@@ -182,7 +184,7 @@ function enterResults(id) {
 
 // ---------------- Insights ----------------
 function insightsView(body) {
-  const posts = store.posts, tagged = posts.filter(p => Object.keys(p.tags).some(k => k !== 'timeslot' && p.tags[k])).length;
+  const posts = store.posts, tagged = posts.filter(isTagged).length;
   const md = METRIC_DEFS[insightMetric], fmtV = v => v == null ? '—' : md.rate ? (v * 100).toFixed(2) + '%' : (Math.round(v * 10) / 10).toLocaleString();
   const sugg = suggestTests(posts, store.experiments, insightMetric);
   const dims = Object.entries(DIMENSIONS).map(([k, d]) => ({ k, d, rows: breakdown(posts, k, insightMetric) })).filter(x => x.rows.length);
@@ -190,7 +192,7 @@ function insightsView(body) {
   const liftTag = l => l == null ? '' : `<span class="tag ${l >= 0.15 ? 'good' : l <= -0.15 ? 'bad' : ''}">${l >= 0 ? '+' : ''}${Math.round(l * 100)}%</span>`;
   const maxOf = rows => Math.max(1e-9, ...rows.map(r => r.median || 0));
 
-  body.innerHTML = `<div class="row" style="margin-bottom:16px"><div class="grow s muted">${tagged} of ${posts.length} posts tagged. Findings on fewer than 4 posts are marked anecdotal. Treat them as hypotheses to test, not conclusions.</div>
+  body.innerHTML = `<div class="row" style="margin-bottom:16px"><div class="grow s muted">Format, post time and boosts (reshares) are detected automatically. ${tagged} of ${posts.length} posts have hook/creative/CTA tags. Findings on fewer than 4 posts are marked anecdotal: treat them as hypotheses to test.</div>
     <label class="row s">Measure by <select class="select sm" id="iMetric" style="width:auto">${opts(Object.entries(METRIC_DEFS).map(([k, d]) => [k, d.label]), insightMetric)}</select></label></div>
   <div class="stack">
     <section class="card"><header><div><h2>Suggested A/B tests</h2><p>Ranked by how much each could teach you, based on the gaps in your data.</p></div></header>
@@ -200,7 +202,7 @@ function insightsView(body) {
       <section class="card"><header><div><h2>Accounts</h2><p>Median ${md.label.toLowerCase()} per post</p></div></header><div class="body flush">${accts.length ? `<table class="tbl"><tbody>${accts.map(r => `<tr><td>${esc(r.account)}<div class="s muted">${r.n} posts</div></td><td style="width:34%"><div class="bar"><i style="width:${(r.median || 0) / maxOf(accts) * 100}%"></i></div></td><td class="n strong">${fmtV(r.median)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No posts yet.</div>'}</div></section>
       <section class="card"><header><div><h2>Boost effect</h2><p>Posts with vs without an early boost from each account</p></div></header><div class="body flush">${boost.length ? `<table class="tbl"><thead><tr><th>Booster</th><th class="n">With</th><th class="n">Without</th><th class="n">Lift</th></tr></thead><tbody>${boost.map(b => `<tr><td>${esc(b.booster)}<div class="s muted">${b.nWith} vs ${b.nWithout} posts</div></td><td class="n strong">${fmtV(b.medWith)}</td><td class="n">${fmtV(b.medWithout)}</td><td class="n">${liftTag(b.lift)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Tick “Boosted by” when tagging posts to measure this.</div>'}</div></section>
       <section class="card"><header><div><h2>Same creative, different account</h2><p>Isolates the audience effect from the creative</p></div></header><div class="body flush">${same.length ? same.map(g => `<div class="insight"><h4>${esc(g.group)}</h4>${g.posts.map(p => `<p class="row"><span class="grow">${esc(p.account)}${p.boostedBy.length ? ` <span class="s muted">· boosted by ${esc(p.boostedBy.join(', '))}</span>` : ''}</span><b>${fmtV(p.value)}</b></p>`).join('')}</div>`).join('') : '<div class="empty">Give posts the same Creative ID when the same creative + copy runs on more than one account.</div>'}</div></section>
-      <section class="card"><header><div><h2>Comments, no meetings</h2><p>Loud posts that didn't convert</p></div></header><div class="body flush">${cnm.length ? `<table class="tbl"><tbody>${cnm.slice(0, 8).map(p => `<tr><td>${esc(p.name)}<div class="s muted">${esc(p.account)} · ${esc(p.tags.cta ? 'CTA: ' + p.tags.cta : 'CTA not tagged')}</div></td><td class="n strong">${fmt(p.m.comments)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Link meetings to posts in the Meetings tab to see this.</div>'}</div></section>
+      <section class="card"><header><div><h2>Comments, no meetings</h2><p>Loud posts that didn't convert</p></div></header><div class="body flush">${cnm.length ? `<table class="tbl"><tbody>${cnm.slice(0, 8).map(p => `<tr><td>${esc(p.name)}<div class="s muted">${esc(p.account)} · ${esc(p.tags.cta ? 'CTA: ' + p.tags.cta : 'CTA not tagged')}</div></td><td class="n strong">${fmt(p.m.comments)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Log meetings in the Meetings tab and pick the post they came from. Then this shows which loud posts didn\'t convert.</div>'}</div></section>
     </div>
   </div>`;
   $('#iMetric', body).onchange = e => { insightMetric = e.target.value; insightsView(body); };

@@ -2,7 +2,7 @@
 // Every output carries its sample size so the UI never presents noise as a finding.
 
 export const DIMENSIONS = {
-  format: { label: 'Format', values: ['Text only', 'Single image', 'Carousel / document', 'Video', 'Poll', 'Infographic'] },
+  format: { label: 'Format', values: ['Text only', 'Single image', 'Carousel / document', 'Video', 'Article', 'Poll', 'Infographic'] },
   creative: { label: 'Creative', values: ['Person photo', 'Chart / data', 'Quote card', 'Screenshot', 'Map', 'Branded graphic', 'Meme', 'None'] },
   hook: { label: 'Hook', values: ['Contrarian', 'Data / stat', 'Story', 'Question', 'Pain point', 'List / how-to', 'Timely / news', 'Social proof'] },
   length: { label: 'Caption length', values: ['Short', 'Medium', 'Long'] },
@@ -12,7 +12,9 @@ export const DIMENSIONS = {
 };
 
 export const METRIC_DEFS = {
+  engagement: { label: 'Engagement', get: p => p.m.comments + p.m.reactions + p.m.reposts },
   comments: { label: 'Comments', get: p => p.m.comments },
+  reactions: { label: 'Reactions', get: p => p.m.reactions },
   impressions: { label: 'Impressions', get: p => p.m.impressions },
   engagementRate: { label: 'Engagement rate', rate: true, get: p => p.m.impressions ? (p.m.comments + p.m.reactions + p.m.saves + p.m.sends + p.m.reposts) / p.m.impressions : null },
   meetings: { label: 'Meetings', get: p => p.meetings },
@@ -24,18 +26,22 @@ export const confidenceLabel = { solid: 'Solid sample', early: 'Early signal', a
 const minN = (...ns) => Math.min(...ns);
 
 // Normalise a raw daily_ops_posts row (+ accounts + meetings) into the engine's shape.
-export function toPost(row, accountName, meetingCount = 0) {
+const FORMAT_FROM_TYPE = { text: 'Text only', image: 'Single image', document: 'Carousel / document', video: 'Video', article: 'Article' };
+export function toPost(row, accountName, meetingCount = 0, resharedBy = []) {
   const t = row.tags || {}, m = row.metrics || {};
-  const n = v => Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : 0;
+  const has = v => v !== '' && v != null && Number.isFinite(Number(v));
+  const pick = (k, fallback) => has(m[k]) ? Number(m[k]) : Number(fallback || 0);
   const posted = row.posted_at ? new Date(row.posted_at) : null;
-  const hour = posted ? posted.getHours() : null;
+  // Post time in Malaysia (GMT+8), where the team works.
+  const hour = posted ? (posted.getUTCHours() + 8) % 24 : null;
+  const boosted = [...new Set([...(Array.isArray(t.boosted_by) ? t.boosted_by : []), ...resharedBy])];
   return {
     id: row.id, name: row.post_name || row.post_key || 'LinkedIn post', url: row.linkedin_post_url || null,
-    account: accountName || '—', date: row.posted_at || row.work_date || null,
-    tags: { ...t, timeslot: t.timeslot || (hour == null ? undefined : hour < 11 ? 'Morning' : hour < 16 ? 'Midday' : 'Evening') },
-    boostedBy: Array.isArray(t.boosted_by) ? t.boosted_by : [],
-    group: t.creative_group || null,
-    m: { impressions: n(m.impressions), comments: m.comments != null && m.comments !== '' ? n(m.comments) : n(row.commenter_count), reactions: n(m.reactions), saves: n(m.saves), sends: n(m.sends), reposts: n(m.reposts) },
+    account: accountName || '—', date: row.posted_at || row.work_date || null, text: row.post_text || '',
+    autoFormat: !t.format && !!FORMAT_FROM_TYPE[row.content_type],
+    tags: { ...t, format: t.format || FORMAT_FROM_TYPE[row.content_type] || undefined, timeslot: t.timeslot || (hour == null ? undefined : hour < 11 ? 'Morning' : hour < 16 ? 'Midday' : 'Evening') },
+    boostedBy: boosted, resharedBy, group: t.creative_group || null,
+    m: { impressions: pick('impressions'), comments: pick('comments', row.commenter_count), reactions: pick('reactions', row.reaction_count), saves: pick('saves'), sends: pick('sends'), reposts: pick('reposts', row.repost_count) },
     meetings: meetingCount,
   };
 }
@@ -73,6 +79,7 @@ export function boostEffect(posts, metric) {
 }
 
 export function commentsNoMeetings(posts) {
+  if (!posts.some(p => p.meetings)) return []; // meaningless until meetings are linked to posts
   const cs = posts.map(p => p.m.comments).sort((a, b) => a - b);
   if (cs.length < 3) return [];
   const p75 = cs[Math.floor(cs.length * 0.75)];
@@ -133,11 +140,13 @@ export function suggestTests(posts, experiments = [], metric = 'comments') {
         why: `No logged posts use “${untried[0]}” yet, so there is no evidence either way.`, how: `Run it against your current best (“${b[0].value}”) on the same account.`, confidence: 'anecdote' });
     }
   }
-  for (const be of boostEffect(posts, metric)) {
-    if (be.lift != null && be.lift >= 0.25 && be.nWith >= 2) out.push({ score: 4, dim: 'Boost',
-      title: `Boost from ${be.booster} vs no boost`,
-      why: `Posts ${be.booster} boosted got a median ${Math.round(be.lift * 100)}% more ${METRIC_DEFS[metric].label.toLowerCase()} (${be.nWith} boosted vs ${be.nWithout} not).`,
-      how: `Post the same creative and copy twice on comparable days: one with an early boost from ${be.booster}, one without.`, confidence: conf(minN(be.nWith, be.nWithout)) });
+  const boosts = boostEffect(posts, metric).filter(be => be.lift != null && be.lift >= 0.25 && be.nWith >= 2);
+  if (boosts.length) {
+    const top = boosts.slice(0, 3), b = top[0];
+    out.push({ score: 4, dim: 'Boost',
+      title: `Early boost from ${b.booster} vs no boost`,
+      why: `Posts boosted early get more ${METRIC_DEFS[metric].label.toLowerCase()}: ${top.map(x => `${x.booster} +${Math.round(x.lift * 100)}% (${x.nWith} vs ${x.nWithout} posts)`).join(', ')}.`,
+      how: `Post the same creative and copy twice on comparable days: one with an early boost from ${b.booster} in the first hour, one with no boost.`, confidence: conf(minN(b.nWith, b.nWithout)) });
   }
   for (const g of sameCreative(posts, metric)) {
     const [hi, lo] = [g.posts[0], g.posts[g.posts.length - 1]];

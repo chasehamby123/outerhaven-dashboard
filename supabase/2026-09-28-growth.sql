@@ -31,7 +31,7 @@ create index if not exists growth_meetings_date_idx on public.growth_meetings(me
 alter table public.growth_meetings enable row level security;
 drop policy if exists growth_meetings_team on public.growth_meetings;
 create policy growth_meetings_team on public.growth_meetings for all to authenticated
-  using (public.dashboard_role() in ('admin','ops')) with check (public.dashboard_role() in ('admin','ops'));
+  using (public.can_access_daily_ops()) with check (public.can_access_daily_ops());
 
 -- 4. Private bucket for experiment creatives (served through short-lived signed URLs).
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -41,60 +41,40 @@ drop policy if exists growth_assets_team_read on storage.objects;
 drop policy if exists growth_assets_team_write on storage.objects;
 drop policy if exists growth_assets_team_delete on storage.objects;
 create policy growth_assets_team_read on storage.objects for select to authenticated
-  using (bucket_id = 'growth-assets' and public.dashboard_role() in ('admin','ops'));
+  using (bucket_id = 'growth-assets' and public.can_access_daily_ops());
 create policy growth_assets_team_write on storage.objects for insert to authenticated
-  with check (bucket_id = 'growth-assets' and public.dashboard_role() in ('admin','ops'));
+  with check (bucket_id = 'growth-assets' and public.can_access_daily_ops());
 create policy growth_assets_team_delete on storage.objects for delete to authenticated
-  using (bucket_id = 'growth-assets' and public.dashboard_role() in ('admin','ops'));
+  using (bucket_id = 'growth-assets' and public.can_access_daily_ops());
 
 -- 5. Realtime for the new table.
 do $$ begin
   alter publication supabase_realtime add table public.growth_meetings;
 exception when duplicate_object then null; end $$;
 
--- 6. Scraper control: on/off switch, schedule, cost + budget cap, run log.
+-- 6. Scraper control for the existing daily-ops-linkedin-auto function (which runs from pg_cron every 30 min
+--    and paces Apify spend across the month). This adds an on/off switch and makes the budget editable.
 create table if not exists public.growth_settings (
   id int primary key default 1 check (id = 1),
-  scrape_enabled boolean not null default false,
-  scrape_frequency text not null default 'daily' check (scrape_frequency in ('daily','twice_daily','every_6h','weekly')),
-  scrape_hour int not null default 9 check (scrape_hour between 0 and 23),        -- Malaysia time (GMT+8)
-  cost_per_run numeric(8,2) not null default 0.19,
-  monthly_budget numeric(8,2) not null default 15,
+  scrape_enabled boolean not null default true,           -- auto scraping was already on; keep it on
+  monthly_budget numeric(8,2) not null default 19.00,     -- previous hard-coded budget
   updated_at timestamptz not null default now(),
   updated_by uuid
 );
 insert into public.growth_settings (id) values (1) on conflict (id) do nothing;
-
-create table if not exists public.growth_scrape_runs (
-  id uuid primary key default gen_random_uuid(),
-  trigger text not null check (trigger in ('auto','manual')),
-  status text not null default 'running' check (status in ('running','ok','partial','failed','skipped')),
-  stage text,                                  -- auto runs: posts -> comments -> done
-  started_at timestamptz not null default now(),
-  finished_at timestamptz,
-  posts_saved int, profiles_checked int, comment_threads int,
-  cost_usd numeric(8,2) not null default 0,
-  detail jsonb not null default '{}'::jsonb,
-  triggered_by uuid default auth.uid()
-);
-create index if not exists growth_scrape_runs_started_idx on public.growth_scrape_runs(started_at desc);
-
 alter table public.growth_settings enable row level security;
-alter table public.growth_scrape_runs enable row level security;
 drop policy if exists growth_settings_read on public.growth_settings;
 drop policy if exists growth_settings_admin on public.growth_settings;
-create policy growth_settings_read on public.growth_settings for select to authenticated using (public.dashboard_role() in ('admin','ops'));
-create policy growth_settings_admin on public.growth_settings for update to authenticated using (public.dashboard_role() = 'admin') with check (public.dashboard_role() = 'admin');
-drop policy if exists growth_runs_read on public.growth_scrape_runs;
-drop policy if exists growth_runs_write on public.growth_scrape_runs;
-drop policy if exists growth_runs_update on public.growth_scrape_runs;
-create policy growth_runs_read on public.growth_scrape_runs for select to authenticated using (public.dashboard_role() in ('admin','ops'));
-create policy growth_runs_write on public.growth_scrape_runs for insert to authenticated with check (public.dashboard_role() = 'admin' and trigger = 'manual');
-create policy growth_runs_update on public.growth_scrape_runs for update to authenticated using (public.dashboard_role() = 'admin' and trigger = 'manual');
+create policy growth_settings_read on public.growth_settings for select to authenticated using (public.can_access_daily_ops());
+create policy growth_settings_admin on public.growth_settings for update to authenticated using (public.can_access_dashboard()) with check (public.can_access_dashboard());
+
+-- Let the team read the scraper's run log (it records real Apify spend before/after each run).
+drop policy if exists linkedin_auto_log_team_read on public.daily_ops_linkedin_auto_log;
+create policy linkedin_auto_log_team_read on public.daily_ops_linkedin_auto_log for select to authenticated using (public.can_access_daily_ops());
 
 do $$ begin
   alter publication supabase_realtime add table public.growth_settings;
 exception when duplicate_object then null; end $$;
 do $$ begin
-  alter publication supabase_realtime add table public.growth_scrape_runs;
+  alter publication supabase_realtime add table public.daily_ops_linkedin_auto_log;
 exception when duplicate_object then null; end $$;

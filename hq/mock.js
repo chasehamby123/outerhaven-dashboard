@@ -23,10 +23,11 @@
     ],
     growth_meetings: [],
     daily_ops_schedule: [],
-    growth_settings: [{ id: 1, scrape_enabled: false, scrape_frequency: 'daily', scrape_hour: 9, cost_per_run: 0.19, monthly_budget: 15 }],
-    growth_scrape_runs: [
-      { id: id(), trigger: 'manual', status: 'ok', stage: 'done', started_at: d(1), finished_at: d(1), posts_saved: 6, profiles_checked: 6, comment_threads: 6, cost_usd: 0.19, detail: {} },
-      { id: id(), trigger: 'manual', status: 'partial', stage: 'done', started_at: d(3), finished_at: d(3), posts_saved: 5, profiles_checked: 6, comment_threads: 5, cost_usd: 0.19, detail: { issues: ['Sara'] } },
+    growth_settings: [{ id: 1, scrape_enabled: true, monthly_budget: 19 }],
+    daily_ops_linkedin_auto_log: [
+      { id: 3, created_at: d(0.1), run_mode: 'comments', usage_before: 6.2, usage_after: 6.26, detail: { usage_usd: 6.2, recommended_average_interval_minutes: 190, result: { comment_posts_processed: 2 } } },
+      { id: 2, created_at: d(0.3), run_mode: 'posts', usage_before: 6.1, usage_after: 6.2, detail: { usage_usd: 6.1, result: { posts_saved: 9 } } },
+      { id: 1, created_at: d(0.6), run_mode: 'error_posts', usage_before: 6.0, detail: { error: 'insert post: duplicate key' } },
     ],
   };
   { const t = new Date(Date.now() - 2 * 3600e3 + 8 * 3600e3).toISOString().slice(0, 10);
@@ -36,11 +37,20 @@
     { id: id(), meeting_date: d(3).slice(0, 10), account_name: 'Tengku Harris', source: 'outbound_dm', lead_name: 'M. Ali', company: 'KL developer', status: 'booked' },
     { id: id(), meeting_date: d(5).slice(0, 10), account_name: 'Chase', source: 'comment_to_dm', post_id: db.daily_ops_posts[2].id, lead_name: 'R. Cole', company: 'Independent sponsor', status: 'qualified' });
 
+  // ?mock=real: tests inject a read-only snapshot of real rows at /__fixture.json (never committed).
+  if (location.search.includes('real')) {
+    try {
+      const x = new XMLHttpRequest(); x.open('GET', '/__fixture.json', false); x.send();
+      const f = JSON.parse(x.responseText);
+      db.daily_ops_accounts = f.accounts; db.daily_ops_posts = f.posts; db.daily_ops_schedule = f.schedule || [];
+      db.daily_ops_linkedin_auto_log = f.log; db.daily_ops_experiments = []; db.growth_meetings = [];
+    } catch (e) { console.warn('fixture', e); }
+  }
   class Q {
     constructor(t) { this.t = t; this.f = []; this.op = 'select'; this.payload = null; this.single_ = false; }
     select() { if (this.op === 'select') this.op = 'select'; else this.returning = true; return this; }
     order() { return this; } limit() { return this; }
-    eq(k, v) { this.f.push(r => r[k] === v); return this; } in(k, v) { this.f.push(r => v.includes(r[k])); return this; } gte() { return this; }
+    eq(k, v) { this.f.push(r => r[k] === v); return this; } neq(k, v) { this.f.push(r => r[k] !== v); return this; } in(k, v) { this.f.push(r => v.includes(r[k])); return this; } gte() { return this; }
     insert(p) { this.op = 'insert'; this.payload = p; return this; } update(p) { this.op = 'update'; this.payload = p; return this; } delete() { this.op = 'delete'; return this; }
     single() { this.single_ = true; return this; } maybeSingle() { return this.single(); }
     then(res, rej) { return Promise.resolve(this.run()).then(res, rej); }
@@ -58,7 +68,7 @@
     from: t => new Q(t),
     rpc: async n => ({ data: n === 'dashboard_role' ? (location.search.includes('ops') ? 'ops' : 'admin') : true, error: null }),
     auth: { getSession: async () => ({ data: { session: { user: { id: 'u1', email: 'tengku@outerhaven.test' } } } }), signOut: async () => ({}), signInWithPassword: async () => ({}) },
-    functions: { invoke: async (n, { body }) => { await new Promise(r => setTimeout(r, 150)); return { data: body.mode === 'posts' ? { ok: true, posts_saved: 6, profiles_checked: 6 } : body.mode === 'comments' ? { ok: true, comment_posts_processed: 6, comment_posts_queued: 6 } : { ok: true }, error: null }; } },
+    functions: { invoke: async (n, { body }) => { await new Promise(r => setTimeout(r, 150)); db.daily_ops_linkedin_auto_log.unshift({ id: Date.now(), created_at: new Date().toISOString(), run_mode: 'manual_' + body.mode, usage_before: 6.3, usage_after: 6.4, detail: { by: 'tengku@chproduction.org', result: body.mode === 'posts' ? { posts_saved: 9, errors: [] } : { comment_posts_processed: 3, errors: [] } } }); return { data: { ok: true, ran: true, result: body.mode === 'posts' ? { posts_saved: 9, errors: [] } : { comment_posts_processed: 3, errors: [] } }, error: null }; } },
     channel: () => ({ on() { return this; }, subscribe() { return this; } }),
     storage: { from: () => ({
       upload: async (path, file) => { blobs.set(path, URL.createObjectURL(file)); return { data: { path }, error: null }; },

@@ -1,0 +1,327 @@
+// daily-ops-linkedin-auto · v2 (Outerhaven HQ)
+// Changes from v1:
+//  1. FIX: posts are matched by the same key the database trigger stores (derived from the post URL),
+//     not the scraper's activity id. Reshared posts no longer crash the run with a duplicate-key error
+//     (every "posts" run since 17 Sept failed this way while still spending Apify credit).
+//  2. One bad post no longer aborts the whole run; per-post errors are collected and logged.
+//  3. Obeys growth_settings: on/off switch and monthly budget, both editable in HQ.
+//  4. Admins can trigger a run from HQ ("Run now") with their normal login; cron still uses the secret.
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+const DEFAULT_BUDGET_USD = 19.00;
+const RUN_ESTIMATE_USD = 0.06;
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-outerhaven-cron",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "content-type": "application/json" } });
+const clean = (v: unknown) => typeof v === "string" ? v.trim() : "";
+const num = (v: unknown) => Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : 0;
+
+function canon(v: string) {
+  const s = clean(v);
+  if (!s) return "";
+  try {
+    const u = new URL(s.startsWith("http") ? s : `https://${s}`);
+    u.search = ""; u.hash = "";
+    return `${u.hostname.toLowerCase().replace(/^www\./, "")}${u.pathname.replace(/\/+$/, "").toLowerCase()}`;
+  } catch { return s.replace(/\/+$/, "").toLowerCase(); }
+}
+function cleanUrl(v: string) {
+  const s = clean(v);
+  if (!s) return "";
+  try { const u = new URL(s); u.search = ""; u.hash = ""; return u.toString().replace(/\/$/, ""); }
+  catch { return s.replace(/[?#].*$/, "").replace(/\/$/, ""); }
+}
+function sourceActivityId(row: any) {
+  return clean(row?._metadata?.post_id) || clean(row?.latest_post_id) || clean(row?.post_id) || clean(row?.activityId);
+}
+// Same rule as public.linkedin_post_key(), which the set_daily_ops_post_key trigger applies on every write.
+const keyCache = new Map<string, string>();
+async function postKeyFor(url: string): Promise<string> {
+  const s = clean(url); if (!s) return "";
+  const m = s.match(/activity[-:]([0-9]+)/i);
+  if (m) return `activity:${m[1]}`;
+  if (keyCache.has(s)) return keyCache.get(s)!;
+  const r = await sb.rpc("linkedin_post_key", { input_url: s });
+  const k = r.error ? "" : String(r.data || "");
+  keyCache.set(s, k);
+  return k;
+}
+function sgDate(value?: string) {
+  const d = value ? new Date(value) : new Date();
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Singapore", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  const o: Record<string, string> = {}; for (const x of p) o[x.type] = x.value;
+  return `${o.year}-${o.month}-${o.day}`;
+}
+function titleFor(text: string, posted: string, owner: string) {
+  const line = text.split(/\r?\n/).map(x => x.trim()).find(Boolean) || "";
+  if (line) return line.length > 84 ? `${line.slice(0, 81)}...` : line;
+  const d = posted ? new Date(posted) : new Date();
+  return `${owner} · ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "Asia/Singapore" })}`;
+}
+function mediaFor(row: any) {
+  if (Array.isArray(row?.images) && row.images[0]) return clean(row.images[0]);
+  if (clean(row?.video_url)) return clean(row.video_url);
+  if (clean(row?.doc?.pdf_url)) return clean(row.doc.pdf_url);
+  return null;
+}
+function contentType(row: any) {
+  if (row?.is_repost === true) return "repost";
+  if (clean(row?.video_url)) return "video";
+  if (row?.doc) return "document";
+  if (Array.isArray(row?.images) && row.images.length) return "image";
+  if (row?.article) return "article";
+  return "text";
+}
+function commentId(row: any) { return clean(row?._metadata?.comment_id) || clean(row?.comment_id) || clean(row?.commentId) || clean(row?.id); }
+function parentId(row: any) { return clean(row?._metadata?.parent_comment_id) || clean(row?.parent_comment_id) || clean(row?.parentCommentId) || null; }
+function commentAuthor(row: any) {
+  const a = row?.author || {};
+  return { name: clean(a.name) || clean(row?.author_name), url: clean(a.linkedinUrl) || clean(a.linkedin_url) || clean(row?.author_url), headline: clean(a.headline) || clean(row?.author_headline) };
+}
+async function getSecret(key: string) {
+  const r = await sb.from("integration_secrets").select("secret_value").eq("key", key).maybeSingle();
+  if (r.error || !r.data?.secret_value) throw new Error(`${key} missing`);
+  return r.data.secret_value as string;
+}
+async function getSettings() {
+  const r = await sb.from("growth_settings").select("scrape_enabled,monthly_budget").eq("id", 1).maybeSingle();
+  if (r.error || !r.data) return { enabled: true, budget: DEFAULT_BUDGET_USD, fromTable: false };
+  return { enabled: r.data.scrape_enabled !== false, budget: Number(r.data.monthly_budget) || DEFAULT_BUDGET_USD, fromTable: true };
+}
+async function apifyUsage(token: string) {
+  const r = await fetch("https://api.apify.com/v2/users/me/usage/monthly", { headers: { authorization: `Bearer ${token}` } });
+  const raw = await r.text(); let data: any = null; try { data = raw ? JSON.parse(raw) : null; } catch { }
+  if (!r.ok || !data?.data) throw new Error(`Apify usage returned ${r.status}: ${raw.slice(0, 600)}`);
+  return data.data;
+}
+async function runApify(token: string, actor: string, input: unknown, timeoutMs = 95000) {
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const id = actor.replace("/", "~");
+    const r = await fetch(`https://api.apify.com/v2/acts/${id}/run-sync-get-dataset-items?clean=true&format=json`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(input), signal: ctrl.signal,
+    });
+    const raw = await r.text(); let data: any = null; try { data = raw ? JSON.parse(raw) : []; } catch { data = { raw: raw.slice(0, 1500) }; }
+    if (!r.ok) throw new Error(`Apify ${actor} returned ${r.status}: ${JSON.stringify(data).slice(0, 1200)}`);
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw new Error(`Apify ${actor} timed out after ${Math.round(timeoutMs / 1000)}s`);
+    throw e;
+  } finally { clearTimeout(timer); }
+}
+
+async function syncComments(apifyToken: string) {
+  const postsRes = await sb.from("daily_ops_posts").select("*").eq("is_repost", false).gt("commenter_count", 0)
+    .in("scrape_status", ["comments_pending", "comments_capped"]).order("posted_at", { ascending: false }).limit(4);
+  if (postsRes.error) throw new Error(`comment targets: ${postsRes.error.message}`);
+  const targets = postsRes.data || [];
+  if (!targets.length) return { mode: "comments", actor_runs_estimate: 0, comment_posts_processed: 0, comment_records_saved: 0, unreplied_total: 0 };
+  const rows = await runApify(apifyToken, "atomus/linkedin-comments-scraper-pro", {
+    postUrls: targets.map((p: any) => p.linkedin_post_url), maxComments: 250, sortBy: "date", metadataOnly: false, includeReplies: true, maxRepliesPerComment: 50,
+  });
+  let processed = 0, stored = 0, unrepliedTotal = 0; const errors: string[] = [];
+  for (const post of targets) {
+    try {
+      const pr = rows.filter((r: any) => {
+        if (r?.type === "summary" || r?.type === "metadata") return false;
+        const inputUrl = canon(clean(r?._metadata?.post_url) || clean(r?.post_url) || clean(r?.postUrl));
+        return inputUrl && inputUrl === canon(post.linkedin_post_url);
+      });
+      const flat: any[] = [];
+      for (const r of pr) {
+        const cid = commentId(r); if (!cid) continue; const a = commentAuthor(r);
+        flat.push({ post_id: post.id, comment_id: cid, parent_comment_id: parentId(r), comment_type: clean(r.comment_type) || "comment", author_name: a.name || null, author_url: a.url || null, author_headline: a.headline || null, body: clean(r.text) || null, is_post_author: r.is_author === true, posted_at: clean(r?.posted_at?.date) || null, reaction_count: num(r?.stats?.total_reactions), raw_payload: r, scraped_at: new Date().toISOString() });
+        if (Array.isArray(r.replies)) for (const reply of r.replies) {
+          const rcid = commentId(reply); if (!rcid) continue; const ra = commentAuthor(reply);
+          flat.push({ post_id: post.id, comment_id: rcid, parent_comment_id: parentId(reply) || cid, comment_type: "reply", author_name: ra.name || null, author_url: ra.url || null, author_headline: ra.headline || null, body: clean(reply.text) || null, is_post_author: reply.is_author === true, posted_at: clean(reply?.posted_at?.date) || null, reaction_count: num(reply?.stats?.total_reactions), raw_payload: reply, scraped_at: new Date().toISOString() });
+        }
+      }
+      const unique = new Map<string, any>(); for (const x of flat) if (!unique.has(x.comment_id)) unique.set(x.comment_id, x);
+      const rowsToStore = [...unique.values()];
+      const del = await sb.from("daily_ops_post_comments").delete().eq("post_id", post.id);
+      if (del.error) throw new Error(`clear comments: ${del.error.message}`);
+      if (rowsToStore.length) { const ins = await sb.from("daily_ops_post_comments").upsert(rowsToStore, { onConflict: "post_id,comment_id" }); if (ins.error) throw new Error(`store comments: ${ins.error.message}`); }
+      const replied = new Set(rowsToStore.filter(x => x.comment_type === "reply" && x.is_post_author && x.parent_comment_id).map(x => x.parent_comment_id));
+      const unreplied = rowsToStore.filter(x => x.comment_type === "comment" && !x.is_post_author).filter(x => !replied.has(x.comment_id)).length;
+      const up = await sb.from("daily_ops_posts").update({ unreplied_count: unreplied, scrape_status: num(post.commenter_count) > 250 ? "comments_capped" : "ok", last_scraped_at: new Date().toISOString(), source_actor: "atomus/linkedin-comments-scraper-pro", updated_at: new Date().toISOString() }).eq("id", post.id);
+      if (up.error) throw new Error(`update unreplied: ${up.error.message}`);
+      processed++; stored += rowsToStore.length; unrepliedTotal += unreplied;
+    } catch (e) { errors.push(`${post.post_name || post.id}: ${e instanceof Error ? e.message : String(e)}`); }
+  }
+  return { mode: "comments", actor_runs_estimate: 1, comment_posts_processed: processed, comment_posts_queued: targets.length, comment_records_saved: stored, unreplied_total: unrepliedTotal, errors };
+}
+
+async function syncPosts(apifyToken: string, allowDetail: boolean) {
+  const acctRes = await sb.from("daily_ops_accounts").select("id,owner_name,linkedin_url").eq("active", true).not("linkedin_url", "is", null).order("sort_order");
+  if (acctRes.error) throw new Error(`accounts: ${acctRes.error.message}`);
+  const accounts = acctRes.data || [];
+  const profiles = accounts.map((a: any) => a.linkedin_url).filter(Boolean);
+  if (!profiles.length) return { mode: "posts", actor_runs_estimate: 0, profiles_checked: 0, posts_saved: 0 };
+  const acctByUrl = new Map(accounts.map((a: any) => [canon(a.linkedin_url), a]));
+  const summaries = await runApify(apifyToken, "atomus/linkedin-posts-scraper-pro", { profiles, maxPosts: 1, postedLimit: "month", sortBy: "date", latestPostOnly: true, includeReposts: false, includeSharedPosts: true });
+
+  const existingRes = await sb.from("daily_ops_posts").select("*").order("posted_at", { ascending: false }).limit(1500);
+  if (existingRes.error) throw new Error(`existing posts: ${existingRes.error.message}`);
+  const byKey = new Map<string, any>();
+  for (const p of existingRes.data || []) if (p.post_key) byKey.set(`${p.account_id}|${p.post_key}`, p);
+  const findOld = async (accountId: string, url: string, sid: string) => {
+    const k = await postKeyFor(url);
+    return (k && byKey.get(`${accountId}|${k}`)) || byKey.get(`${accountId}|activity:${sid}`) || null;
+  };
+
+  const normalized: any[] = []; const needFullProfiles: string[] = []; let unmatched = 0;
+  for (const s of summaries) {
+    const source = clean(s?.source_url) || clean(s?._metadata?.source_url);
+    const account = acctByUrl.get(canon(source)); const sid = sourceActivityId(s);
+    if (!account || !sid) { unmatched++; continue; }
+    const old = await findOld(account.id, cleanUrl(clean(s?.latest_post_url)), sid);
+    normalized.push({ summary: s, source, account, sid, old });
+    if (!old || !old.raw_payload || old.content_type === "unknown") needFullProfiles.push(source);
+  }
+  const uniqueProfiles = [...new Set(needFullProfiles.filter(Boolean))];
+  let fullRows: any[] = [];
+  if (allowDetail && uniqueProfiles.length) fullRows = await runApify(apifyToken, "atomus/linkedin-posts-scraper-pro", { profiles: uniqueProfiles, maxPosts: 3, postedLimit: "month", sortBy: "date", latestPostOnly: false, includeReposts: false, includeSharedPosts: true });
+  const fullBySourceId = new Map<string, any>();
+  for (const r of fullRows) { if (r?.type && r.type !== "post") continue; const source = clean(r?._metadata?.source_url); const sid = sourceActivityId(r); if (source && sid) fullBySourceId.set(`${canon(source)}|${sid}`, r); }
+
+  let saved = 0, detailMatched = 0, reposts = 0; const errors: string[] = [];
+  for (const n of normalized) {
+    const { summary, source, account, sid } = n;
+    try {
+      const full = fullBySourceId.get(`${canon(source)}|${sid}`) || null; if (full) detailMatched++;
+      const publicUrl = cleanUrl(clean(full?.post_url) || clean(summary?.latest_post_url));
+      if (!publicUrl) { unmatched++; continue; }
+      const key = await postKeyFor(publicUrl);
+      const old = n.old || (key && byKey.get(`${account.id}|${key}`)) || null;
+      const postedAt = clean(full?.posted_at) || clean(summary?.latest_post_date) || new Date().toISOString();
+      const comments = full ? num(full?.engagement?.comments) : num(summary?.latest_post_comments);
+      const reactions = full ? num(full?.engagement?.total_reactions) : num(summary?.latest_post_likes);
+      const isRepost = full?.is_repost === true; if (isRepost) reposts++;
+      const changed = !old || num(old.commenter_count) !== comments;
+      const payload: any = {
+        account_id: account.id, work_date: sgDate(postedAt), linkedin_post_url: publicUrl, posted_at: postedAt, post_key: key || `activity:${sid}`,
+        post_name: old?.post_name && old.post_name !== "" ? old.post_name : titleFor(clean(full?.content), postedAt, account.owner_name),
+        commenter_count: comments, unreplied_count: isRepost ? 0 : (old?.unreplied_count || 0), post_text: clean(full?.content) || old?.post_text || null,
+        reaction_count: reactions, repost_count: full ? num(full?.engagement?.shares) : (old?.repost_count || 0),
+        content_type: full ? contentType(full) : (old?.content_type || "unknown"), media_url: full ? mediaFor(full) : (old?.media_url || null),
+        activity_id: sid, last_scraped_at: new Date().toISOString(), source_actor: "atomus/linkedin-posts-scraper-pro",
+        scrape_status: isRepost ? "repost_no_thread" : (comments > 0 && changed ? "comments_pending" : (old?.scrape_status || "ok")),
+        is_repost: isRepost, source_profile_url: source,
+        author_name: clean(full?.author?.name) || clean(full?.author_name) || old?.author_name || null,
+        author_profile_url: clean(full?.author?.linkedinUrl) || old?.author_profile_url || null,
+        raw_payload: full || summary, updated_at: new Date().toISOString(),
+      };
+      if (old) {
+        const up = await sb.from("daily_ops_posts").update(payload).eq("id", old.id);
+        if (up.error) throw new Error(`update post: ${up.error.message}`);
+      } else {
+        const ins = await sb.from("daily_ops_posts").insert(payload).select("*").single();
+        if (ins.error?.code === "23505") {
+          // Row already exists under the trigger's key: update it instead of failing the run.
+          const hit = await sb.from("daily_ops_posts").select("id").eq("account_id", account.id).eq("post_key", key).maybeSingle();
+          if (hit.error || !hit.data) throw new Error(`insert post: ${ins.error.message}`);
+          const up = await sb.from("daily_ops_posts").update(payload).eq("id", hit.data.id);
+          if (up.error) throw new Error(`update post: ${up.error.message}`);
+        } else if (ins.error) throw new Error(`insert post: ${ins.error.message}`);
+        else if (ins.data?.post_key) byKey.set(`${account.id}|${ins.data.post_key}`, ins.data);
+      }
+      saved++;
+    } catch (e) { errors.push(`${account.owner_name}: ${e instanceof Error ? e.message : String(e)}`); }
+  }
+  const missing_profiles = accounts.filter((a: any) => !normalized.some(n => n.account.id === a.id)).map((a: any) => a.owner_name);
+  return { mode: "posts", actor_runs_estimate: 1 + (allowDetail && uniqueProfiles.length ? 1 : 0), profiles_checked: profiles.length, summary_rows: summaries.length, profiles_needing_detail: uniqueProfiles.length, detail_enabled: allowDetail, detail_rows_matched: detailMatched, posts_saved: saved, reposts, unmatched_post_rows: unmatched, missing_profiles, errors };
+}
+
+async function logRun(payload: any) { try { await sb.from("daily_ops_linkedin_auto_log").insert(payload); } catch { } }
+
+// Who is calling: the pg_cron job (shared secret) or an admin from HQ (their login token).
+async function caller(req: Request, cronSecret: string) {
+  if (req.headers.get("x-outerhaven-cron") === cronSecret) return { kind: "cron" as const, email: null };
+  const auth = req.headers.get("authorization") || "";
+  if (!auth.toLowerCase().startsWith("bearer ")) return null;
+  const userSb = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } });
+  const { data: { user } } = await userSb.auth.getUser();
+  if (!user) return null;
+  const role = await userSb.rpc("dashboard_role");
+  if (role.error || role.data !== "admin") return null;
+  return { kind: "manual" as const, email: user.email };
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  let body: any = {}; try { body = await req.json(); } catch { }
+
+  let cronSecret: string, apifyToken: string;
+  try { [cronSecret, apifyToken] = await Promise.all([getSecret("LINKEDIN_CRON_SECRET"), getSecret("APIFY_TOKEN")]); }
+  catch (e) { return json({ ok: false, error: "secret_missing", detail: e instanceof Error ? e.message : String(e) }, 500); }
+
+  const who = await caller(req, cronSecret);
+  if (!who) return json({ ok: false, error: "unauthorized", detail: "Admin login or cron secret required" }, 401);
+  const manual = who.kind === "manual";
+  const settings = await getSettings();
+  const ceiling = Math.max(0, settings.budget - 0.01);
+
+  let usage: any;
+  try { usage = await apifyUsage(apifyToken); }
+  catch (e) { return json({ ok: false, error: "usage_check_failed", detail: e instanceof Error ? e.message : String(e) }, 502); }
+
+  const used = Number(usage.totalUsageCreditsUsdAfterVolumeDiscount || 0);
+  const cycleStart = new Date(usage.usageCycle?.startAt || Date.now()), cycleEnd = new Date(usage.usageCycle?.endAt || Date.now()), now = new Date();
+  const totalMs = Math.max(1, cycleEnd.getTime() - cycleStart.getTime());
+  const progress = Math.min(totalMs, Math.max(0, now.getTime() - cycleStart.getTime())) / totalMs;
+  const targetNow = ceiling * progress, remaining = Math.max(0, ceiling - used);
+  const remainingRunsApprox = Math.max(0, Math.floor((remaining + 1e-9) / RUN_ESTIMATE_USD));
+  const remainingMinutes = Math.max(0, (cycleEnd.getTime() - now.getTime()) / 60000);
+  const pendingRes = await sb.from("daily_ops_posts").select("id", { count: "exact", head: true }).eq("is_repost", false).gt("commenter_count", 0).in("scrape_status", ["comments_pending", "comments_capped"]);
+  const pendingComments = pendingRes.count || 0;
+  const status = {
+    ok: true, enabled: settings.enabled, budget_usd: settings.budget, hard_ceiling_usd: ceiling, estimated_actor_run_usd: RUN_ESTIMATE_USD, usage_usd: used,
+    remaining_to_ceiling_usd: Number(remaining.toFixed(4)), usage_cycle_start: cycleStart.toISOString(), usage_cycle_end: cycleEnd.toISOString(),
+    cycle_progress: Number(progress.toFixed(6)), paced_target_now_usd: Number(targetNow.toFixed(4)), remaining_runs_approx: remainingRunsApprox,
+    recommended_average_interval_minutes: remainingRunsApprox > 0 ? Number((remainingMinutes / remainingRunsApprox).toFixed(1)) : null,
+    pending_comment_posts: pendingComments, trigger: who.kind, by: who.email,
+  };
+  if (body.status_only === true) return json(status);
+
+  if (!manual && !settings.enabled) {
+    // Log at most one "off" row per 6 hours so the switch state is visible without flooding the log.
+    const recent = await sb.from("daily_ops_linkedin_auto_log").select("id").eq("run_mode", "skip_disabled").gte("created_at", new Date(Date.now() - 6 * 3600e3).toISOString()).limit(1);
+    if (!recent.data?.length) await logRun({ run_mode: "skip_disabled", usage_before: used, target_usage: targetNow, detail: status });
+    return json({ ...status, ran: false, reason: "auto_scrape_disabled" });
+  }
+  if (!manual && (targetNow - used) < (RUN_ESTIMATE_USD - 0.005)) {
+    await logRun({ run_mode: "skip_pace", usage_before: used, target_usage: targetNow, detail: status });
+    return json({ ...status, ran: false, reason: "ahead_of_budget_pace" });
+  }
+  if (used + RUN_ESTIMATE_USD > ceiling + 1e-9 && !(manual && body.allow_over_budget === true)) {
+    await logRun({ run_mode: "skip_budget", usage_before: used, target_usage: targetNow, detail: status });
+    return json({ ...status, ok: !manual, ran: false, reason: "monthly_budget_ceiling_reached", detail: `Monthly budget of $${settings.budget} reached ($${used.toFixed(2)} used)` });
+  }
+
+  const requested = clean(body.mode);
+  const mode = requested === "posts" || requested === "comments" ? requested : (pendingComments > 0 ? "comments" : "posts");
+  const allowDetail = mode === "posts" && (remaining >= (RUN_ESTIMATE_USD * 2 - 0.001));
+  const started = new Date().toISOString();
+  const tag = manual ? `manual_${mode}` : mode;
+  try {
+    const result: any = mode === "comments" ? await syncComments(apifyToken) : await syncPosts(apifyToken, allowDetail);
+    let usageAfter = used;
+    try { await new Promise(r => setTimeout(r, 1200)); const after = await apifyUsage(apifyToken); usageAfter = Number(after.totalUsageCreditsUsdAfterVolumeDiscount || used); } catch { }
+    await logRun({ run_mode: result.errors?.length ? `${tag}_partial` : tag, usage_before: used, usage_after: usageAfter, target_usage: targetNow, detail: { ...status, allow_detail: allowDetail, result, started_at: started } });
+    return json({ ...status, ran: true, mode, allow_detail: allowDetail, usage_after_usd: usageAfter, result });
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    await logRun({ run_mode: `error_${tag}`, usage_before: used, target_usage: targetNow, detail: { ...status, error: detail, started_at: started } });
+    return json({ ...status, ok: false, ran: false, mode, error: "sync_failed", detail }, 500);
+  }
+});
