@@ -83,3 +83,12 @@
 .dealRow small{display:block;margin-top:8px;font-size:var(--fs-ui);color:var(--text-2)}
 .dealRow em{font-style:normal;text-align:right;font-size:var(--fs-label);font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--bronze)}
 @media(max-width:760px){.dealRow{grid-template-columns:1fr;gap:10px}.dealRow em{text-align:left}}
+
+/* Leadership */
+.teamGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));border-top:1px solid var(--navy);border-left:1px solid var(--line)}
+.teamCard{padding:28px 26px 30px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.teamMono{width:100%;aspect-ratio:4/5;display:grid;place-items:center;margin-bottom:22px;background:linear-gradient(160deg,var(--navy),var(--navy-2));color:var(--bronze-soft);font:400 44px/1 var(--serif);letter-spacing:.02em}
+.teamCard strong{display:block;font:400 24px/1.15 var(--serif);color:var(--navy)}
+.teamCard span{display:block;margin-top:8px;font-size:var(--fs-ui);color:var(--text-2)}
+.teamCard small{display:block;margin-top:10px;font-size:var(--fs-label);font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--bronze)}
+@media(max-width:760px){.teamGrid{grid-template-columns:1fr 1fr}.teamCard{padding:18px 16px 22px}.teamMono{font-size:30px;margin-bottom:14px}.teamCard strong{font-size:19px}}
