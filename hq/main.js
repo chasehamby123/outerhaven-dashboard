@@ -3,15 +3,19 @@ import { $, $$, esc, state, authenticate, signIn, signOut } from './core.js';
 import { store, load, loadSheet, subscribe, onChange } from './data.js';
 import { renderOverview } from './overview.js';
 import { renderGrowth } from './growth.js';
+import { renderToday } from './today.js';
 
 const ROUTES = {
+  today: { label: 'Today', render: r => renderToday(r), ops: true },
   overview: { label: 'Overview', render: r => renderOverview(r) },
   growth: { label: 'Growth', render: (r, sub) => renderGrowth(r, sub) },
 };
 
+const home = () => state.role === 'ops' ? 'today' : 'overview';
 function route() {
-  const [, page = 'overview', sub] = (location.hash || '#/overview').split('/');
-  return { page: ROUTES[page] ? page : 'overview', sub };
+  let [, page, sub] = (location.hash || '').split('/');
+  if (!ROUTES[page] || (state.role === 'ops' && !ROUTES[page].ops)) page = home();
+  return { page, sub };
 }
 
 let lastScroll = 0;
@@ -28,11 +32,12 @@ function shell() {
   $('#app').innerHTML = `<div class="app">
     <aside class="side">
       <div class="brand"><b>O</b><span>Outerhaven</span></div>
-      <nav class="nav">
+      <nav class="nav">${state.role === 'ops' ? '<a href="#/today" data-page="today">Today</a>' : `
         <a href="#/overview" data-page="overview">Overview</a>
+        <a href="#/today" data-page="today">Today</a>
         <a href="#/growth/posts" data-page="growth">Growth</a>
         <small>Legacy</small>
-        <a href="/shared.html">Pipeline <em>↗</em></a>
+        <a href="/shared.html">Pipeline <em>↗</em></a>`}
       </nav>
       <div class="sideFoot"><span>${esc(state.user?.email || '')}</span><button class="link s" id="signOut">Sign out</button></div>
     </aside>
@@ -62,6 +67,7 @@ async function start() {
   onChange(render);
   window.addEventListener('hq:modalclosed', render);
   window.addEventListener('hashchange', () => { window.scrollTo(0, 0); lastScroll = 0; render(); });
+  if (state.role === 'ops') { render(); return; }
   await Promise.all([load(), loadSheet()]);
   subscribe();
 }

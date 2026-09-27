@@ -4,7 +4,7 @@ import { loadWeekly } from './sheet.js';
 import { toPost } from './insights.js';
 
 export const store = {
-  accounts: [], rawPosts: [], experiments: [], meetings: [], sheet: null, sheetError: null,
+  accounts: [], rawPosts: [], experiments: [], meetings: [], sheet: null, sheetError: null, settings: null, runs: [],
   missing: new Set(), // tables/columns that need the migration
   posts: [], // engine-shaped posts
 };
@@ -28,14 +28,18 @@ export async function loadSheet() {
 }
 
 export async function load() {
-  const [a, p, e, m] = await Promise.all([
+  const [a, p, e, m, st, rn] = await Promise.all([
     sb.from('daily_ops_accounts').select('*').order('sort_order'),
     sb.from('daily_ops_posts').select('*').order('posted_at', { ascending: false }).limit(500),
     sb.from('daily_ops_experiments').select('*').order('started_at', { ascending: false }),
     sb.from('growth_meetings').select('*').order('meeting_date', { ascending: false }).limit(1000),
+    sb.from('growth_settings').select('*').eq('id', 1).maybeSingle(),
+    sb.from('growth_scrape_runs').select('*').order('started_at', { ascending: false }).limit(200),
   ]);
   store.missing.clear();
   if (m.error) store.missing.add('growth_meetings');
+  if (st.error) store.missing.add('scraper_settings');
+  store.settings = st.data || null; store.runs = rn.data || [];
   if (p.data?.length && !('tags' in p.data[0])) store.missing.add('post_tags');
   if (e.data?.length && !('assets' in e.data[0])) store.missing.add('experiment_assets');
   [a, p, e].forEach(x => x.error && console.error(x.error));
@@ -48,7 +52,7 @@ export function subscribe() {
   if (channel) return;
   const soon = () => { clearTimeout(timer); timer = setTimeout(load, 400); };
   channel = sb.channel('hq-live');
-  ['daily_ops_posts', 'daily_ops_experiments', 'growth_meetings', 'daily_ops_accounts'].forEach(t => channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, soon));
+  ['daily_ops_posts', 'daily_ops_experiments', 'growth_meetings', 'daily_ops_accounts', 'growth_settings', 'growth_scrape_runs'].forEach(t => channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, soon));
   channel.subscribe();
 }
 

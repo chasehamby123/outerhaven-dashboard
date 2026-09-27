@@ -4,8 +4,9 @@ import { store, load, savePost, saveExperiment, deleteExperiment, saveMeeting, d
 import { DIMENSIONS, METRIC_DEFS, breakdown, accountBreakdown, sameCreative, boostEffect, commentsNoMeetings, suggestTests, verdict, confidenceLabel } from './insights.js';
 import { SOURCES, sheetStatus } from './overview.js';
 import { METRICS } from './sheet.js';
+import { scraperView, scraperStatus } from './scraper.js';
 
-const TABS = [['posts', 'Posts'], ['experiments', 'Experiments'], ['insights', 'Insights'], ['meetings', 'Meetings'], ['sheet', 'Sheet history']];
+const TABS = [['scraper', 'Scraper'], ['posts', 'Posts'], ['experiments', 'Experiments'], ['insights', 'Insights'], ['meetings', 'Meetings'], ['sheet', 'Sheet history']];
 const EXP_METRICS = [['impressions', 'Impressions'], ['sent', 'Messages sent'], ['comments', 'Comments'], ['reactions', 'Reactions'], ['saves', 'Saves'], ['sends', 'Sends (shares)'], ['replies', 'Replies'], ['dms', 'Inbound DMs'], ['meetings', 'Meetings']];
 const VARIABLES = [...Object.values(DIMENSIONS).map(d => d.label), 'Account', 'Boost', 'Other'];
 let insightMetric = 'comments';
@@ -19,12 +20,12 @@ function migrationBanner() {
 
 export function renderGrowth(root, tab = 'posts') {
   if (!TABS.some(t => t[0] === tab)) tab = 'posts';
-  root.innerHTML = `<div class="head"><div><h1>Growth</h1><p>LinkedIn content, experiments and what they turn into.</p></div><div class="row">${sheetStatus()}</div></div>
+  root.innerHTML = `<div class="head"><div><h1>Growth</h1><p>LinkedIn content, experiments and what they turn into.</p></div><div class="row" style="gap:16px">${scraperStatus()}${sheetStatus()}</div></div>
     ${migrationBanner()}
     <nav class="tabs">${TABS.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</nav><div id="gBody"></div>`;
   $$('[data-tab]', root).forEach(b => b.onclick = () => { location.hash = `#/growth/${b.dataset.tab}`; });
   const body = $('#gBody', root);
-  ({ posts: postsView, experiments: experimentsView, insights: insightsView, meetings: meetingsView, sheet: sheetView })[tab](body);
+  ({ scraper: scraperView, posts: postsView, experiments: experimentsView, insights: insightsView, meetings: meetingsView, sheet: sheetView })[tab](body);
 }
 
 // ---------------- Posts ----------------

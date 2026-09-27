@@ -51,3 +51,50 @@ create policy growth_assets_team_delete on storage.objects for delete to authent
 do $$ begin
   alter publication supabase_realtime add table public.growth_meetings;
 exception when duplicate_object then null; end $$;
+
+-- 6. Scraper control: on/off switch, schedule, cost + budget cap, run log.
+create table if not exists public.growth_settings (
+  id int primary key default 1 check (id = 1),
+  scrape_enabled boolean not null default false,
+  scrape_frequency text not null default 'daily' check (scrape_frequency in ('daily','twice_daily','every_6h','weekly')),
+  scrape_hour int not null default 9 check (scrape_hour between 0 and 23),        -- Malaysia time (GMT+8)
+  cost_per_run numeric(8,2) not null default 0.19,
+  monthly_budget numeric(8,2) not null default 15,
+  updated_at timestamptz not null default now(),
+  updated_by uuid
+);
+insert into public.growth_settings (id) values (1) on conflict (id) do nothing;
+
+create table if not exists public.growth_scrape_runs (
+  id uuid primary key default gen_random_uuid(),
+  trigger text not null check (trigger in ('auto','manual')),
+  status text not null default 'running' check (status in ('running','ok','partial','failed','skipped')),
+  stage text,                                  -- auto runs: posts -> comments -> done
+  started_at timestamptz not null default now(),
+  finished_at timestamptz,
+  posts_saved int, profiles_checked int, comment_threads int,
+  cost_usd numeric(8,2) not null default 0,
+  detail jsonb not null default '{}'::jsonb,
+  triggered_by uuid default auth.uid()
+);
+create index if not exists growth_scrape_runs_started_idx on public.growth_scrape_runs(started_at desc);
+
+alter table public.growth_settings enable row level security;
+alter table public.growth_scrape_runs enable row level security;
+drop policy if exists growth_settings_read on public.growth_settings;
+drop policy if exists growth_settings_admin on public.growth_settings;
+create policy growth_settings_read on public.growth_settings for select to authenticated using (public.dashboard_role() in ('admin','ops'));
+create policy growth_settings_admin on public.growth_settings for update to authenticated using (public.dashboard_role() = 'admin') with check (public.dashboard_role() = 'admin');
+drop policy if exists growth_runs_read on public.growth_scrape_runs;
+drop policy if exists growth_runs_write on public.growth_scrape_runs;
+drop policy if exists growth_runs_update on public.growth_scrape_runs;
+create policy growth_runs_read on public.growth_scrape_runs for select to authenticated using (public.dashboard_role() in ('admin','ops'));
+create policy growth_runs_write on public.growth_scrape_runs for insert to authenticated with check (public.dashboard_role() = 'admin' and trigger = 'manual');
+create policy growth_runs_update on public.growth_scrape_runs for update to authenticated using (public.dashboard_role() = 'admin' and trigger = 'manual');
+
+do $$ begin
+  alter publication supabase_realtime add table public.growth_settings;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table public.growth_scrape_runs;
+exception when duplicate_object then null; end $$;

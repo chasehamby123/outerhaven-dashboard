@@ -22,7 +22,16 @@
       { id: id(), name: 'Hostage experiment vs provided list', variable: 'CTA', primary_metric: 'replies', variant_a: 'Provided list', variant_b: 'Hostage (list held back until they reply)', status: 'complete', started_at: d(20).slice(0, 10), ended_at: d(13).slice(0, 10), metrics_a: { sent: 14, replies: 1 }, metrics_b: { sent: 13, replies: 10 }, winner: 'B', learning: 'Gating the list 10x’d replies with the same send volume.', assets: [] },
     ],
     growth_meetings: [],
+    daily_ops_schedule: [],
+    growth_settings: [{ id: 1, scrape_enabled: false, scrape_frequency: 'daily', scrape_hour: 9, cost_per_run: 0.19, monthly_budget: 15 }],
+    growth_scrape_runs: [
+      { id: id(), trigger: 'manual', status: 'ok', stage: 'done', started_at: d(1), finished_at: d(1), posts_saved: 6, profiles_checked: 6, comment_threads: 6, cost_usd: 0.19, detail: {} },
+      { id: id(), trigger: 'manual', status: 'partial', stage: 'done', started_at: d(3), finished_at: d(3), posts_saved: 5, profiles_checked: 6, comment_threads: 5, cost_usd: 0.19, detail: { issues: ['Sara'] } },
+    ],
   };
+  { const t = new Date(Date.now() - 2 * 3600e3 + 8 * 3600e3).toISOString().slice(0, 10);
+    [['08:30', "Sara · Respond to 20 comments", 'done', "Respond to 20 comments on Sara's posts before the posting run begins."], ['09:00', 'Peter Plaut · Post 900-FO map', 'done', '1-hour posting block'], ['10:00', 'Chase · Post capital stack carousel', 'due', '1-hour posting block'], ['11:00', 'Peter Plaut · Reply to past post comments', 'due', '15 minutes'], ['13:30', 'DM follow-ups + qualification', 'due', ''], ['16:30', 'Final engagement + tomorrow setup', 'due', '']]
+      .forEach(([st, task, status, notes]) => db.daily_ops_schedule.push({ id: id(), work_date: t, start_time: st + ':00', task, status, notes, priority: 'high', completed_by_name: status === 'done' ? 'Anaz' : null })); }
   db.growth_meetings.push({ id: id(), meeting_date: d(2).slice(0, 10), account_name: 'Peter Plaut', source: 'inbound_post', post_id: db.daily_ops_posts[0].id, lead_name: 'J. Tan', company: 'SG family office', status: 'held' },
     { id: id(), meeting_date: d(3).slice(0, 10), account_name: 'Tengku Harris', source: 'outbound_dm', lead_name: 'M. Ali', company: 'KL developer', status: 'booked' },
     { id: id(), meeting_date: d(5).slice(0, 10), account_name: 'Chase', source: 'comment_to_dm', post_id: db.daily_ops_posts[2].id, lead_name: 'R. Cole', company: 'Independent sponsor', status: 'qualified' });
@@ -39,7 +48,7 @@
       const rows = db[this.t]; if (!rows) return { data: null, error: { message: `relation "${this.t}" does not exist` } };
       const m = r => this.f.every(f => f(r));
       if (this.op === 'select') { const out = rows.filter(m).map(r => ({ ...r })); return { data: this.single_ ? out[0] || null : out, error: null }; }
-      if (this.op === 'insert') { const list = (Array.isArray(this.payload) ? this.payload : [this.payload]).map(p => ({ id: id(), created_at: new Date().toISOString(), assets: [], tags: {}, metrics: {}, ...p })); rows.unshift(...list); return { data: this.single_ ? list[0] : list, error: null }; }
+      if (this.op === 'insert') { const list = (Array.isArray(this.payload) ? this.payload : [this.payload]).map(p => ({ id: id(), created_at: new Date().toISOString(), started_at: new Date().toISOString(), assets: [], tags: {}, metrics: {}, ...p })); rows.unshift(...list); return { data: this.single_ ? list[0] : list, error: null }; }
       if (this.op === 'update') { const hit = rows.filter(m); hit.forEach(r => Object.assign(r, this.payload)); return { data: this.single_ ? hit[0] : hit, error: null }; }
       if (this.op === 'delete') { db[this.t] = rows.filter(r => !m(r)); return { data: null, error: null }; }
     }
@@ -47,8 +56,9 @@
   const blobs = new Map();
   const client = {
     from: t => new Q(t),
-    rpc: async n => ({ data: n === 'dashboard_role' ? 'admin' : true, error: null }),
+    rpc: async n => ({ data: n === 'dashboard_role' ? (location.search.includes('ops') ? 'ops' : 'admin') : true, error: null }),
     auth: { getSession: async () => ({ data: { session: { user: { id: 'u1', email: 'tengku@outerhaven.test' } } } }), signOut: async () => ({}), signInWithPassword: async () => ({}) },
+    functions: { invoke: async (n, { body }) => { await new Promise(r => setTimeout(r, 150)); return { data: body.mode === 'posts' ? { ok: true, posts_saved: 6, profiles_checked: 6 } : body.mode === 'comments' ? { ok: true, comment_posts_processed: 6, comment_posts_queued: 6 } : { ok: true }, error: null }; } },
     channel: () => ({ on() { return this; }, subscribe() { return this; } }),
     storage: { from: () => ({
       upload: async (path, file) => { blobs.set(path, URL.createObjectURL(file)); return { data: { path }, error: null }; },

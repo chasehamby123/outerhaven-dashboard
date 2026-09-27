@@ -3,6 +3,7 @@ import { esc, fmt, pct, sum, median, fmtDate } from './core.js';
 import { store, loadSheet } from './data.js';
 import { SHEET_URL } from './sheet.js';
 import { commentsNoMeetings } from './insights.js';
+import { scraperStatus } from './scraper.js';
 
 export const SOURCES = {
   inbound_post: ['Inbound · from a post', 'in'], inbound_dm: ['Inbound · DM', 'in'], comment_to_dm: ['Comment → DM', 'in'],
@@ -85,7 +86,7 @@ export function renderOverview(root) {
   const maxT = Math.max(1, ...trend.map(t => t.v));
 
   root.innerHTML = `
-  <div class="head"><div><h1>Overview</h1><p>What moved this week, and where the meetings actually come from.</p><div style="margin-top:8px">${sheetStatus()}</div></div>
+  <div class="head"><div><h1>Overview</h1><p>What moved this week, and where the meetings actually come from.</p><div class="row" style="margin-top:8px;gap:16px">${scraperStatus()}${sheetStatus()}</div></div>
     <div class="row">${s ? `<select class="select sm" id="ovWeek" style="width:auto">${s.weeks.slice().reverse().map(w => `<option value="${w}" ${w === week ? 'selected' : ''}>Week of ${fmtDate(w)}${s.filledWeeks.includes(w) ? '' : ' (empty)'}</option>`).join('')}</select>` : ''}
     <button class="btn sm" id="ovRefresh">Refresh sheet</button><a class="btn sm ghost" href="${SHEET_URL}" target="_blank" rel="noopener">Open sheet ↗</a></div></div>
   <div class="stack">

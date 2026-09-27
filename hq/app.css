@@ -169,3 +169,33 @@ button,input,select,textarea{font:inherit;color:inherit}
   .variant+.variant{border-left:0;border-top:1px solid var(--line)}
   .funnel .step{grid-template-columns:110px minmax(0,1fr) 54px 50px}
 }
+
+/* Today checklist: built for one person ticking boxes */
+.today{display:grid;gap:16px;max-width:760px}
+.progress{display:grid;gap:10px;padding:16px;background:var(--surface);border:1px solid var(--line);border-radius:8px}
+.progress .bar{height:8px}
+.checklist{list-style:none;margin:0;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.checklist li{border-bottom:1px solid var(--line)}
+.checklist li:last-child{border-bottom:0}
+.checklist label{display:grid;grid-template-columns:28px 76px minmax(0,1fr);gap:14px;align-items:start;padding:16px;cursor:pointer}
+.checklist label:hover{background:#fbfbfa}
+.checklist input{appearance:none;width:24px;height:24px;margin:0;border:2px solid var(--line-2);border-radius:6px;display:grid;place-items:center;cursor:pointer;background:var(--surface)}
+.checklist input:checked{background:var(--good);border-color:var(--good)}
+.checklist input:checked::after{content:"";width:6px;height:11px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:rotate(45deg) translate(-1px,-1px)}
+.checklist .time{font-size:var(--fs-s);color:var(--muted);padding-top:2px;font-variant-numeric:tabular-nums}
+.checklist .what{display:grid;gap:3px;font-size:15px}
+.checklist .what b{font-weight:500}
+.checklist .what small{font-size:var(--fs-xs);color:var(--muted)}
+.checklist li.done .what b{color:var(--muted);text-decoration:line-through}
+.checklist li.now{box-shadow:inset 3px 0 0 var(--ink)}
+@media(max-width:900px){.checklist label{grid-template-columns:28px 64px minmax(0,1fr);gap:10px;padding:14px 12px}}
+
+/* Switch */
+.switch{display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer}
+.switch input{position:absolute;opacity:0;width:0;height:0}
+.switch>span:first-of-type{position:relative;width:40px;height:22px;border-radius:11px;background:var(--line-2);transition:background .15s;flex:none}
+.switch>span:first-of-type::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s}
+.switch input:checked+span{background:var(--good)}
+.switch input:checked+span::after{transform:translateX(18px)}
+.switch input:focus-visible+span{outline:2px solid var(--ink);outline-offset:2px}
+.switch input:disabled+span{opacity:.5}
