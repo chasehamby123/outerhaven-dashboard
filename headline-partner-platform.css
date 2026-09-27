@@ -8,3 +8,21 @@ h1,h2,h3,.firmStatement,.capitalStatement{text-wrap:pretty;word-break:normal;ove
 
 @media(max-width:1000px){.partnerPlatformIntro{grid-template-columns:1fr;gap:36px}.sectionHead,.textColumns,.firmEditorial,.capitalSplit,.methodGrid{grid-template-columns:1fr!important;gap:34px!important}.sectionHead h2,.textColumns h2,.firmStatement,.capitalStatement,.methodLead h2{max-width:880px}.sectionHead h2{font-size:clamp(38px,6vw,52px)!important}.textColumns h2{font-size:clamp(36px,5.6vw,50px)!important}.firmStatement,.capitalStatement{font-size:clamp(38px,6vw,52px)!important}.methodLead h2{font-size:clamp(36px,5.6vw,50px)!important}}
 @media(max-width:760px){.partnerPlatform{padding:74px 0}.partnerPlatformIntro h2{font-size:44px;line-height:1.02}.partnerPlatformStep{grid-template-columns:42px 1fr}.partnerPlatformStep p{grid-column:2}.partnerPlatformFoot{align-items:flex-start;flex-direction:column;gap:12px}.sectionHead h2,.textColumns h2,.firmStatement,.capitalStatement,.methodLead h2{font-size:42px!important;line-height:1.03!important}.pageHero h1{font-size:48px!important}.closing h2{font-size:44px!important}.imageBandContent h2{font-size:46px!important}}
+
+
+/* Desktop readability + centered hero container */
+@media (min-width: 1200px) {
+  .financeHeroGrid{max-width:980px;margin-left:auto!important;margin-right:auto!important}
+  .financeHero .eyebrow{font-size:clamp(10px,.62vw,13px)}
+  .financeHeroLead{font-size:clamp(16px,.92vw,19px);line-height:1.72}
+  .financeHeroLinks a{font-size:clamp(10px,.6vw,13px)}
+  .sectionHead p,.firmCopy,.capitalCopy,.methodLead p,.imageBandContent p,.quietAccess p,.closing p,.pageHero p,.textColumns .copy p,.partnerPlatformLead{font-size:clamp(12px,.7vw,15px)}
+  .serviceRow p,.principleRow span,.methodLine p,.clientCard p,.industryRows b,.capabilityIntro p,.capabilityColumns p,.industryDetail p,.industryDetail li,.pillarCard>p,.situationCard p,.darkCapability p,.practiceCard p,.partnerPlatformStep p{font-size:clamp(11px,.64vw,14px)}
+  .pillarList span,.practiceCard li{font-size:clamp(10px,.58vw,13px)}
+  .metric span,.metric small,.footerNav a{font-size:clamp(10px,.58vw,13px)}
+  .principleRow strong,.methodLine strong,.capitalRow span,.industryDetail b{font-size:clamp(10px,.58vw,13px)}
+  .navText,.siteNavLinks a{font-size:clamp(11px,.62vw,13px)}
+  .navCta{font-size:clamp(10px,.58vw,13px)}
+  .siteBrandText span{font-size:clamp(8px,.46vw,10px)}
+  .footerLegal{font-size:clamp(9px,.52vw,12px)}
+}
