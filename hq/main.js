@@ -1,5 +1,5 @@
 // HQ entry: auth gate, routing, sidebar.
-import { $, $$, esc, state, authenticate, signIn, signOut } from './core.js';
+import { $, $$, esc, state, sb, authenticate, signIn, signOut } from './core.js';
 import { store, load, loadSheet, subscribe, onChange } from './data.js';
 import { renderOverview } from './overview.js';
 import { renderGrowth } from './growth.js';
@@ -50,7 +50,15 @@ function authScreen(msg = '') {
     <h1>Sign in</h1><p>Team members only.</p>
     <form id="authForm"><label class="field">Email<input class="input" id="aEmail" type="email" autocomplete="email" required></label>
     <label class="field">Password<input class="input" id="aPass" type="password" autocomplete="current-password" required></label>
-    <div class="msg" id="aMsg">${esc(msg)}</div><button class="btn primary" type="submit">Sign in</button></form></div></div>`;
+    <div class="msg" id="aMsg">${esc(msg)}</div><button class="btn primary" type="submit">Sign in</button>
+    <button type="button" class="link s" id="aForgot" style="justify-self:start">Forgot password?</button></form></div></div>`;
+  $('#aForgot').onclick = async () => {
+    const email = $('#aEmail').value.trim().toLowerCase(), m = $('#aMsg');
+    if (!email) { m.textContent = 'Type your email above first.'; return; }
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + '/hq.html' });
+    m.style.color = error ? '' : 'var(--good)';
+    m.textContent = error ? error.message : `If ${email} has an account, a reset link is on its way. Check that inbox (and spam).`;
+  };
   $('#authForm').onsubmit = async e => {
     e.preventDefault(); const b = e.submitter; b.disabled = true;
     const err = await signIn($('#aEmail').value, $('#aPass').value);
@@ -59,7 +67,27 @@ function authScreen(msg = '') {
   };
 }
 
+// Landing from a password-reset email: let the person choose a new password.
+function recoveryScreen() {
+  $('#app').innerHTML = `<div class="auth"><div class="card"><div class="brand" style="padding:0"><b>O</b><span>Outerhaven</span></div>
+    <h1>Set a new password</h1><p>At least 8 characters.</p>
+    <form id="rForm"><label class="field">New password<input class="input" id="rPass" type="password" autocomplete="new-password" minlength="8" required></label>
+    <label class="field">Repeat it<input class="input" id="rPass2" type="password" autocomplete="new-password" minlength="8" required></label>
+    <div class="msg" id="rMsg"></div><button class="btn primary" type="submit">Save password</button></form></div></div>`;
+  $('#rForm').onsubmit = async e => {
+    e.preventDefault(); const p = $('#rPass').value, m = $('#rMsg');
+    if (p !== $('#rPass2').value) { m.textContent = "Passwords don't match."; return; }
+    const { error } = await sb.auth.updateUser({ password: p });
+    if (error) { m.textContent = error.message; return; }
+    history.replaceState(null, '', '/hq.html'); start();
+  };
+}
+
 async function start() {
+  if (/type=recovery/.test(location.hash) || /type=recovery/.test(location.search)) {
+    await sb.auth.getSession(); // lets supabase-js consume the token from the link
+    return recoveryScreen();
+  }
   const r = await authenticate();
   if (!r.ok) return authScreen(r.msg);
   shell();

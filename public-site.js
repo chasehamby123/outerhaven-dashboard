@@ -1,3 +1,5 @@
+// Password-reset links may land on the homepage; forward them to HQ's set-password screen.
+if(/type=recovery/.test(location.hash))location.replace('/hq.html'+location.hash);
 (function(){
   const nav=document.querySelector('.siteNav');
   const menu=document.getElementById('mobileMenuBtn');
