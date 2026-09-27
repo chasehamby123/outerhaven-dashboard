@@ -74,3 +74,12 @@
 @media (min-width: 1800px) {
   .siteWrap{width:min(1500px,calc(100% - 96px))}
 }
+
+/* Selected mandates */
+.dealList{border-top:1px solid var(--navy)}
+.dealRow{display:grid;grid-template-columns:minmax(180px,.45fr) 1fr 200px;gap:32px;align-items:center;padding:28px 0;border-bottom:1px solid var(--line)}
+.dealRow strong{font:400 clamp(36px,3.4vw,52px)/1 var(--serif);letter-spacing:-.022em;color:var(--navy)}
+.dealRow span{display:block;font:400 clamp(22px,1.6vw,28px)/1.15 var(--serif);color:var(--navy)}
+.dealRow small{display:block;margin-top:8px;font-size:var(--fs-ui);color:var(--text-2)}
+.dealRow em{font-style:normal;text-align:right;font-size:var(--fs-label);font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--bronze)}
+@media(max-width:760px){.dealRow{grid-template-columns:1fr;gap:10px}.dealRow em{text-align:left}}
