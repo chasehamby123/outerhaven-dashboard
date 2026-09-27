@@ -61,7 +61,7 @@ export async function authenticate() {
   if (!(await allowed(session.user.email))) { await sb.auth.signOut(); return { ok: false, msg: 'This email is not approved for the dashboard.' }; }
   const { data: role, error } = await sb.rpc('dashboard_role');
   if (error) return { ok: false, msg: 'Could not load your role.' };
-  if (role === 'originator') { location.replace('/originator.html'); return { ok: false, msg: '' }; }
+  if (role === 'originator') { await sb.auth.signOut(); return { ok: false, msg: `${session.user.email} is set up as a partner (originator) account, not a team account. Its role needs changing to admin or ops in Supabase.` }; }
   if (!['admin', 'ops'].includes(role)) { await sb.auth.signOut(); return { ok: false, msg: 'This account does not have a dashboard role.' }; }
   state.user = session.user; state.role = role;
   return { ok: true };
