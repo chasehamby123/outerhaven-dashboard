@@ -24,6 +24,7 @@ function render() {
   lastScroll = window.scrollY;
   $$('.nav a[data-page]').forEach(a => a.classList.toggle('on', a.dataset.page === page));
   if (document.querySelector('.modal')) return; // don't yank a form out from under the user
+  main.dataset.page = page; // views check this before redrawing from timers/realtime
   ROUTES[page].render(main, sub);
   window.scrollTo(0, lastScroll);
 }

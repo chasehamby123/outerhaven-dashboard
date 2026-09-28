@@ -6,6 +6,7 @@
 //  2. One bad post no longer aborts the whole run; per-post errors are collected and logged.
 //  3. Obeys growth_settings: on/off switch and monthly budget, both editable in HQ.
 //  4. Admins can trigger a run from HQ ("Run now") with their normal login; cron still uses the secret.
+//  5. (v3) Daily mode (default): one scrape a day at scrape_hour Malaysia time: posts, then comment threads.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -93,9 +94,9 @@ async function getSecret(key: string) {
   return r.data.secret_value as string;
 }
 async function getSettings() {
-  const r = await sb.from("growth_settings").select("scrape_enabled,monthly_budget").eq("id", 1).maybeSingle();
-  if (r.error || !r.data) return { enabled: true, budget: DEFAULT_BUDGET_USD, fromTable: false };
-  return { enabled: r.data.scrape_enabled !== false, budget: Number(r.data.monthly_budget) || DEFAULT_BUDGET_USD, fromTable: true };
+  const r = await sb.from("growth_settings").select("*").eq("id", 1).maybeSingle();
+  if (r.error || !r.data) return { enabled: true, budget: DEFAULT_BUDGET_USD, mode: "daily", hour: 9, fromTable: false };
+  return { enabled: r.data.scrape_enabled !== false, budget: Number(r.data.monthly_budget) || DEFAULT_BUDGET_USD, mode: r.data.scrape_mode === "paced" ? "paced" : "daily", hour: Number.isFinite(Number(r.data.scrape_hour)) ? Number(r.data.scrape_hour) : 9, fromTable: true };
 }
 async function apifyUsage(token: string) {
   const r = await fetch("https://api.apify.com/v2/users/me/usage/monthly", { headers: { authorization: `Bearer ${token}` } });
@@ -289,7 +290,7 @@ Deno.serve(async (req) => {
     remaining_to_ceiling_usd: Number(remaining.toFixed(4)), usage_cycle_start: cycleStart.toISOString(), usage_cycle_end: cycleEnd.toISOString(),
     cycle_progress: Number(progress.toFixed(6)), paced_target_now_usd: Number(targetNow.toFixed(4)), remaining_runs_approx: remainingRunsApprox,
     recommended_average_interval_minutes: remainingRunsApprox > 0 ? Number((remainingMinutes / remainingRunsApprox).toFixed(1)) : null,
-    pending_comment_posts: pendingComments, trigger: who.kind, by: who.email,
+    pending_comment_posts: pendingComments, trigger: who.kind, by: who.email, schedule_mode: settings.mode, scrape_hour_myt: settings.hour,
   };
   if (body.status_only === true) return json(status);
 
@@ -299,7 +300,22 @@ Deno.serve(async (req) => {
     if (!recent.data?.length) await logRun({ run_mode: "skip_disabled", usage_before: used, target_usage: targetNow, detail: status });
     return json({ ...status, ran: false, reason: "auto_scrape_disabled" });
   }
-  if (!manual && (targetNow - used) < (RUN_ESTIMATE_USD - 0.005)) {
+  // Daily mode: the cron ticks every 30 min, but only does work once a day after scrape_hour (Malaysia time):
+  // first the posts pass, then comment passes until no threads are pending (max 3 so a bad day can't run away).
+  let dailyMode: string | null = null;
+  if (!manual && settings.mode === "daily") {
+    const myt = new Date(Date.now() + 8 * 3600e3), day = myt.toISOString().slice(0, 10);
+    if (myt.getUTCHours() < settings.hour) return json({ ...status, ran: false, reason: "before_daily_hour" });
+    const since = new Date(Date.parse(`${day}T00:00:00Z`) - 8 * 3600e3).toISOString();
+    const todays = await sb.from("daily_ops_linkedin_auto_log").select("run_mode").gte("created_at", since).in("run_mode", ["posts", "posts_partial", "error_posts", "comments", "comments_partial", "error_comments"]);
+    const modes = (todays.data || []).map((r: any) => r.run_mode as string);
+    const postsDone = modes.some(m => m.startsWith("posts")), postsFails = modes.filter(m => m === "error_posts").length;
+    const commentRuns = modes.filter(m => m.includes("comments")).length;
+    if (!postsDone && postsFails < 2) dailyMode = "posts";
+    else if (postsDone && pendingComments > 0 && commentRuns < 3) dailyMode = "comments";
+    else return json({ ...status, ran: false, reason: postsDone ? "done_for_today" : "posts_failed_twice_today" });
+  }
+  if (!manual && settings.mode === "paced" && (targetNow - used) < (RUN_ESTIMATE_USD - 0.005)) {
     await logRun({ run_mode: "skip_pace", usage_before: used, target_usage: targetNow, detail: status });
     return json({ ...status, ran: false, reason: "ahead_of_budget_pace" });
   }
@@ -309,7 +325,7 @@ Deno.serve(async (req) => {
   }
 
   const requested = clean(body.mode);
-  const mode = requested === "posts" || requested === "comments" ? requested : (pendingComments > 0 ? "comments" : "posts");
+  const mode = dailyMode || (requested === "posts" || requested === "comments" ? requested : (pendingComments > 0 ? "comments" : "posts"));
   const allowDetail = mode === "posts" && (remaining >= (RUN_ESTIMATE_USD * 2 - 0.001));
   const started = new Date().toISOString();
   const tag = manual ? `manual_${mode}` : mode;

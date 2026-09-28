@@ -31,7 +31,7 @@ async function load() {
 }
 
 function draw() {
-  if (!root || !root.isConnected) return;
+  if (!root || !root.isConnected || root.dataset.page !== 'today') return; // user has moved to another page
   const done = rows.filter(r => r.status === 'done').length, total = rows.length, pctDone = total ? Math.round(done / total * 100) : 0;
   const now = nowMin();
   const current = rows.find(r => r.status !== 'done' && opMin(r.start_time) <= now && now <= (r.end_time ? opMin(r.end_time) : opMin(r.start_time) + 45));

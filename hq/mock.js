@@ -23,7 +23,7 @@
     ],
     growth_meetings: [],
     daily_ops_schedule: [],
-    growth_settings: [{ id: 1, scrape_enabled: true, monthly_budget: 19 }],
+    growth_settings: [{ id: 1, scrape_enabled: true, monthly_budget: 19, scrape_mode: 'daily', scrape_hour: 9 }],
     daily_ops_linkedin_auto_log: [
       { id: 3, created_at: d(0.1), run_mode: 'comments', usage_before: 6.2, usage_after: 6.26, detail: { usage_usd: 6.2, recommended_average_interval_minutes: 190, result: { comment_posts_processed: 2 } } },
       { id: 2, created_at: d(0.3), run_mode: 'posts', usage_before: 6.1, usage_after: 6.2, detail: { usage_usd: 6.1, result: { posts_saved: 9 } } },

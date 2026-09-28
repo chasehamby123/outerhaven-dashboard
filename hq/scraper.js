@@ -3,6 +3,7 @@
 import { sb, state, esc, $, toast, fail } from './core.js';
 import { store, load } from './data.js';
 
+const hourLabel = h => `${((h + 11) % 12) + 1}:00 ${h >= 12 ? 'PM' : 'AM'}`;
 const money = n => '$' + Number(n || 0).toFixed(2);
 const ago = t => { if (!t) return 'never'; const m = Math.round((Date.now() - new Date(t)) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
 const isRun = r => !String(r.run_mode).startsWith('skip');
@@ -65,15 +66,16 @@ export function scraperView(body) {
   const pct = Math.min(100, used / Math.max(0.01, budget) * 100);
   const runs = store.scrapeLog.filter(isRun), lastRun = runs[0], lastOk = runs.find(r => !isError(r));
   let streak = 0; for (const r of runs) { if (isError(r)) streak++; else break; }
-  const interval = st?.recommended_average_interval_minutes, resets = st?.usage_cycle_end ? new Date(st.usage_cycle_end).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null;
+  const hour = Number.isFinite(Number(s.scrape_hour)) ? Number(s.scrape_hour) : 9, resets = st?.usage_cycle_end ? new Date(st.usage_cycle_end).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null;
   body.innerHTML = `${streak >= 2 ? `<div class="card" style="border-color:#f1c7c3;background:var(--bad-bg);margin-bottom:20px"><div class="body s"><b>The last ${streak} runs failed</b> and each still used Apify credit. Latest error: ${esc(lastRun?.detail?.error || '')}. Last successful run: ${esc(ago(lastOk?.created_at))}.</div></div>` : ''}
   <div class="cols-2">
-  <section class="card"><header><div><h2>Automatic scraping</h2><p>Runs on the server every 30 minutes when it's on. Nobody needs to be logged in.</p></div></header>
+  <section class="card"><header><div><h2>Automatic scraping</h2><p>Runs on the server, so nobody needs to be logged in.</p></div></header>
     <div class="body stack" style="gap:18px">
-      <label class="switch"><input type="checkbox" id="scOn" ${s.scrape_enabled ? 'checked' : ''} ${admin ? '' : 'disabled'}><span></span><b>${s.scrape_enabled ? 'On' : 'Off'}</b><span class="muted s">${s.scrape_enabled ? `Spreads the budget evenly over the month${interval ? `: about one run every ${interval >= 90 ? (interval / 60).toFixed(1) + ' hours' : Math.round(interval) + ' min'}` : ''}.` : 'Nothing runs on its own. Use Run now when you want fresh data.'}</span></label>
-      <div class="form"><label class="field">Monthly budget ($)<input class="input" type="number" min="0" step="1" id="scBudget" value="${esc(budget)}" ${admin ? '' : 'disabled'}></label>
-        <div class="field">Cost per run<div class="s" style="padding-top:8px">${cpr ? `about <b>${money(cpr)}</b>, measured from recent runs` : 'Not enough runs to measure yet'}</div></div></div>
-      <div class="s muted">Automatic runs stop once Apify spend reaches the budget, then resume when Apify's billing month resets${resets ? ` (${esc(resets)})` : ''}. Each run does either posts or comments, whichever is due.</div>
+      <label class="switch"><input type="checkbox" id="scOn" ${s.scrape_enabled ? 'checked' : ''} ${admin ? '' : 'disabled'}><span></span><b>${s.scrape_enabled ? 'On' : 'Off'}</b><span class="muted s">${s.scrape_enabled ? `Once a day at ${hourLabel(hour)} Malaysia time: latest posts first, then their comment threads.` : 'Nothing runs on its own. Use Run now when you want fresh data.'}</span></label>
+      <div class="form"><label class="field">Daily run time (Malaysia)<select class="select" id="scHour" ${admin ? '' : 'disabled'}>${[...Array(24).keys()].map(h => `<option value="${h}" ${h === hour ? 'selected' : ''}>${hourLabel(h)}</option>`).join('')}</select></label>
+        <label class="field">Monthly budget cap ($)<input class="input" type="number" min="0" step="1" id="scBudget" value="${esc(budget)}" ${admin ? '' : 'disabled'}></label>
+        <div class="field full">Cost<div class="s" style="padding-top:4px">${cpr ? `About <b>${money(cpr)}</b> per pass, so roughly <b>${money(cpr * 2)}–${money(cpr * 3)} a day</b> (${money(cpr * 2 * 30)}–${money(cpr * 3 * 30)} a month).` : 'Not enough runs to measure yet.'}</div></div></div>
+      <div class="s muted">Automatic runs stop once Apify spend reaches the budget, then resume when Apify's billing month resets${resets ? ` (${esc(resets)})` : ''}. A day's scrape is one posts pass, then up to 3 comment passes (4 posts each) until every changed thread is refreshed.</div>
     </div></section>
   <section class="card"><header><div><h2>Apify spend this billing month</h2><p>Read live from your Apify account</p></div></header>
     <div class="body stack" style="gap:14px">
@@ -95,6 +97,7 @@ export function scraperView(body) {
     </tbody></table>${!store.scrapeLog.length ? '<div class="empty">No runs logged yet.</div>' : ''}</div></section>`;
   if (!admin) return;
   $('#scOn', body).onchange = e => saveSettings({ scrape_enabled: e.target.checked });
+  $('#scHour', body).onchange = e => saveSettings({ scrape_hour: Number(e.target.value) });
   $('#scBudget', body).onchange = e => saveSettings({ monthly_budget: Math.max(0, Number(e.target.value) || 0) });
   $('#scRun', body).onclick = e => runNow(e.target, $('#scStatus', body));
 }

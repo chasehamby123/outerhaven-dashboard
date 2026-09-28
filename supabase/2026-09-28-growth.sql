@@ -78,3 +78,7 @@ exception when duplicate_object then null; end $$;
 do $$ begin
   alter publication supabase_realtime add table public.daily_ops_linkedin_auto_log;
 exception when duplicate_object then null; end $$;
+
+-- 7. (v3) Once-a-day scraping: mode + hour (Malaysia time).
+alter table public.growth_settings add column if not exists scrape_mode text not null default 'daily' check (scrape_mode in ('daily','paced'));
+alter table public.growth_settings add column if not exists scrape_hour int not null default 9 check (scrape_hour between 0 and 23);
