@@ -10,7 +10,20 @@ export const SOURCES = {
   outbound_dm: ['Outbound · LinkedIn DM', 'out'], outbound_email: ['Outbound · email', 'out'], referral: ['Referral', 'other'], other: ['Other', 'other'],
 };
 
-let week = null;
+let week = null, sortKey = 'meetingsBooked', sortAsc = false;
+const COLS = [['account', 'Account', false], ['posts', 'Posts', true], ['impressions', 'Impr.', true], ['comments', 'Comments', true], ['dmsInitiated', 'DMs', true], ['leadsReplied', 'Replies', true], ['meetingsBooked', 'Booked', true], ['meetingsHeld', 'Held', true], ['per1k', 'Mtg / 1k', true]];
+// Tie-breakers so equal values still land in a sensible order.
+const TIE = ['meetingsBooked', 'meetingsHeld', 'per1k', 'leadsReplied', 'comments', 'impressions'];
+function sortAccounts(list) {
+  const v = (a, k) => k === 'account' ? a.account.toLowerCase() : (a[k] ?? -1);
+  return list.slice().sort((a, b) => {
+    for (const k of [sortKey, ...TIE.filter(t => t !== sortKey)]) {
+      const x = v(a, k), y = v(b, k); if (x === y) continue;
+      const d = x > y ? 1 : -1; return k === sortKey && sortAsc ? d : k === 'account' ? d : -d;
+    }
+    return 0;
+  });
+}
 
 export function sheetStatus() {
   if (store.sheetError) return `<span class="row s"><i class="dot err"></i><span>Sheet error: ${esc(store.sheetError)}</span></span>`;
@@ -32,7 +45,7 @@ function prevWeekRows() {
 }
 const tot = (rows, k) => sum(rows.map(r => r[k]));
 function delta(cur, prev) {
-  if (!prev) return '';
+  if (!prev) return '<small>No earlier week to compare</small>';
   const d = cur - prev; if (!d) return '<small>No change vs last week</small>';
   return `<small class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${fmt(Math.abs(d))} vs last week</small>`;
 }
@@ -50,11 +63,12 @@ export function renderOverview(root) {
   const rows = weekRows(), prev = prevWeekRows(), s = store.sheet;
   const T = k => tot(rows, k), P = k => tot(prev, k);
   const imp = T('impressions'), booked = T('meetingsBooked'), held = T('meetingsHeld');
-  const kpi = (label, v, k, sub = '') => `<div class="kpi"><label>${label}</label><b>${v}</b>${k ? delta(T(k), P(k)) : `<small>${sub}</small>`}</div>`;
+  const kpi = (label, v, k, sub = '', hero = false) => `<div class="kpi${hero ? ' hero' : ''}"><label>${label}</label><b>${v}</b>${k ? delta(T(k), P(k)) : `<small>${sub}</small>`}</div>`;
 
   // Per-account efficiency, the core "what moves the needle" table.
   const acct = rows.filter(r => r.filled).map(r => ({ ...r, per1k: r.impressions ? (r.meetingsBooked || 0) / r.impressions * 1000 : null, commentRate: r.impressions ? (r.comments || 0) / r.impressions : null }))
-    .sort((a, b) => (b.meetingsBooked || 0) - (a.meetingsBooked || 0) || (b.impressions || 0) - (a.impressions || 0));
+    ;
+  const acctSorted = sortAccounts(acct);
   const medImp = median(acct.map(a => a.impressions || 0)) || 0, medCom = median(acct.map(a => a.comments || 0)) || 0;
   const flag = a => {
     if ((a.impressions || 0) >= medImp && (a.comments || 0) >= medCom && !a.meetingsBooked) return '<span class="tag warn">Attention, no meetings</span>';
@@ -91,17 +105,17 @@ export function renderOverview(root) {
     <button class="btn sm" id="ovRefresh">Refresh sheet</button><a class="btn sm ghost" href="${SHEET_URL}" target="_blank" rel="noopener">Open sheet ↗</a></div></div>
   <div class="stack">
     <div class="kpis">
+      ${kpi('Meetings booked', fmt(booked), 'meetingsBooked', '', true)}
       ${kpi('Impressions', fmt(imp), 'impressions')}
       ${kpi('Comments', fmt(T('comments')), 'comments')}
       ${kpi('DMs initiated', fmt(T('dmsInitiated')), 'dmsInitiated')}
-      ${kpi('Meetings booked', fmt(booked), 'meetingsBooked')}
       ${kpi('Meetings held', fmt(held), 'meetingsHeld')}
       ${kpi('Meetings / 1k impressions', imp ? (booked / imp * 1000).toFixed(1) : '—', null, 'Reach → pipeline efficiency')}
     </div>
     ${notes.length ? `<section class="card"><header><div><h2>What moved the needle</h2><p>Calculated from the sheet for the selected week.</p></div></header><div class="body flush">${notes.map(n => `<div class="insight"><p>${n}</p></div>`).join('')}</div></section>` : ''}
-    <section class="card"><header><div><h2>Accounts</h2><p>Sorted by meetings booked. Flags show where effort isn't converting.</p></div></header>
-        <div class="body flush scroll"><table class="tbl"><thead><tr><th>Account</th><th class="n">Posts</th><th class="n">Impr.</th><th class="n">Comments</th><th class="n">DMs</th><th class="n">Replies</th><th class="n">Booked</th><th class="n">Held</th><th class="n">Mtg / 1k</th><th></th></tr></thead><tbody>
-        ${acct.map(a => `<tr><td class="strong">${esc(a.account)}</td><td class="n">${fmt(a.posts)}</td><td class="n">${fmt(a.impressions)}</td><td class="n">${fmt(a.comments)}</td><td class="n">${fmt(a.dmsInitiated)}</td><td class="n">${fmt(a.leadsReplied)}</td><td class="n strong">${fmt(a.meetingsBooked)}</td><td class="n">${fmt(a.meetingsHeld)}</td><td class="n">${a.per1k == null ? '—' : a.per1k.toFixed(1)}</td><td>${flag(a)}</td></tr>`).join('')}
+    <section class="card"><header><div><h2>Accounts</h2><p>Click a column to sort. Flags show where effort isn't converting.</p></div></header>
+        <div class="body flush scroll"><table class="tbl"><thead><tr>${COLS.map(([k, l, n]) => `<th class="sort ${n ? 'n' : ''} ${k === sortKey ? 'on' : ''} ${k === sortKey && sortAsc ? 'asc' : ''}" data-sort="${k}">${l}</th>`).join('')}<th></th></tr></thead><tbody>
+        ${acctSorted.map((a, i) => `<tr><td class="strong" style="white-space:nowrap"><span class="rank ${i === 0 ? 'top' : ''}">${i + 1}</span>${esc(a.account)}</td><td class="n">${fmt(a.posts)}</td><td class="n">${fmt(a.impressions)}</td><td class="n">${fmt(a.comments)}</td><td class="n">${fmt(a.dmsInitiated)}</td><td class="n">${fmt(a.leadsReplied)}</td><td class="n strong">${fmt(a.meetingsBooked)}</td><td class="n">${fmt(a.meetingsHeld)}</td><td class="n">${a.per1k == null ? '—' : a.per1k.toFixed(1)}</td><td>${flag(a)}</td></tr>`).join('')}
         </tbody></table>${!acct.length ? '<div class="empty">No numbers entered for this week yet.</div>' : ''}${rows.filter(r => !r.filled).length ? `<div class="s muted" style="padding:10px 12px;border-top:1px solid var(--line)">Not filled in: ${esc(rows.filter(r => !r.filled).map(r => r.account).join(', '))}</div>` : ''}</div></section>
     <div class="cols">
       <section class="card"><header><div><h2>Conversion</h2><p>Where effort turns into meetings, for the selected week.</p></div></header>
@@ -121,6 +135,7 @@ export function renderOverview(root) {
     </div>
   </div>`;
 
+  root.querySelectorAll('[data-sort]').forEach(th => th.onclick = () => { const k = th.dataset.sort; if (k === sortKey) sortAsc = !sortAsc; else { sortKey = k; sortAsc = k === 'account'; } renderOverview(root); });
   root.querySelector('#ovWeek')?.addEventListener('change', e => { week = e.target.value; renderOverview(root); });
   root.querySelector('#ovRefresh')?.addEventListener('click', async e => { e.target.disabled = true; e.target.textContent = 'Refreshing…'; await loadSheet(); });
 }

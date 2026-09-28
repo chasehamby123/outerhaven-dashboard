@@ -28,18 +28,27 @@ function render() {
   window.scrollTo(0, lastScroll);
 }
 
+const ICON = {
+  overview: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
+  today: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18M8.5 15l2 2 4-4"/></svg>',
+  growth: '<svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',
+  pipeline: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="6" rx="1.5"/></svg>',
+};
+const navLink = (page, href, label) => `<a href="${href}" data-page="${page}">${ICON[page]}<span>${label}</span></a>`;
+
 function shell() {
+  const email = state.user?.email || '', name = email.split('@')[0].replace(/[._-]+/g, ' ');
   $('#app').innerHTML = `<div class="app">
     <aside class="side">
-      <div class="brand"><b>O</b><span>Outerhaven</span></div>
-      <nav class="nav">${state.role === 'ops' ? '<a href="#/today" data-page="today">Today</a>' : `
-        <a href="#/overview" data-page="overview">Overview</a>
-        <a href="#/today" data-page="today">Today</a>
-        <a href="#/growth/posts" data-page="growth">Growth</a>
+      <div class="brand"><b>O</b><span>Outerhaven</span><em>HQ</em></div>
+      <nav class="nav">${state.role === 'ops' ? navLink('today', '#/today', 'Today') : `
+        ${navLink('overview', '#/overview', 'Overview')}
+        ${navLink('today', '#/today', 'Today')}
+        ${navLink('growth', '#/growth/posts', 'Growth')}
         <small>Legacy</small>
-        <a href="/shared.html">Pipeline <em>↗</em></a>`}
+        <a href="/shared.html">${ICON.pipeline}<span>Pipeline</span><em>↗</em></a>`}
       </nav>
-      <div class="sideFoot"><span>${esc(state.user?.email || '')}</span><button class="link s" id="signOut">Sign out</button></div>
+      <div class="sideFoot"><div class="av">${esc((name[0] || '?').toUpperCase())}</div><div class="who"><b style="text-transform:capitalize">${esc(name)}</b><button class="link s" id="signOut">Sign out</button></div></div>
     </aside>
     <main class="main" id="view"></main></div>`;
   $('#signOut').onclick = signOut;
