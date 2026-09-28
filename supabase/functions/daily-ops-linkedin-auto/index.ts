@@ -6,6 +6,7 @@
 //  2. One bad post no longer aborts the whole run; per-post errors are collected and logged.
 //  3. Obeys growth_settings: on/off switch and monthly budget, both editable in HQ.
 //  4. Admins can trigger a run from HQ ("Run now") with their normal login; cron still uses the secret.
+//  6. (v4) Posts pass: own posts identified by author==profile (not the unreliable repost flag); last 7 days tracked.
 //  5. (v3) Daily mode (default): one scrape a day at scrape_hour Malaysia time: posts, then comment threads.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -161,65 +162,66 @@ async function syncComments(apifyToken: string) {
   return { mode: "comments", actor_runs_estimate: 1, comment_posts_processed: processed, comment_posts_queued: targets.length, comment_records_saved: stored, unreplied_total: unrepliedTotal, errors };
 }
 
-async function syncPosts(apifyToken: string, allowDetail: boolean) {
+// Posts pass (v4). One Apify call per run: each profile's 10 most recent items. We decide ourselves what is an
+// original: the scraper's own is_repost flag is unreliable (it marks some originals as reposts), so an item is
+// the account's own post only when its author profile == the profile we scraped. Originals from the last 7 days
+// are all updated (not just the newest), so a post keeps getting fresh numbers for a week even after the team
+// reshares other posts on top of it. Reshares are still stored (flagged is_repost) because HQ uses them as boosts.
+const RECENT_ITEMS = 10, TRACK_DAYS = 7;
+// People rename their LinkedIn URL (e.g. /in/tengku-harris-shah-05ab06164 vs /in/tengku-harris-05ab06164) but the
+// trailing id stays, so match on that id when it exists, else on the full normalised URL.
+function profileSlug(u: string) { const m = canon(u).match(/linkedin\.com\/in\/([^/]+)/); return m ? decodeURIComponent(m[1]) : ""; }
+function profileId(u: string) { const t = profileSlug(u).split("-").pop() || ""; return /\d/.test(t) && t.length >= 6 ? t : ""; }
+function sameProfile(a: string, b: string) {
+  if (!a || !b) return false;
+  if (canon(a) === canon(b)) return true;
+  const ia = profileId(a), ib = profileId(b);
+  return !!ia && ia === ib;
+}
+async function syncPosts(apifyToken: string, _allowDetail: boolean) {
   const acctRes = await sb.from("daily_ops_accounts").select("id,owner_name,linkedin_url").eq("active", true).not("linkedin_url", "is", null).order("sort_order");
   if (acctRes.error) throw new Error(`accounts: ${acctRes.error.message}`);
   const accounts = acctRes.data || [];
   const profiles = accounts.map((a: any) => a.linkedin_url).filter(Boolean);
   if (!profiles.length) return { mode: "posts", actor_runs_estimate: 0, profiles_checked: 0, posts_saved: 0 };
   const acctByUrl = new Map(accounts.map((a: any) => [canon(a.linkedin_url), a]));
-  const summaries = await runApify(apifyToken, "atomus/linkedin-posts-scraper-pro", { profiles, maxPosts: 1, postedLimit: "month", sortBy: "date", latestPostOnly: true, includeReposts: false, includeSharedPosts: true });
+  const rows = await runApify(apifyToken, "atomus/linkedin-posts-scraper-pro", { profiles, maxPosts: RECENT_ITEMS, postedLimit: "month", sortBy: "date", latestPostOnly: false, includeReposts: true, includeSharedPosts: true }, 140000);
 
   const existingRes = await sb.from("daily_ops_posts").select("*").order("posted_at", { ascending: false }).limit(1500);
   if (existingRes.error) throw new Error(`existing posts: ${existingRes.error.message}`);
   const byKey = new Map<string, any>();
   for (const p of existingRes.data || []) if (p.post_key) byKey.set(`${p.account_id}|${p.post_key}`, p);
-  const findOld = async (accountId: string, url: string, sid: string) => {
-    const k = await postKeyFor(url);
-    return (k && byKey.get(`${accountId}|${k}`)) || byKey.get(`${accountId}|activity:${sid}`) || null;
-  };
 
-  const normalized: any[] = []; const needFullProfiles: string[] = []; let unmatched = 0;
-  for (const s of summaries) {
-    const source = clean(s?.source_url) || clean(s?._metadata?.source_url);
-    const account = acctByUrl.get(canon(source)); const sid = sourceActivityId(s);
-    if (!account || !sid) { unmatched++; continue; }
-    const old = await findOld(account.id, cleanUrl(clean(s?.latest_post_url)), sid);
-    normalized.push({ summary: s, source, account, sid, old });
-    if (!old || !old.raw_payload || old.content_type === "unknown") needFullProfiles.push(source);
-  }
-  const uniqueProfiles = [...new Set(needFullProfiles.filter(Boolean))];
-  let fullRows: any[] = [];
-  if (allowDetail && uniqueProfiles.length) fullRows = await runApify(apifyToken, "atomus/linkedin-posts-scraper-pro", { profiles: uniqueProfiles, maxPosts: 3, postedLimit: "month", sortBy: "date", latestPostOnly: false, includeReposts: false, includeSharedPosts: true });
-  const fullBySourceId = new Map<string, any>();
-  for (const r of fullRows) { if (r?.type && r.type !== "post") continue; const source = clean(r?._metadata?.source_url); const sid = sourceActivityId(r); if (source && sid) fullBySourceId.set(`${canon(source)}|${sid}`, r); }
-
-  let saved = 0, detailMatched = 0, reposts = 0; const errors: string[] = [];
-  for (const n of normalized) {
-    const { summary, source, account, sid } = n;
+  const cutoff = Date.now() - TRACK_DAYS * 864e5;
+  const ownByAccount = new Map<string, number>();
+  let saved = 0, originals = 0, reposts = 0, skippedOld = 0, unmatched = 0; const errors: string[] = [];
+  for (const r of rows) {
+    if (r?.type && r.type !== "post") continue;
+    const source = clean(r?._metadata?.source_url) || clean(r?.source_url);
+    const account = acctByUrl.get(canon(source)); const sid = sourceActivityId(r);
+    const publicUrl = cleanUrl(clean(r?.post_url) || clean(r?.share_url));
+    if (!account || !sid || !publicUrl) { unmatched++; continue; }
+    const authorUrl = clean(r?.author?.linkedinUrl) || clean(r?.author?.linkedin_url);
+    const isOwn = sameProfile(authorUrl, account.linkedin_url);
+    const postedAt = clean(r?.posted_at) || new Date().toISOString();
+    if (Date.parse(postedAt) < cutoff) { skippedOld++; continue; }
     try {
-      const full = fullBySourceId.get(`${canon(source)}|${sid}`) || null; if (full) detailMatched++;
-      const publicUrl = cleanUrl(clean(full?.post_url) || clean(summary?.latest_post_url));
-      if (!publicUrl) { unmatched++; continue; }
       const key = await postKeyFor(publicUrl);
-      const old = n.old || (key && byKey.get(`${account.id}|${key}`)) || null;
-      const postedAt = clean(full?.posted_at) || clean(summary?.latest_post_date) || new Date().toISOString();
-      const comments = full ? num(full?.engagement?.comments) : num(summary?.latest_post_comments);
-      const reactions = full ? num(full?.engagement?.total_reactions) : num(summary?.latest_post_likes);
-      const isRepost = full?.is_repost === true; if (isRepost) reposts++;
+      const old = (key && byKey.get(`${account.id}|${key}`)) || byKey.get(`${account.id}|activity:${sid}`) || null;
+      const comments = num(r?.engagement?.comments), reactions = num(r?.engagement?.total_reactions);
       const changed = !old || num(old.commenter_count) !== comments;
       const payload: any = {
         account_id: account.id, work_date: sgDate(postedAt), linkedin_post_url: publicUrl, posted_at: postedAt, post_key: key || `activity:${sid}`,
-        post_name: old?.post_name && old.post_name !== "" ? old.post_name : titleFor(clean(full?.content), postedAt, account.owner_name),
-        commenter_count: comments, unreplied_count: isRepost ? 0 : (old?.unreplied_count || 0), post_text: clean(full?.content) || old?.post_text || null,
-        reaction_count: reactions, repost_count: full ? num(full?.engagement?.shares) : (old?.repost_count || 0),
-        content_type: full ? contentType(full) : (old?.content_type || "unknown"), media_url: full ? mediaFor(full) : (old?.media_url || null),
+        post_name: old?.post_name && old.post_name !== "" ? old.post_name : titleFor(clean(r?.content), postedAt, account.owner_name),
+        commenter_count: comments, unreplied_count: isOwn ? (old?.unreplied_count || 0) : 0, post_text: clean(r?.content) || old?.post_text || null,
+        reaction_count: reactions, repost_count: num(r?.engagement?.shares),
+        content_type: isOwn ? contentType({ ...r, is_repost: false }) : "repost", media_url: mediaFor(r) || old?.media_url || null,
         activity_id: sid, last_scraped_at: new Date().toISOString(), source_actor: "atomus/linkedin-posts-scraper-pro",
-        scrape_status: isRepost ? "repost_no_thread" : (comments > 0 && changed ? "comments_pending" : (old?.scrape_status || "ok")),
-        is_repost: isRepost, source_profile_url: source,
-        author_name: clean(full?.author?.name) || clean(full?.author_name) || old?.author_name || null,
-        author_profile_url: clean(full?.author?.linkedinUrl) || old?.author_profile_url || null,
-        raw_payload: full || summary, updated_at: new Date().toISOString(),
+        scrape_status: !isOwn ? "repost_no_thread" : (comments > 0 && changed ? "comments_pending" : (old?.scrape_status || "ok")),
+        is_repost: !isOwn, source_profile_url: source,
+        author_name: clean(r?.author?.name) || clean(r?.author_name) || old?.author_name || null,
+        author_profile_url: isOwn ? account.linkedin_url : (authorUrl || old?.author_profile_url || null),
+        raw_payload: r, updated_at: new Date().toISOString(),
       };
       if (old) {
         const up = await sb.from("daily_ops_posts").update(payload).eq("id", old.id);
@@ -227,7 +229,6 @@ async function syncPosts(apifyToken: string, allowDetail: boolean) {
       } else {
         const ins = await sb.from("daily_ops_posts").insert(payload).select("*").single();
         if (ins.error?.code === "23505") {
-          // Row already exists under the trigger's key: update it instead of failing the run.
           const hit = await sb.from("daily_ops_posts").select("id").eq("account_id", account.id).eq("post_key", key).maybeSingle();
           if (hit.error || !hit.data) throw new Error(`insert post: ${ins.error.message}`);
           const up = await sb.from("daily_ops_posts").update(payload).eq("id", hit.data.id);
@@ -235,11 +236,11 @@ async function syncPosts(apifyToken: string, allowDetail: boolean) {
         } else if (ins.error) throw new Error(`insert post: ${ins.error.message}`);
         else if (ins.data?.post_key) byKey.set(`${account.id}|${ins.data.post_key}`, ins.data);
       }
-      saved++;
+      saved++; if (isOwn) { originals++; ownByAccount.set(account.id, (ownByAccount.get(account.id) || 0) + 1); } else reposts++;
     } catch (e) { errors.push(`${account.owner_name}: ${e instanceof Error ? e.message : String(e)}`); }
   }
-  const missing_profiles = accounts.filter((a: any) => !normalized.some(n => n.account.id === a.id)).map((a: any) => a.owner_name);
-  return { mode: "posts", actor_runs_estimate: 1 + (allowDetail && uniqueProfiles.length ? 1 : 0), profiles_checked: profiles.length, summary_rows: summaries.length, profiles_needing_detail: uniqueProfiles.length, detail_enabled: allowDetail, detail_rows_matched: detailMatched, posts_saved: saved, reposts, unmatched_post_rows: unmatched, missing_profiles, errors };
+  const no_own_post = accounts.filter((a: any) => !ownByAccount.has(a.id)).map((a: any) => a.owner_name);
+  return { mode: "posts", actor_runs_estimate: 1, profiles_checked: profiles.length, rows_returned: rows.length, posts_saved: saved, original_posts: originals, reposts, skipped_older_than_7d: skippedOld, unmatched_post_rows: unmatched, no_own_post_last_7d: no_own_post, missing_profiles: [], errors };
 }
 
 async function logRun(payload: any) { try { await sb.from("daily_ops_linkedin_auto_log").insert(payload); } catch { } }

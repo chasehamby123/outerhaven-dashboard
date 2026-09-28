@@ -16,7 +16,7 @@ const accountNames = () => store.accounts.map(a => a.owner_name).filter(Boolean)
 
 function migrationBanner() {
   if (!store.missing.size) return '';
-  return `<div class="card" style="border-color:#f0d9a8;background:var(--warn-bg);margin-bottom:20px"><div class="body s"><b>Database update needed.</b> Tagging posts, logging meetings and uploading creatives need the new columns and tables (<code>supabase/2026-09-28-growth.sql</code>). Missing: ${esc([...store.missing].join(', '))}.</div></div>`;
+  return `<div class="card" style="border-color:var(--line-2);background:var(--warn-bg);margin-bottom:20px"><div class="body s"><b>Database update needed.</b> Tagging posts, logging meetings and uploading creatives need the new columns and tables (<code>supabase/2026-09-28-growth.sql</code>). Missing: ${esc([...store.missing].join(', '))}.</div></div>`;
 }
 
 export function renderGrowth(root, tab = 'posts') {
