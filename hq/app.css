@@ -351,3 +351,15 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .wkDay small{font-size:11px;color:var(--muted)}
 @media(max-width:700px){.wkDays{grid-template-columns:repeat(4,minmax(0,1fr))}.odList li{grid-template-columns:1fr}}
 .wkDay:disabled{opacity:.45;cursor:default}
+
+/* DM tests (Today card + Growth) */
+.dmCard{margin-top:24px}
+.dmTest{padding:14px 20px;border-top:1px solid var(--line);display:grid;gap:10px}
+.dmVar{border:1px solid var(--line);border-radius:8px;padding:12px;display:grid;gap:8px;background:var(--surface)}
+.dmVar.next{border-color:var(--ink)}
+.dmHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dmLabel{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;background:var(--inv);color:var(--inv-ink);font-weight:600;font-size:12px}
+.dmMsg{margin:0;font-size:var(--fs-s);color:var(--ink-2);white-space:pre-wrap;max-height:7.5em;overflow:auto}
+.dmVField{display:grid;grid-template-columns:60px minmax(0,1fr);gap:8px;margin-top:8px}
+.grpH{margin:8px 0 -4px;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.report{margin:0;padding-left:18px;display:grid;gap:6px;font-size:var(--fs-s)}

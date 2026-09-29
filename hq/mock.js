@@ -54,6 +54,12 @@
     .forEach(([dw, t, o, c]) => db.daily_ops_weekly_posts.push({ id: id(), day_of_week: dw, start_time: t + ':00', end_time: null, owner_name: o, content_code: c, label: o + ' ' + c, active: true }));
   db.daily_ops_posts.forEach((p, i) => { p.linkedin_post_url = p.linkedin_post_url || 'https://www.linkedin.com/feed/update/urn:li:activity:' + (7000 + i); p.unreplied_count = i === 0 ? 64 : (p.unreplied_count || (i % 3)); p.work_date = p.work_date || d(i + 1).slice(0, 10); });
   db.daily_ops_accounts.forEach(a => { a.linkedin_url = a.linkedin_url || 'https://www.linkedin.com/in/' + String(a.owner_name).toLowerCase().replace(/\s+/g, '-'); });
+  db.dm_tests = [{ id: 'dt1', name: 'Resource DM: short vs question', context: 'After someone comments the keyword', hypothesis: 'Ending with a question gets more replies', status: 'running', created_at: d(5) }];
+  db.dm_variants = [{ id: 'dv1', test_id: 'dt1', label: 'A', message: 'Hey {name}, here is the 900 family offices map as promised: {link}' }, { id: 'dv2', test_id: 'dt1', label: 'B', message: 'Hey {name}, here is the map: {link}\n\nQuick one: are you raising right now or just building the list?' }];
+  db.dm_events = []; for (let i = 0; i < 46; i++) db.dm_events.push({ id: id(), variant_id: i % 2 ? 'dv1' : 'dv2', event: 'sent', work_date: d(i % 5).slice(0, 10) });
+  for (let i = 0; i < 9; i++) db.dm_events.push({ id: id(), variant_id: i < 7 ? 'dv2' : 'dv1', event: 'replied', work_date: d(1).slice(0, 10) });
+  db.growth_reports = [{ id: 'gr1', week_start: d(2).slice(0, 10), created_at: d(2), summary: '- **Carousels beat single images for Peter** (median 18 vs 7 audience comments)\n- Dev had zero audience comments: all 8 were ours\n- Resource DM B (question at the end) replies at 30% vs 9%', findings: [{ title: 'Maps and data creatives outperform quote cards', detail: 'Across Peter and Razeen.', evidence: 'Peter: 3 vs 4 posts', confidence: 'anecdotal', group: 'creative' }], next_tests: [{ title: 'Hook with a number vs without', account: 'Peter', a: '900+ family offices…', b: 'Family offices are…', why: 'Numbers led 2 of 3 top posts' }] }];
+  db.resource_jobs.push({ id: id(), kind: 'analysis', status: 'ready', created_at: d(2), topic: 'Weekly growth analysis' });
   const cfg = { connected: !location.search.includes('noconn'), daily_cap: 6, used_today: 1, notion_parent_url: null, drive_folder_url: null };
   // ?mock=real: tests inject a read-only snapshot of real rows at /__fixture.json (never committed).
   if (location.search.includes('real')) {
@@ -83,7 +89,7 @@
   }
   const blobs = new Map();
   const client = {
-    from: t => new Q(t),
+    from: t => { if (t === 'dm_variant_stats') { db.dm_variant_stats = db.dm_variants.map(v => ({ variant_id: v.id, test_id: v.test_id, label: v.label, sent: db.dm_events.filter(e => e.variant_id === v.id && e.event === 'sent').length, replied: db.dm_events.filter(e => e.variant_id === v.id && e.event === 'replied').length, meetings: db.growth_meetings.filter(m => m.dm_variant_id === v.id).length })); } return new Q(t); },
     rpc: async (n, a = {}) => { if (n === 'set_post_no_resource') { const p = db.daily_ops_posts.find(x => x.id === a.p_post); if (p) p.tags = { ...p.tags, no_resource: a.p_value || undefined }; } if (n === 'link_resource') { const j = db.resource_jobs.find(x => x.id === a.p_job); if (j) j.post_id = a.p_post; } return ({ data: n === 'dashboard_role' ? (location.search.includes('ops') ? 'ops' : 'admin') : n === 'resource_config' ? { ...cfg } : n === 'set_routine_secret' ? (cfg.connected = true, null) : n === 'link_resource' || n === 'set_post_no_resource' ? null : true, error: null }); },
     auth: { getSession: async () => ({ data: { session: { user: { id: 'u1', email: 'tengku@outerhaven.test' } } } }), signOut: async () => ({}), signInWithPassword: async () => ({}) },
     functions: { invoke: async (n, { body }) => { await new Promise(r => setTimeout(r, 150));

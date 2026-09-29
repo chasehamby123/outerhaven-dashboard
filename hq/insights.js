@@ -1,15 +1,22 @@
 // Deterministic insight engine. Pure functions only: no DOM, no network, so it can be tested in Node.
 // Every output carries its sample size so the UI never presents noise as a finding.
 
+// Factors, split into what the creative is, what the caption says, and when it went out.
+// Values are filled by hand (Tag) or by the weekly Claude analysis (ai_tags); hand tags win.
 export const DIMENSIONS = {
-  format: { label: 'Format', values: ['Text only', 'Single image', 'Carousel / document', 'Video', 'Article', 'Poll', 'Infographic'] },
-  creative: { label: 'Creative', values: ['Person photo', 'Chart / data', 'Quote card', 'Screenshot', 'Map', 'Branded graphic', 'Meme', 'None'] },
-  hook: { label: 'Hook', values: ['Contrarian', 'Data / stat', 'Story', 'Question', 'Pain point', 'List / how-to', 'Timely / news', 'Social proof'] },
-  length: { label: 'Caption length', values: ['Short', 'Medium', 'Long'] },
-  cta: { label: 'CTA', values: ['Comment keyword', 'DM me', 'Link', 'Question', 'None'] },
-  topic: { label: 'Topic', values: ['Family offices', 'Capital raising', 'M&A', 'Deal flow', 'Market commentary', 'Personal / story'] },
-  timeslot: { label: 'Post time', values: ['Morning', 'Midday', 'Evening'] },
+  format: { label: 'Format', group: 'creative', values: ['Text only', 'Single image', 'Carousel / document', 'Video', 'Article', 'Poll', 'Infographic'] },
+  creative: { label: 'Visual', group: 'creative', values: ['Person photo', 'Chart / data', 'Quote card', 'Screenshot', 'Map', 'Branded graphic', 'Meme', 'None'] },
+  face: { label: 'Face in creative', group: 'creative', values: ['Yes', 'No'] },
+  textOnImage: { label: 'Text on image', group: 'creative', values: ['None', 'Headline only', 'Text-heavy'] },
+  hook: { label: 'Hook', group: 'caption', values: ['Contrarian', 'Data / stat', 'Story', 'Question', 'Pain point', 'List / how-to', 'Timely / news', 'Social proof'] },
+  hookNumber: { label: 'Number in hook', group: 'caption', values: ['Yes', 'No'] },
+  length: { label: 'Caption length', group: 'caption', values: ['Short', 'Medium', 'Long'] },
+  cta: { label: 'CTA', group: 'caption', values: ['Comment keyword', 'DM me', 'Link', 'Question', 'None'] },
+  leadMagnet: { label: 'Lead magnet', group: 'caption', values: ['Yes', 'No'] },
+  topic: { label: 'Topic', group: 'caption', values: ['Family offices', 'Capital raising', 'M&A', 'Deal flow', 'Market commentary', 'Personal / story'] },
+  timeslot: { label: 'Post time', group: 'timing', values: ['Morning', 'Midday', 'Evening'] },
 };
+export const GROUPS = { creative: 'Creative', caption: 'Caption', timing: 'Timing' };
 
 export const METRIC_DEFS = {
   engagement: { label: 'Engagement', get: p => p.m.comments + p.m.reactions + p.m.reposts },
@@ -29,7 +36,9 @@ const minN = (...ns) => Math.min(...ns);
 // Normalise a raw daily_ops_posts row (+ accounts + meetings) into the engine's shape.
 const FORMAT_FROM_TYPE = { text: 'Text only', image: 'Single image', document: 'Carousel / document', video: 'Video', article: 'Article' };
 export function toPost(row, accountName, meetingCount = 0, resharedBy = []) {
-  const t = row.tags || {}, m = row.metrics || {};
+  const ai = row.ai_tags || {}, manual = row.tags || {}, m = row.metrics || {};
+  // Hand tags win; Claude's weekly tags fill the gaps.
+  const t = { ...Object.fromEntries(Object.keys(DIMENSIONS).filter(k => ai[k]).map(k => [k, ai[k]])), ...Object.fromEntries(Object.entries(manual).filter(([, v]) => v !== '' && v != null)) };
   const has = v => v !== '' && v != null && Number.isFinite(Number(v));
   const pick = (k, fallback) => has(m[k]) ? Number(m[k]) : Number(fallback || 0);
   const posted = row.posted_at ? new Date(row.posted_at) : null;
@@ -39,7 +48,7 @@ export function toPost(row, accountName, meetingCount = 0, resharedBy = []) {
   return {
     id: row.id, name: row.post_name || row.post_key || 'LinkedIn post', url: row.linkedin_post_url || null,
     account: accountName || '—', date: row.posted_at || row.work_date || null, text: row.post_text || '',
-    autoFormat: !t.format && !!FORMAT_FROM_TYPE[row.content_type],
+    autoFormat: !manual.format && !ai.format && !!FORMAT_FROM_TYPE[row.content_type], aiTagged: !!row.ai_tagged_at, aiNotes: ai.notes || '',
     tags: { ...t, format: t.format || FORMAT_FROM_TYPE[row.content_type] || undefined, timeslot: t.timeslot || (hour == null ? undefined : hour < 11 ? 'Morning' : hour < 16 ? 'Midday' : 'Evening') },
     boostedBy: boosted, resharedBy, group: t.creative_group || null,
     // Comments: our own accounts' comments (engagement pod) are excluded once the thread has been scraped.
@@ -91,7 +100,7 @@ export function commentsNoMeetings(posts) {
 }
 
 // Two-proportion z-test. Returns probability-ish confidence that B differs from A.
-function zTest(x1, n1, x2, n2) {
+export function zTest(x1, n1, x2, n2) {
   if (!n1 || !n2) return null; const p1 = x1 / n1, p2 = x2 / n2, p = (x1 + x2) / (n1 + n2), se = Math.sqrt(p * (1 - p) * (1 / n1 + 1 / n2));
   if (!se) return null; const z = (p2 - p1) / se;
   const cdf = z => { const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2), pr = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - pr : pr; };

@@ -13,6 +13,7 @@ const LEAD_MAGNET = /\b(comment|steal|free|dm me|template|blueprint|playbook|gui
 
 const S = { jobs: [], posts: [], accounts: {}, cfg: null, loaded: false, channel: null, format: 'notion', draft: {}, q: '' };
 const isAdmin = () => state.role === 'admin';
+const isResource = j => (j.kind || 'resource') === 'resource'; // weekly analysis jobs share the table
 const minutes = t => Math.max(0, Math.round((Date.now() - new Date(t)) / 60000));
 const ago = t => { if (!t) return ''; const m = minutes(t); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
 const day = d => d ? new Date(d + (d.length === 10 ? 'T12:00:00' : '')).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—';
@@ -40,7 +41,7 @@ async function loadAll() {
     sb.from('daily_ops_accounts').select('id,owner_name'),
   ]);
   S.missing = !!jobs.error;
-  S.jobs = jobs.data || []; S.cfg = cfg.data || null; S.posts = (posts.data || []).filter(p => p.post_text);
+  S.jobs = (jobs.data || []).filter(isResource); S.cfg = cfg.data || null; S.posts = (posts.data || []).filter(p => p.post_text);
   S.accounts = Object.fromEntries((accts.data || []).map(a => [a.id, a.owner_name]));
   S.loaded = true;
 }
@@ -49,7 +50,7 @@ async function refresh() {
     sb.from('resource_jobs').select('*').order('created_at', { ascending: false }).limit(300), sb.rpc('resource_config'),
     sb.from('daily_ops_posts').select('id,account_id,post_text,post_name,media_url,work_date,author_name,is_repost,commenter_count,external_comment_count,reaction_count,linkedin_post_url,tags').or('is_repost.is.null,is_repost.eq.false').order('work_date', { ascending: false }).limit(300),
   ]);
-  if (!jobs.error) S.jobs = jobs.data; if (!cfg.error) S.cfg = cfg.data; if (!posts.error) S.posts = posts.data.filter(p => p.post_text);
+  if (!jobs.error) S.jobs = jobs.data.filter(isResource); if (!cfg.error) S.cfg = cfg.data; if (!posts.error) S.posts = posts.data.filter(p => p.post_text);
 }
 
 let root, tab = 'queue';

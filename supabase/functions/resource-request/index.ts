@@ -38,7 +38,7 @@ async function secrets() {
 async function usedToday() {
   const now = new Date(), myt = new Date(now.getTime() + 8 * 3600e3);
   const start = new Date(Date.UTC(myt.getUTCFullYear(), myt.getUTCMonth(), myt.getUTCDate()) - 8 * 3600e3).toISOString();
-  const { count } = await sb.from("resource_jobs").select("id", { count: "exact", head: true }).neq("status", "cancelled").gte("fired_at", start);
+  const { count } = await sb.from("resource_jobs").select("id", { count: "exact", head: true }).eq("kind", "resource").neq("status", "cancelled").gte("fired_at", start);
   return count || 0;
 }
 
@@ -77,9 +77,33 @@ async function fireAndRecord(jobId: string) {
   }
 }
 
+// Weekly growth analysis: same routine, job kind 'analysis'. Started by pg_cron (shared secret) or an admin.
+async function startAnalysis(by: string) {
+  const myt = new Date(Date.now() + 8 * 3600e3), dow = (myt.getUTCDay() + 6) % 7;
+  const monday = new Date(Date.UTC(myt.getUTCFullYear(), myt.getUTCMonth(), myt.getUTCDate() - dow)).toISOString().slice(0, 10);
+  const open = await sb.from("resource_jobs").select("id").eq("kind", "analysis").in("status", ["queued", "building"]).gte("created_at", new Date(Date.now() - 3 * 3600e3).toISOString()).limit(1);
+  if (open.data?.length) return { ok: false, error: "An analysis is already running." };
+  // The routine can't read the private bucket: hand it week-long signed links to the saved creatives (last 8 weeks).
+  const since = new Date(Date.now() - 56 * 864e5).toISOString();
+  const { data: posts } = await sb.from("daily_ops_posts").select("id,creative_path").eq("is_repost", false).gte("posted_at", since).not("creative_path", "is", null).neq("creative_path", "unavailable").limit(200);
+  const creatives: Record<string, string> = {};
+  for (const p of posts || []) { const { data } = await sb.storage.from("growth-assets").createSignedUrl(p.creative_path, 7 * 86400); if (data?.signedUrl) creatives[p.id] = data.signedUrl; }
+  const { data: row, error } = await sb.from("resource_jobs").insert({ kind: "analysis", format: "analysis", topic: `Weekly growth analysis · week of ${monday}`, requested_by: by, fired_at: new Date().toISOString(), payload: { week_start: monday, creatives } }).select("id").single();
+  if (error) return { ok: false, error: error.message };
+  return await fireAndRecord(row.id);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  const cron = req.headers.get("x-outerhaven-cron");
+  if (cron) {
+    const { data: sec } = await sb.from("integration_secrets").select("secret_value").eq("key", "LINKEDIN_CRON_SECRET").maybeSingle();
+    if (!sec?.secret_value || cron !== sec.secret_value) return json({ ok: false, error: "unauthorized" }, 401);
+    const { data: st } = await sb.from("growth_settings").select("analysis_enabled").eq("id", 1).single();
+    if (st && st.analysis_enabled === false) return json({ ok: true, ran: false, reason: "analysis_disabled" });
+    return json(await startAnalysis("weekly schedule"));
+  }
   const who = await caller(req);
   if (!who) return json({ ok: false, error: "Sign in with a team account." }, 401);
   let body: any = {}; try { body = await req.json(); } catch { }
@@ -87,6 +111,11 @@ Deno.serve(async (req) => {
   const { data: settings } = await sb.from("growth_settings").select("resource_daily_cap").eq("id", 1).single();
   const cap = Number(settings?.resource_daily_cap ?? 6);
   const underCap = async () => (await usedToday()) < cap;
+
+  if (body.action === "analysis") {
+    if (who.role !== "admin") return json({ ok: false, error: "Only admins can start the analysis." }, 403);
+    return json(await startAnalysis(who.email));
+  }
 
   if (body.action === "retry") {
     if (who.role !== "admin") return json({ ok: false, error: "Only admins can retry." }, 403);

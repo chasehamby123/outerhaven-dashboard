@@ -1,5 +1,6 @@
 // Today: the daily task checklist. This is the only screen the ops role (Anaz) sees.
 import { sb, state, esc, $, $$, toast, fail, modal } from './core.js';
+import { loadDms, dmCardHtml, bindDmCard, meetingModal } from './dms.js';
 
 const TZ = 'Asia/Singapore';
 // Ops day rolls over at 2am GMT+8, matching the server's schedule builder.
@@ -61,6 +62,7 @@ async function load() {
       sb.from('daily_ops_accounts').select('id,owner_name,linkedin_url'),
       sb.from('daily_ops_posts').select('id,account_id,linkedin_post_url,work_date,post_name,commenter_count,external_comment_count,unreplied_count,is_repost').or('is_repost.is.null,is_repost.eq.false').not('linkedin_post_url', 'is', null).order('work_date', { ascending: false }).limit(200),
       sb.from('daily_ops_schedule').select('*').gte('work_date', weekStart(date)).lt('work_date', date),
+      loadDms().catch(e => console.warn('dms', e)),
     ]);
     if (fail(s, 'Load tasks')) return;
     rows = (s.data || []).sort((x, y) => opMin(x.start_time) - opMin(y.start_time));
@@ -80,7 +82,7 @@ function draw() {
   const dayName = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
   root.innerHTML = `
   <div class="head"><div><h1>Today</h1><p>${esc(dayName)} · Malaysia time</p></div>
-    <div class="row">${state.role === 'admin' ? '<button class="btn sm" id="tAdd">Add task</button>' : ''}</div></div>
+    <div class="row"><button class="btn sm primary" id="tMtg">Meeting booked</button>${state.role === 'admin' ? '<button class="btn sm" id="tAdd">Add task</button>' : ''}</div></div>
   ${overdueHtml()}
   <div class="today">
     <div>${total ? `<ul class="checklist">${rows.map(r => {
@@ -92,7 +94,8 @@ function draw() {
         <span class="what"><b>${esc(r.task)}</b>${r.notes ? `<small>${linkify(r.notes)}</small>` : ''}${taskLinks(r)}${r.status === 'done' && r.completed_by_name ? `<small class="up">Done by ${esc(r.completed_by_name)}</small>` : ''}</span>
         <span class="who">${isNow ? '<span class="tag warn">Now</span>' : acct ? `<span class="tag">${esc(acct)}</span>` : ''}</span>
       </label></li>`;
-    }).join('')}</ul>` : '<div class="card"><div class="empty">No tasks for today yet.</div></div>'}</div>
+    }).join('')}</ul>` : '<div class="card"><div class="empty">No tasks for today yet.</div></div>'}
+    ${dmCardHtml()}</div>
     <aside class="todayAside">
       <div class="ring"><svg viewBox="0 0 100 100"><circle class="trk" cx="50" cy="50" r="42"/><circle class="val" cx="50" cy="50" r="42" stroke-dasharray="263.9" stroke-dashoffset="${263.9 * (1 - pctDone / 100)}"/></svg>
         <div><b>${pctDone}%</b><span>${done} of ${total} tasks done</span></div></div>
@@ -107,6 +110,8 @@ function draw() {
   $$('[data-t]', root).forEach(cb => cb.onchange = () => toggle(cb.dataset.t, cb.checked, cb));
   $$('.checklist a', root).forEach(a => a.addEventListener('click', e => e.stopPropagation())); // open the link, don't tick the task
   $('#tAdd', root)?.addEventListener('click', addTask);
+  $('#tMtg', root)?.addEventListener('click', () => meetingModal());
+  bindDmCard(root, draw);
   $$('[data-late]', root).forEach(b => b.onclick = () => settle(b.dataset.late, 'done'));
   $$('[data-skip]', root).forEach(b => b.onclick = () => settle(b.dataset.skip, 'skipped'));
 }

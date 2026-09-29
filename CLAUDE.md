@@ -53,6 +53,15 @@ Today, Schedule, Resources. RLS helpers: `can_access_daily_ops()` (admin or ops)
 - Routine URL/token live in `integration_secrets` (`ROUTINE_FIRE_URL`, `ROUTINE_FIRE_TOKEN`), set by an admin in
   HQ → Resources → Generate → Settings. Output folder: Drive "OuterHaven Lead Magnets".
 - Posts auto-link to resources by caption similarity (trigger `auto_link_resource` on `daily_ops_posts`).
+- Weekly Claude analysis uses the same routine: `resource_jobs.kind = 'analysis'` (pg_cron `weekly-growth-analysis`,
+  Mondays 02:05 UTC, or Growth → Insights → Run analysis now). Instructions: `routines/weekly-analysis.md`. It writes
+  `daily_ops_posts.ai_tags` (creative + caption factors; hand tags in `tags` win) and a row in `growth_reports`.
+
+## DM tests and meetings
+- `dm_tests` → `dm_variants` (A/B/…) → `dm_events` (one row per tap: sent / replied). Meetings live in
+  `growth_meetings` (with `dm_variant_id` / `post_id`). `dm_variant_stats` view gives per-version totals.
+- Today shows the running DM test (tap + Sent / + Reply / Meeting booked) and a "Meeting booked" button.
+  Growth → DM tests compares versions; a winner needs 30+ sends per version and p < 0.05.
 
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.
