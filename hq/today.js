@@ -11,7 +11,23 @@ const fmtTime = v => { if (!v) return ''; const [h, m] = String(v).split(':').ma
 const opMin = v => { const [h, m] = String(v || '00:00').split(':').map(Number); const n = h * 60 + (m || 0); return n < 120 ? n + 1440 : n; };
 const nowMin = () => { const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()).map(x => [x.type, x.value])); const n = +p.hour * 60 + +p.minute; return n < 120 ? n + 1440 : n; };
 
-let rows = [], accounts = [], date = '', channel = null, loading = false, root = null, lastLoad = 0;
+// Links that save a click: the post(s) whose comments need replies, or the profile to post from.
+const linkify = t => esc(t).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u.length > 48 ? u.slice(0, 47) + '…' : u}</a>`);
+function taskLinks(r) {
+  const a = accounts.find(x => x.id === r.account_id); if (!a) return '';
+  const link = (href, text, sub = '') => `<a class="tLink" href="${esc(href)}" target="_blank" rel="noopener">${esc(text)} ↗${sub ? `<em>${esc(sub)}</em>` : ''}</a>`;
+  if (/respond|comment|repl/i.test(r.task)) {
+    const mine = posts.filter(p => p.account_id === a.id && p.work_date < date);
+    const recent = mine.filter(p => p.work_date >= new Date(Date.parse(date) - 14 * 864e5).toISOString().slice(0, 10));
+    const pick = [...new Map([mine[0], ...recent.filter(p => p.unreplied_count > 0)].filter(Boolean).map(p => [p.id, p])).values()].slice(0, 3);
+    if (!pick.length) return `<span class="tLinks"><span class="s muted">No scraped posts for ${esc(a.owner_name)} yet</span></span>`;
+    return `<span class="tLinks">${pick.map((p, i) => link(p.linkedin_post_url, i === 0 ? `Last post · ${new Date(p.work_date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : (p.post_name || 'Older post').slice(0, 40), p.unreplied_count > 0 ? `${p.unreplied_count} unreplied` : `${p.commenter_count ?? 0} comments`)).join('')}</span>`;
+  }
+  if (/· post/i.test(r.task) && a.linkedin_url) return `<span class="tLinks">${link(a.linkedin_url, `${a.owner_name}'s LinkedIn`)}</span>`;
+  return '';
+}
+
+let rows = [], accounts = [], posts = [], date = '', channel = null, loading = false, root = null, lastLoad = 0;
 
 async function load() {
   if (loading) return; loading = true; lastLoad = Date.now();
@@ -19,13 +35,14 @@ async function load() {
     date = opsDate();
     const sync = await sb.rpc('sync_daily_ops_today'); // server builds today's recurring blocks
     if (sync.error) console.warn('sync_daily_ops_today', sync.error.message);
-    const [s, a] = await Promise.all([
+    const [s, a, p] = await Promise.all([
       sb.from('daily_ops_schedule').select('*').eq('work_date', date),
-      sb.from('daily_ops_accounts').select('id,owner_name'),
+      sb.from('daily_ops_accounts').select('id,owner_name,linkedin_url'),
+      sb.from('daily_ops_posts').select('id,account_id,linkedin_post_url,work_date,post_name,commenter_count,unreplied_count,is_repost').or('is_repost.is.null,is_repost.eq.false').not('linkedin_post_url', 'is', null).order('work_date', { ascending: false }).limit(200),
     ]);
     if (fail(s, 'Load tasks')) return;
     rows = (s.data || []).sort((x, y) => opMin(x.start_time) - opMin(y.start_time));
-    accounts = a.data || [];
+    accounts = a.data || []; posts = p.data || [];
     draw();
   } finally { loading = false; }
 }
@@ -47,7 +64,7 @@ function draw() {
       return `<li class="${r.status === 'done' ? 'done' : ''} ${isNow ? 'now' : ''}"><label>
         <input type="checkbox" data-t="${r.id}" ${r.status === 'done' ? 'checked' : ''}>
         <span class="time">${fmtTime(r.start_time)}</span>
-        <span class="what"><b>${esc(r.task)}</b>${r.notes ? `<small>${esc(r.notes)}</small>` : ''}${r.status === 'done' && r.completed_by_name ? `<small class="up">Done by ${esc(r.completed_by_name)}</small>` : ''}</span>
+        <span class="what"><b>${esc(r.task)}</b>${r.notes ? `<small>${linkify(r.notes)}</small>` : ''}${taskLinks(r)}${r.status === 'done' && r.completed_by_name ? `<small class="up">Done by ${esc(r.completed_by_name)}</small>` : ''}</span>
         <span class="who">${isNow ? '<span class="tag warn">Now</span>' : acct ? `<span class="tag">${esc(acct)}</span>` : ''}</span>
       </label></li>`;
     }).join('')}</ul>` : '<div class="card"><div class="empty">No tasks for today yet.</div></div>'}</div>
@@ -62,6 +79,7 @@ function draw() {
     </aside>
   </div>`;
   $$('[data-t]', root).forEach(cb => cb.onchange = () => toggle(cb.dataset.t, cb.checked, cb));
+  $$('.checklist a', root).forEach(a => a.addEventListener('click', e => e.stopPropagation())); // open the link, don't tick the task
   $('#tAdd', root)?.addEventListener('click', addTask);
 }
 

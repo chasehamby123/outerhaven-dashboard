@@ -5,11 +5,13 @@ import { renderOverview } from './overview.js';
 import { renderGrowth } from './growth.js';
 import { renderToday } from './today.js';
 import { renderResources } from './resources.js';
+import { renderSchedule } from './schedule.js';
 
 const ROUTES = {
   today: { label: 'Today', render: r => renderToday(r), ops: true },
   overview: { label: 'Overview', render: r => renderOverview(r) },
   growth: { label: 'Growth', render: (r, sub) => renderGrowth(r, sub) },
+  schedule: { label: 'Schedule', render: r => renderSchedule(r), ops: true },
   resources: { label: 'Resources', render: (r, sub) => renderResources(r, sub), ops: true },
 };
 
@@ -35,6 +37,7 @@ const ICON = {
   overview: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
   today: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18M8.5 15l2 2 4-4"/></svg>',
   growth: '<svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',
+  schedule: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/><rect x="7" y="13" width="5" height="4" rx="1"/></svg>',
   resources: '<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>',
   pipeline: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="6" rx="1.5"/></svg>',
 };
@@ -54,9 +57,10 @@ function shell() {
     <aside class="side">
       <div class="brand"><b>O</b><span>Outerhaven</span><em>HQ</em></div>
       ${themeSwitch()}
-      <nav class="nav">${state.role === 'ops' ? navLink('today', '#/today', 'Today') + navLink('resources', '#/resources', 'Resources') : `
+      <nav class="nav">${state.role === 'ops' ? navLink('today', '#/today', 'Today') + navLink('schedule', '#/schedule', 'Schedule') + navLink('resources', '#/resources', 'Resources') : `
         ${navLink('overview', '#/overview', 'Overview')}
         ${navLink('today', '#/today', 'Today')}
+        ${navLink('schedule', '#/schedule', 'Schedule')}
         ${navLink('growth', '#/growth/posts', 'Growth')}
         ${navLink('resources', '#/resources', 'Resources')}
         <small>Legacy</small>

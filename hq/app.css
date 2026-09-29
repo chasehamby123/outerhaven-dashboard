@@ -278,3 +278,45 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 @media(max-width:1000px){.res{grid-template-columns:1fr}}
 @media(max-width:560px){.fmt{grid-template-columns:1fr}}
 .tabs .count{display:inline-grid;place-items:center;min-width:18px;height:18px;margin-left:4px;padding:0 5px;border-radius:999px;background:var(--inv);color:var(--inv-ink);font-size:11px;font-weight:600}
+
+/* Schedule: week calendar with draggable posts */
+.sCal{overflow:hidden;min-width:0;max-width:100%}
+.sHead,.sGrid{display:grid;grid-template-columns:64px repeat(7,minmax(96px,1fr))}
+.sHead{border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:0;z-index:6}
+.sHead>div{padding:10px 8px;text-align:center;border-left:1px solid var(--line)}
+.sHead>div:first-child{border-left:0}
+.sHead b{display:block;font-size:var(--fs-s);font-weight:600}
+.sHead span{display:block;margin-top:2px;font-size:var(--fs-xs);color:var(--muted)}
+.sHead .isToday b{display:inline-grid;place-items:center;min-width:34px;height:24px;padding:0 8px;border-radius:999px;background:var(--inv);color:var(--inv-ink)}
+.sScroll{height:min(68vh,720px);overflow:auto;position:relative}
+.sGrid{position:relative}
+.sHours{position:relative}
+.sHours span{position:absolute;right:8px;transform:translateY(-50%);font-size:11px;color:var(--muted);white-space:nowrap}
+.sHours span:first-child{transform:none}
+.sCol{position:relative;border-left:1px solid var(--line);cursor:copy}
+.sCol.isToday{background:color-mix(in srgb,var(--inv) 3%,transparent)}
+.sLine{position:absolute;left:0;right:0;border-top:1px solid var(--line);pointer-events:none}
+.sNow{position:absolute;left:-1px;right:0;border-top:2px solid var(--bad);pointer-events:none;z-index:3}
+.sNow::before{content:"";position:absolute;left:-5px;top:-6px;width:10px;height:10px;border-radius:50%;background:var(--bad)}
+.sBlock{position:absolute;z-index:2;cursor:grab;touch-action:none;user-select:none;display:grid;gap:1px}
+.sBlock.drag{z-index:5;cursor:grabbing;box-shadow:0 10px 24px rgba(0,0,0,.18);opacity:.95}
+.sBlock.ghost{opacity:.25;pointer-events:none}
+.sBlock.off{opacity:.45}
+.sPost{background:var(--inv);color:var(--inv-ink);border-radius:6px 6px 2px 2px;padding:5px 7px;overflow:hidden;display:flex;flex-direction:column;gap:1px}
+.sBlock:only-child .sPost,.sBlock .sPost:last-child{border-radius:6px}
+.sPost b{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sPost span{font-size:11px;color:var(--inv-muted)}
+.sEngage{position:relative;z-index:-1;background:var(--sunk);color:var(--ink-2);border:1px dashed var(--line-2);border-radius:2px 2px 6px 6px;font-size:10px;padding:0 7px;display:flex;align-items:center;overflow:hidden;white-space:nowrap}
+.sPre{position:absolute;left:2px;right:2px;z-index:1;background:var(--sunk);border:1px dashed var(--line-2);border-radius:6px;font-size:10px;color:var(--ink-2);padding:3px 7px;overflow:hidden;white-space:nowrap;pointer-events:none}
+.sKey{display:inline-flex;align-items:center;gap:6px}.sKey i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.sKey .k1{background:var(--inv)}.sKey .k2{background:var(--sunk);border:1px dashed var(--line-2)}
+.toast button{margin-left:14px;background:none;border:0;color:inherit;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}
+@media(max-width:900px){.sHead,.sGrid{min-width:760px}}
+.tLinks{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.tLink{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:1px solid var(--line-2);border-radius:999px;background:var(--surface);color:var(--ink);font-size:var(--fs-xs);font-weight:500;text-decoration:none}
+.tLink:hover{border-color:var(--ink)}
+.tLink em{font-style:normal;color:var(--muted);font-weight:400}
+.checklist small a{color:inherit}
+.sPost em{font-style:normal;font-size:10px;margin-top:auto;padding:1px 6px;border-radius:999px;background:color-mix(in srgb,var(--inv-ink) 18%,transparent);width:max-content}
+.main{min-width:0}
+@media(max-width:900px){.nav{min-width:0;flex-basis:100%;order:4}.side{min-width:0}}
