@@ -4,6 +4,7 @@ import { store, loadSheet } from './data.js';
 import { SHEET_URL } from './sheet.js';
 import { commentsNoMeetings } from './insights.js';
 import { scraperStatus } from './scraper.js';
+import { renderWeekHistory } from './today.js';
 
 export const SOURCES = {
   inbound_post: ['Inbound · from a post', 'in'], inbound_dm: ['Inbound · DM', 'in'], comment_to_dm: ['Comment → DM', 'in'],
@@ -113,6 +114,7 @@ export function renderOverview(root) {
       ${kpi('Meetings / 1k impressions', imp ? (booked / imp * 1000).toFixed(1) : '—', null, 'Reach → pipeline efficiency')}
     </div>
     ${notes.length ? `<section class="card"><header><div><h2>What moved the needle</h2><p>Calculated from the sheet for the selected week.</p></div></header><div class="body flush">${notes.map(n => `<div class="insight"><p>${n}</p></div>`).join('')}</div></section>` : ''}
+    <div id="ovTasks"></div>
     <section class="card"><header><div><h2>Accounts</h2><p>Click a column to sort. Flags show where effort isn't converting.</p></div></header>
         <div class="body flush scroll"><table class="tbl"><thead><tr>${COLS.map(([k, l, n]) => `<th class="sort ${n ? 'n' : ''} ${k === sortKey ? 'on' : ''} ${k === sortKey && sortAsc ? 'asc' : ''}" data-sort="${k}">${l}</th>`).join('')}<th></th></tr></thead><tbody>
         ${acctSorted.map((a, i) => `<tr><td class="strong" style="white-space:nowrap"><span class="rank ${i === 0 ? 'top' : ''}">${i + 1}</span>${esc(a.account)}</td><td class="n">${fmt(a.posts)}</td><td class="n">${fmt(a.impressions)}</td><td class="n">${fmt(a.comments)}</td><td class="n">${fmt(a.dmsInitiated)}</td><td class="n">${fmt(a.leadsReplied)}</td><td class="n strong">${fmt(a.meetingsBooked)}</td><td class="n">${fmt(a.meetingsHeld)}</td><td class="n">${a.per1k == null ? '—' : a.per1k.toFixed(1)}</td><td>${flag(a)}</td></tr>`).join('')}
@@ -137,5 +139,6 @@ export function renderOverview(root) {
 
   root.querySelectorAll('[data-sort]').forEach(th => th.onclick = () => { const k = th.dataset.sort; if (k === sortKey) sortAsc = !sortAsc; else { sortKey = k; sortAsc = k === 'account'; } renderOverview(root); });
   root.querySelector('#ovWeek')?.addEventListener('change', e => { week = e.target.value; renderOverview(root); });
+  const ovTasks = root.querySelector('#ovTasks'); if (ovTasks) renderWeekHistory(ovTasks);
   root.querySelector('#ovRefresh')?.addEventListener('click', async e => { e.target.disabled = true; e.target.textContent = 'Refreshing…'; await loadSheet(); });
 }

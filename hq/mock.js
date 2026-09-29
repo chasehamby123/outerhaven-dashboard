@@ -52,7 +52,7 @@
   db.daily_ops_weekly_posts = [];
   [[0,'21:00','Sara','A'],[0,'22:00','Razeen','B'],[0,'23:00','Peter','A'],[1,'20:00','Reza','Video'],[1,'21:00','Dev','A'],[1,'22:00','Anaz','B'],[1,'23:00','Chase','A'],[2,'21:00','Sara','B'],[2,'22:00','Peter','B'],[2,'23:00','Tengku','A'],[3,'20:00','Reza','A'],[3,'21:00','Sahid','A'],[3,'22:00','Anaz','C'],[3,'23:00','Razeen','A'],[4,'20:00','Dev','B'],[4,'21:00','Sara','C'],[4,'22:00','Peter','C'],[4,'23:00','Chase','B'],[5,'20:00','Reza','Video'],[5,'21:00','Sahid','B'],[5,'22:00','Anaz','A'],[5,'23:00','Tengku','B'],[6,'20:00','Sara','Cred Post'],[6,'21:00','Peter','Cred Post'],[6,'22:00','Reza','B'],[6,'23:00','Sara','D']]
     .forEach(([dw, t, o, c]) => db.daily_ops_weekly_posts.push({ id: id(), day_of_week: dw, start_time: t + ':00', end_time: null, owner_name: o, content_code: c, label: o + ' ' + c, active: true }));
-  db.daily_ops_posts.forEach((p, i) => { p.linkedin_post_url = p.linkedin_post_url || 'https://www.linkedin.com/feed/update/urn:li:activity:' + (7000 + i); p.unreplied_count = p.unreplied_count ?? (i % 3); p.work_date = p.work_date || d(i + 1).slice(0, 10); });
+  db.daily_ops_posts.forEach((p, i) => { p.linkedin_post_url = p.linkedin_post_url || 'https://www.linkedin.com/feed/update/urn:li:activity:' + (7000 + i); p.unreplied_count = i === 0 ? 64 : (p.unreplied_count || (i % 3)); p.work_date = p.work_date || d(i + 1).slice(0, 10); });
   db.daily_ops_accounts.forEach(a => { a.linkedin_url = a.linkedin_url || 'https://www.linkedin.com/in/' + String(a.owner_name).toLowerCase().replace(/\s+/g, '-'); });
   const cfg = { connected: !location.search.includes('noconn'), daily_cap: 6, used_today: 1, notion_parent_url: null, drive_folder_url: null };
   // ?mock=real: tests inject a read-only snapshot of real rows at /__fixture.json (never committed).
@@ -68,7 +68,7 @@
     constructor(t) { this.t = t; this.f = []; this.op = 'select'; this.payload = null; this.single_ = false; }
     select() { if (this.op === 'select') this.op = 'select'; else this.returning = true; return this; }
     order() { return this; } limit() { return this; }
-    eq(k, v) { this.f.push(r => r[k] === v); return this; } neq(k, v) { this.f.push(r => r[k] !== v); return this; } in(k, v) { this.f.push(r => v.includes(r[k])); return this; } gte(k, v) { this.f.push(r => r[k] == null || String(r[k]) >= String(v)); return this; } lt(k, v) { this.f.push(r => r[k] != null && String(r[k]) < String(v)); return this; } or() { return this; } not() { return this; }
+    eq(k, v) { this.f.push(r => r[k] === v); return this; } neq(k, v) { this.f.push(r => r[k] !== v); return this; } in(k, v) { this.f.push(r => v.includes(r[k])); return this; } gte(k, v) { this.f.push(r => r[k] == null || String(r[k]) >= String(v)); return this; } lte(k, v) { this.f.push(r => r[k] != null && String(r[k]) <= String(v)); return this; } lt(k, v) { this.f.push(r => r[k] != null && String(r[k]) < String(v)); return this; } or() { return this; } not() { return this; }
     insert(p) { this.op = 'insert'; this.payload = p; return this; } update(p) { this.op = 'update'; this.payload = p; return this; } delete() { this.op = 'delete'; return this; }
     single() { this.single_ = true; return this; } maybeSingle() { return this.single(); }
     then(res, rej) { return Promise.resolve(this.run()).then(res, rej); }

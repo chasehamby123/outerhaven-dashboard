@@ -323,12 +323,17 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .cthumb{display:grid;place-items:center;width:48px;height:48px;border:1px solid var(--line);border-radius:6px;background:var(--sunk) center/cover no-repeat;font-size:10px;color:var(--muted);cursor:zoom-in;padding:0}
 .cthumb.none{cursor:default}
 
-/* Today: overdue warning, weekly ring, week history */
-.overdue{margin-bottom:24px;border-color:color-mix(in srgb,var(--bad) 45%,var(--line));background:color-mix(in srgb,var(--bad-bg) 55%,var(--surface))}
-.overdue h2::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--bad);margin-right:8px;vertical-align:middle}
+/* Today: overdue warning (collapsed), weekly ring, week history (Overview) */
+.overdue{margin-bottom:20px;border:1px solid color-mix(in srgb,var(--bad) 45%,var(--line));background:var(--bad-bg);border-radius:10px;color:var(--bad)}
+.overdue summary{display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;list-style:none;font-size:var(--fs-s)}
+.overdue summary::-webkit-details-marker{display:none}
+.overdue summary::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--bad);flex:none}
+.overdue summary .s{margin-left:auto;text-decoration:underline}
+.overdue[open] summary .s{visibility:hidden}
+.overdue .odList{background:var(--surface);color:var(--ink);border-radius:0 0 10px 10px}
 .odList{list-style:none;margin:0;padding:0}
-.odList li{display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:12px 20px;border-top:1px solid var(--line)}
-.odList li .tLinks{grid-column:2;margin-top:0}
+.odList li{display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:10px 16px;border-top:1px solid var(--line)}
+.quota{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:6px;background:var(--warn-bg);color:var(--warn);font-size:var(--fs-xs);font-weight:500}
 .weekRing{padding:18px 20px;margin-bottom:0}
 .ring.sm{background:none;color:var(--ink);padding:0;border:0;box-shadow:none}
 .ring.sm svg{width:72px;height:72px}
@@ -344,4 +349,5 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .wkDay i{display:block;height:4px;border-radius:2px;background:var(--sunk);overflow:hidden}
 .wkDay i em{display:block;height:100%;background:var(--ink)}
 .wkDay small{font-size:11px;color:var(--muted)}
-@media(max-width:700px){.wkDays{grid-template-columns:repeat(4,minmax(0,1fr))}.odList li{grid-template-columns:1fr}.odList li .tLinks{grid-column:1}}
+@media(max-width:700px){.wkDays{grid-template-columns:repeat(4,minmax(0,1fr))}.odList li{grid-template-columns:1fr}}
+.wkDay:disabled{opacity:.45;cursor:default}
