@@ -277,3 +277,4 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .job .jc li{margin:2px 0}
 @media(max-width:1000px){.res{grid-template-columns:1fr}}
 @media(max-width:560px){.fmt{grid-template-columns:1fr}}
+.tabs .count{display:inline-grid;place-items:center;min-width:18px;height:18px;margin-left:4px;padding:0 5px;border-radius:999px;background:var(--inv);color:var(--inv-ink);font-size:11px;font-weight:600}

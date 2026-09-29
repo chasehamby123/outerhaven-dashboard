@@ -76,3 +76,66 @@ returns jsonb language sql stable security definer set search_path = public as $
 $$;
 revoke all on function public.resource_config() from public, anon;
 grant execute on function public.resource_config() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Library + queue (applied as hq_resource_library)
+-- ---------------------------------------------------------------------------
+create extension if not exists pg_trgm with schema extensions;
+alter table public.resource_jobs
+  add column if not exists source text not null default 'generated',
+  add column if not exists linked_by text,
+  add column if not exists linked_at timestamptz;
+alter table public.resource_jobs drop constraint if exists resource_jobs_source_check;
+alter table public.resource_jobs add constraint resource_jobs_source_check check (source in ('generated', 'manual'));
+alter table public.resource_jobs drop constraint if exists resource_jobs_poster_check;
+alter table public.resource_jobs drop constraint if exists resource_jobs_format_check;
+alter table public.resource_jobs add constraint resource_jobs_format_check check (format in ('notion', 'pdf', 'list', 'other'));
+alter table public.resource_jobs alter column caption drop not null;
+create index if not exists resource_jobs_post on public.resource_jobs (post_id);
+
+drop policy if exists resource_jobs_team_manual on public.resource_jobs;
+create policy resource_jobs_team_manual on public.resource_jobs for insert to authenticated
+  with check (public.can_access_daily_ops() and source = 'manual' and status = 'ready' and output_url ~ '^https?://');
+
+create or replace function public.link_resource(p_job uuid, p_post uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.can_access_daily_ops() then raise exception 'team only'; end if;
+  update resource_jobs set post_id = p_post, linked_by = (select email from auth.users where id = auth.uid()), linked_at = now() where id = p_job;
+  if p_post is not null then
+    update daily_ops_posts set tags = coalesce(tags, '{}'::jsonb) - 'no_resource' where id = p_post;
+  end if;
+end $$;
+revoke all on function public.link_resource(uuid, uuid) from public, anon;
+grant execute on function public.link_resource(uuid, uuid) to authenticated;
+
+create or replace function public.set_post_no_resource(p_post uuid, p_value boolean)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.can_access_daily_ops() then raise exception 'team only'; end if;
+  update daily_ops_posts set tags = case when p_value then coalesce(tags, '{}'::jsonb) || '{"no_resource": true}'::jsonb else coalesce(tags, '{}'::jsonb) - 'no_resource' end where id = p_post;
+end $$;
+revoke all on function public.set_post_no_resource(uuid, boolean) from public, anon;
+grant execute on function public.set_post_no_resource(uuid, boolean) to authenticated;
+
+-- Resources are usually built before the post goes out: when the scraper saves the post,
+-- link it to the unlinked resource whose caption it matches.
+create or replace function public.auto_link_resource_to_post()
+returns trigger language plpgsql security definer set search_path = public, extensions as $$
+declare hit uuid;
+begin
+  if coalesce(new.is_repost, false) or coalesce(length(new.post_text), 0) < 40 then return new; end if;
+  if exists (select 1 from resource_jobs where post_id = new.id) then return new; end if;
+  select id into hit from resource_jobs
+   where post_id is null and caption is not null and status in ('ready', 'building', 'queued')
+     and created_at > now() - interval '45 days'
+     and extensions.similarity(left(caption, 600), left(new.post_text, 600)) > 0.45
+   order by extensions.similarity(left(caption, 600), left(new.post_text, 600)) desc limit 1;
+  if hit is not null then
+    update resource_jobs set post_id = new.id, linked_by = 'auto (caption match)', linked_at = now() where id = hit;
+  end if;
+  return new;
+end $$;
+drop trigger if exists auto_link_resource on public.daily_ops_posts;
+create trigger auto_link_resource after insert or update of post_text on public.daily_ops_posts
+  for each row execute function public.auto_link_resource_to_post();

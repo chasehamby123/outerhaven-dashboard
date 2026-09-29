@@ -10,7 +10,7 @@ const ROUTES = {
   today: { label: 'Today', render: r => renderToday(r), ops: true },
   overview: { label: 'Overview', render: r => renderOverview(r) },
   growth: { label: 'Growth', render: (r, sub) => renderGrowth(r, sub) },
-  resources: { label: 'Resources', render: r => renderResources(r), ops: true },
+  resources: { label: 'Resources', render: (r, sub) => renderResources(r, sub), ops: true },
 };
 
 const home = () => state.role === 'ops' ? 'today' : 'overview';
