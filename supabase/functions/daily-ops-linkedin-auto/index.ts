@@ -9,6 +9,7 @@
 //  6. (v4) Posts pass: own posts identified by author==profile (not the unreliable repost flag); last 7 days tracked.
 //  7. (v5) Every posts pass (automatic or Run now) saves each original post's creative to storage, so HQ can
 //     show it after LinkedIn's image links expire.
+//  8. (v6) Comments from our own accounts don't count: unreplied/audience counts come from recount_post_comments().
 //  5. (v3) Daily mode (default): one scrape a day at scrape_hour Malaysia time: posts, then comment threads.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -154,9 +155,11 @@ async function syncComments(apifyToken: string) {
       const del = await sb.from("daily_ops_post_comments").delete().eq("post_id", post.id);
       if (del.error) throw new Error(`clear comments: ${del.error.message}`);
       if (rowsToStore.length) { const ins = await sb.from("daily_ops_post_comments").upsert(rowsToStore, { onConflict: "post_id,comment_id" }); if (ins.error) throw new Error(`store comments: ${ins.error.message}`); }
-      const replied = new Set(rowsToStore.filter(x => x.comment_type === "reply" && x.is_post_author && x.parent_comment_id).map(x => x.parent_comment_id));
-      const unreplied = rowsToStore.filter(x => x.comment_type === "comment" && !x.is_post_author).filter(x => !replied.has(x.comment_id)).length;
-      const up = await sb.from("daily_ops_posts").update({ unreplied_count: unreplied, scrape_status: num(post.commenter_count) > 250 ? "comments_capped" : "ok", last_scraped_at: new Date().toISOString(), source_actor: "atomus/linkedin-comments-scraper-pro", updated_at: new Date().toISOString() }).eq("id", post.id);
+      // Team comments (our own accounts) are excluded: the database flags them and recounts audience comments and
+      // unreplied ones (replied = any of our accounts answered) whenever comments change.
+      const rc = await sb.rpc("recount_post_comments", { p_post: post.id });
+      const unreplied = rc.error ? 0 : Number(rc.data || 0);
+      const up = await sb.from("daily_ops_posts").update({ scrape_status: num(post.commenter_count) > 250 ? "comments_capped" : "ok", last_scraped_at: new Date().toISOString(), source_actor: "atomus/linkedin-comments-scraper-pro", updated_at: new Date().toISOString() }).eq("id", post.id);
       if (up.error) throw new Error(`update unreplied: ${up.error.message}`);
       processed++; stored += rowsToStore.length; unrepliedTotal += unreplied;
     } catch (e) { errors.push(`${post.post_name || post.id}: ${e instanceof Error ? e.message : String(e)}`); }

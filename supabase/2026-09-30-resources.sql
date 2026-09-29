@@ -150,3 +150,11 @@ alter table public.daily_ops_posts
   add column if not exists creative_path text,
   add column if not exists creative_type text,
   add column if not exists creative_saved_at timestamptz;
+
+-- ---------------------------------------------------------------------------
+-- Team comments excluded (applied as team_comments_excluded)
+-- Comments by our own accounts (matched on profile slug or trailing LinkedIn id) are flagged is_team.
+-- daily_ops_posts.external_comment_count = audience comments, team_comment_count = ours,
+-- unreplied_count = audience top-level comments no team account has answered. Kept current by triggers;
+-- sheet_post_stats reports audience comments. See the applied migration for the full function bodies.
+-- ---------------------------------------------------------------------------

@@ -13,7 +13,8 @@ export const DIMENSIONS = {
 
 export const METRIC_DEFS = {
   engagement: { label: 'Engagement', get: p => p.m.comments + p.m.reactions + p.m.reposts },
-  comments: { label: 'Comments', get: p => p.m.comments },
+  comments: { label: 'Comments (audience)', get: p => p.m.comments },
+  commentsAll: { label: 'Comments incl. team', get: p => p.m.commentsAll },
   reactions: { label: 'Reactions', get: p => p.m.reactions },
   impressions: { label: 'Impressions', get: p => p.m.impressions },
   engagementRate: { label: 'Engagement rate', rate: true, get: p => p.m.impressions ? (p.m.comments + p.m.reactions + p.m.saves + p.m.sends + p.m.reposts) / p.m.impressions : null },
@@ -41,7 +42,10 @@ export function toPost(row, accountName, meetingCount = 0, resharedBy = []) {
     autoFormat: !t.format && !!FORMAT_FROM_TYPE[row.content_type],
     tags: { ...t, format: t.format || FORMAT_FROM_TYPE[row.content_type] || undefined, timeslot: t.timeslot || (hour == null ? undefined : hour < 11 ? 'Morning' : hour < 16 ? 'Midday' : 'Evening') },
     boostedBy: boosted, resharedBy, group: t.creative_group || null,
-    m: { impressions: pick('impressions'), comments: pick('comments', row.commenter_count), reactions: pick('reactions', row.reaction_count), saves: pick('saves'), sends: pick('sends'), reposts: pick('reposts', row.repost_count) },
+    // Comments: our own accounts' comments (engagement pod) are excluded once the thread has been scraped.
+    // Until then only LinkedIn's total is known, which includes them (commentsExact = false).
+    m: { impressions: pick('impressions'), comments: pick('comments', row.external_comment_count ?? row.commenter_count), commentsAll: Number(row.commenter_count || 0), teamComments: Number(row.team_comment_count || 0), reactions: pick('reactions', row.reaction_count), saves: pick('saves'), sends: pick('sends'), reposts: pick('reposts', row.repost_count) },
+    commentsExact: has(m.comments) || row.external_comment_count != null, unreplied: Number(row.unreplied_count || 0),
     meetings: meetingCount,
   };
 }

@@ -25,7 +25,7 @@ function taskLinks(r) {
     // LinkedIn tolerates roughly 20 comments a day per account, so work through a big backlog 20 at a time.
     const waiting = recent.reduce((n, p) => n + (p.unreplied_count || 0), 0);
     const quota = waiting ? `<span class="quota">Reply to ${Math.min(REPLY_CAP, waiting)} today${waiting > REPLY_CAP ? ` · ${waiting} waiting, about ${Math.ceil(waiting / REPLY_CAP)} days at ${REPLY_CAP}/day` : ''}</span>` : '';
-    return `<span class="tLinks">${quota}${pick.map((p, i) => link(p.linkedin_post_url, i === 0 ? `Last post · ${new Date(p.work_date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : (p.post_name || 'Older post').slice(0, 40), p.unreplied_count > 0 ? `${p.unreplied_count} unreplied` : `${p.commenter_count ?? 0} comments`)).join('')}</span>`;
+    return `<span class="tLinks">${quota}${pick.map((p, i) => link(p.linkedin_post_url, i === 0 ? `Last post · ${new Date(p.work_date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : (p.post_name || 'Older post').slice(0, 40), p.unreplied_count > 0 ? `${p.unreplied_count} unreplied` : `${p.external_comment_count ?? p.commenter_count ?? 0} comments`)).join('')}</span>`;
   }
   if (/· post/i.test(r.task) && a.linkedin_url) return `<span class="tLinks">${link(a.linkedin_url, `${a.owner_name}'s LinkedIn`)}</span>`;
   return '';
@@ -59,7 +59,7 @@ async function load() {
     const [s, a, p, h] = await Promise.all([
       sb.from('daily_ops_schedule').select('*').eq('work_date', date),
       sb.from('daily_ops_accounts').select('id,owner_name,linkedin_url'),
-      sb.from('daily_ops_posts').select('id,account_id,linkedin_post_url,work_date,post_name,commenter_count,unreplied_count,is_repost').or('is_repost.is.null,is_repost.eq.false').not('linkedin_post_url', 'is', null).order('work_date', { ascending: false }).limit(200),
+      sb.from('daily_ops_posts').select('id,account_id,linkedin_post_url,work_date,post_name,commenter_count,external_comment_count,unreplied_count,is_repost').or('is_repost.is.null,is_repost.eq.false').not('linkedin_post_url', 'is', null).order('work_date', { ascending: false }).limit(200),
       sb.from('daily_ops_schedule').select('*').gte('work_date', weekStart(date)).lt('work_date', date),
     ]);
     if (fail(s, 'Load tasks')) return;

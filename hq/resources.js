@@ -36,7 +36,7 @@ async function loadAll() {
   const [jobs, cfg, posts, accts] = await Promise.all([
     sb.from('resource_jobs').select('*').order('created_at', { ascending: false }).limit(300),
     sb.rpc('resource_config'),
-    sb.from('daily_ops_posts').select('id,account_id,post_text,post_name,media_url,work_date,author_name,is_repost,commenter_count,reaction_count,linkedin_post_url,tags').or('is_repost.is.null,is_repost.eq.false').order('work_date', { ascending: false }).limit(300),
+    sb.from('daily_ops_posts').select('id,account_id,post_text,post_name,media_url,work_date,author_name,is_repost,commenter_count,external_comment_count,reaction_count,linkedin_post_url,tags').or('is_repost.is.null,is_repost.eq.false').order('work_date', { ascending: false }).limit(300),
     sb.from('daily_ops_accounts').select('id,owner_name'),
   ]);
   S.missing = !!jobs.error;
@@ -47,7 +47,7 @@ async function loadAll() {
 async function refresh() {
   const [jobs, cfg, posts] = await Promise.all([
     sb.from('resource_jobs').select('*').order('created_at', { ascending: false }).limit(300), sb.rpc('resource_config'),
-    sb.from('daily_ops_posts').select('id,account_id,post_text,post_name,media_url,work_date,author_name,is_repost,commenter_count,reaction_count,linkedin_post_url,tags').or('is_repost.is.null,is_repost.eq.false').order('work_date', { ascending: false }).limit(300),
+    sb.from('daily_ops_posts').select('id,account_id,post_text,post_name,media_url,work_date,author_name,is_repost,commenter_count,external_comment_count,reaction_count,linkedin_post_url,tags').or('is_repost.is.null,is_repost.eq.false').order('work_date', { ascending: false }).limit(300),
   ]);
   if (!jobs.error) S.jobs = jobs.data; if (!cfg.error) S.cfg = cfg.data; if (!posts.error) S.posts = posts.data.filter(p => p.post_text);
 }
@@ -74,7 +74,8 @@ function draw() {
   const q = queue(), ready = S.jobs.filter(j => j.status === 'ready');
   const weekAgo = Date.now() - 7 * 864e5, built = S.jobs.filter(j => j.source !== 'manual' && j.status === 'ready' && new Date(j.finished_at || j.created_at) > weekAgo).length;
   const recent = S.posts.filter(p => p.work_date >= new Date(Date.now() - QUEUE_DAYS * 864e5).toISOString().slice(0, 10));
-  const avg = a => a.length ? Math.round(a.reduce((n, p) => n + (p.commenter_count || 0), 0) / a.length) : null;
+  const aud = p => p.external_comment_count ?? p.commenter_count ?? 0; // audience comments; our own accounts excluded once scraped
+  const avg = a => a.length ? Math.round(a.reduce((n, p) => n + aud(p), 0) / a.length) : null;
   const withR = avg(recent.filter(p => linkedJob(p.id))), without = avg(recent.filter(p => !linkedJob(p.id)));
   root.innerHTML = `<div class="head"><div><h1>Resources</h1><p>Every lead-magnet resource, and the posts that still need one.</p></div><div id="rMeter"></div></div>
     ${S.missing ? `<div class="card" style="background:var(--warn-bg);margin-bottom:20px"><div class="body s"><b>Database update needed</b> (<code>supabase/2026-09-30-resources.sql</code>).</div></div>` : ''}
@@ -106,7 +107,7 @@ function queueView(body) {
   body.innerHTML = `<section class="card"><header><div><h2>Posts that need a resource</h2><p>Your own posts from the last ${QUEUE_DAYS} days with no resource linked. Lead-magnet posts first.</p></div></header>
     <div class="body flush scroll">${q.length ? `<table class="tbl"><thead><tr><th>Post</th><th>Account</th><th>Date</th><th class="n">Comments</th><th></th></tr></thead><tbody>
     ${q.map(p => `<tr><td style="max-width:460px">${p.likely ? '<span class="tag warn" style="margin-right:6px">Lead magnet</span>' : ''}${p.linkedin_post_url ? `<a href="${esc(p.linkedin_post_url)}" target="_blank" rel="noopener">${esc(snippet(p.post_name || p.post_text))}</a>` : esc(snippet(p.post_name || p.post_text))}</td>
-      <td>${esc(acct(p))}</td><td class="muted" style="white-space:nowrap">${day(p.work_date)}</td><td class="n strong">${p.commenter_count ?? 0}</td>
+      <td>${esc(acct(p))}</td><td class="muted" style="white-space:nowrap">${day(p.work_date)}</td><td class="n strong">${p.external_comment_count ?? p.commenter_count ?? 0}</td>
       <td style="white-space:nowrap;text-align:right"><button class="btn sm primary" data-gen="${p.id}">Generate</button> <button class="btn sm" data-link="${p.id}">Add link</button> <button class="btn sm ghost" data-skip="${p.id}" title="This post doesn't need a resource">Not needed</button></td></tr>`).join('')}
     </tbody></table>` : '<div class="empty">Every recent post has a resource, or is marked as not needing one.</div>'}</div></section>
     ${S.posts.some(p => p.tags?.no_resource) ? `<p class="s muted" style="margin-top:12px">${S.posts.filter(p => p.tags?.no_resource).length} posts marked not needed. <button class="link s" id="rShowSkipped">Show them</button></p><div id="rSkipped"></div>` : ''}`;
@@ -140,7 +141,7 @@ function libraryView(body) {
       return `<tr><td style="max-width:260px">${j.output_url ? `<a href="${esc(j.output_url)}" target="_blank" rel="noopener">${esc(j.output_title || j.topic)}</a>` : esc(j.output_title || j.topic)}<div class="s muted">${j.source === 'manual' ? 'Added by hand' : 'Built by Claude'}${j.requested_by ? ' · ' + esc(who(j.requested_by)) : ''}</div></td>
         <td>${esc(FORMAT_LABEL[j.format] || j.format)}</td><td>${esc(first(j.poster))}</td>
         <td style="max-width:240px">${p ? `<span title="${esc(p.post_text)}">${esc(snippet(p.post_name || p.post_text, 60))}</span>${j.linked_by?.startsWith('auto') ? '<div class="s muted">Linked automatically</div>' : ''}` : '<span class="muted">Not linked</span>'}</td>
-        <td class="n">${p ? (p.commenter_count ?? 0) : '—'}</td>
+        <td class="n">${p ? (p.external_comment_count ?? p.commenter_count ?? 0) : '—'}</td>
         <td><span class="tag ${tone}">${label}</span></td><td class="muted" style="white-space:nowrap">${ago(j.created_at)}</td>
         <td style="text-align:right"><button class="btn sm ghost" data-relink="${j.id}">${p ? 'Change post' : 'Link post'}</button></td></tr>`;
     }).join('');
