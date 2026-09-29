@@ -32,6 +32,10 @@ Today, Schedule, Resources. RLS helpers: `can_access_daily_ops()` (admin or ops)
   first post; posts run back to back). Ops day rolls over at 2 AM GMT+8. Edited by HQ → Schedule (drag and drop).
 - `daily_ops_posts`: scraped LinkedIn posts. `post_key` comes from a trigger. `is_repost` is set by trigger; reshares
   are boosts, never the account's own post. `tags` / `metrics` jsonb hold HQ tagging and `no_resource`.
+- Comments from our own accounts never count. `daily_ops_post_comments.is_team` is set by trigger;
+  `daily_ops_posts.external_comment_count` (audience), `team_comment_count`, and `unreplied_count` (audience comments
+  no team account answered) are kept current by `recount_post_comments()`. `commenter_count` is LinkedIn's raw total
+  (includes ours); only use it as a fallback before a thread is scraped. Reply quota: 20 comments/account/day.
 - `growth_settings` (id 1): scraper on/off (`scrape_enabled`), `scrape_hour`, `monthly_budget`, resource cap and
   Drive folder.
 - Scraper: edge function `daily-ops-linkedin-auto` (Apify actors atomus/linkedin-posts-scraper-pro and
