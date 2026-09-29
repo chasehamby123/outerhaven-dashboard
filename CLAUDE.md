@@ -62,6 +62,10 @@ Today, Schedule, Resources. RLS helpers: `can_access_daily_ops()` (admin or ops)
   `growth_meetings` (with `dm_variant_id` / `post_id`). `dm_variant_stats` view gives per-version totals.
 - Today shows the running DM test (tap + Sent / + Reply / Meeting booked) and a "Meeting booked" button.
   Growth → DM tests compares versions; a winner needs 30+ sends per version and p < 0.05.
+- Browser extension `extension/outerhaven-capture` (MV3; zipped to `hq/outerhaven-hq-extension.zip` for download):
+  HQ button on LinkedIn chats → `dm-capture` edge function → `dm_conversations` (one row per thread, re-save updates,
+  opening message fuzzy-matched to a DM version via `match_dm_variant`, "meeting booked" creates a growth_meetings row).
+  `dm_variant_stats` counts saved conversations as sends/replies. Re-zip after editing the extension.
 
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.

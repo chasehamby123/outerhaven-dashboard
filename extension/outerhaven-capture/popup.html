@@ -1,0 +1,31 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  :root{--ink:#111;--muted:#6b6b6b;--line:#e4e4e0;--bg:#fff}
+  body{margin:0;width:280px;font:13px/1.45 -apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+  header{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line)}
+  header b{display:grid;place-items:center;width:22px;height:22px;border-radius:5px;background:#111;color:#fff;font-family:Georgia,serif}
+  main{padding:14px 16px;display:grid;gap:10px}
+  label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+  input{height:32px;padding:0 10px;border:1px solid var(--line);border-radius:6px;font:inherit;color:var(--ink)}
+  button{height:32px;border:0;border-radius:6px;background:#111;color:#fff;font:inherit;font-weight:500;cursor:pointer}
+  button.ghost{background:none;color:var(--ink);border:1px solid var(--line)}
+  .msg{font-size:12px;color:#b42318;min-height:1em}.ok{color:#067647}
+  p{margin:0;color:var(--muted);font-size:12px}
+</style></head><body>
+<header><b>O</b><strong>OuterHaven HQ</strong></header>
+<main id="out">
+  <form id="login" hidden>
+    <p>Sign in with your HQ account (the one you use on outerhaven-dashboard.vercel.app/hq.html).</p>
+    <label>Email<input id="email" type="email" autocomplete="username" required></label>
+    <label>Password<input id="password" type="password" autocomplete="current-password" required></label>
+    <button type="submit">Sign in</button>
+    <div class="msg" id="err"></div>
+  </form>
+  <div id="in" hidden>
+    <p class="ok">Signed in as <span id="who"></span></p>
+    <p>Open a conversation on LinkedIn and use the <b>HQ</b> button at the bottom right to save it.</p>
+    <button class="ghost" id="logout">Sign out</button>
+  </div>
+</main>
+<script src="popup.js"></script>
+</body></html>

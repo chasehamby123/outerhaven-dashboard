@@ -363,3 +363,6 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .dmVField{display:grid;grid-template-columns:60px minmax(0,1fr);gap:8px;margin-top:8px}
 .grpH{margin:8px 0 -4px;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
 .report{margin:0;padding-left:18px;display:grid;gap:6px;font-size:var(--fs-s)}
+.chat{display:grid;gap:8px;max-height:60vh;overflow:auto}
+.bubble{max-width:78%;padding:8px 12px;border-radius:10px;background:var(--sunk);font-size:var(--fs-s);white-space:pre-wrap}
+.bubble.us{justify-self:end;background:var(--inv);color:var(--inv-ink)}.bubble.us .muted{color:var(--inv-muted)}

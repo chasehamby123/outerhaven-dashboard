@@ -4,20 +4,22 @@
 import { sb, state, esc, $, $$, toast, fail, modal, opts, today } from './core.js';
 import { zTest } from './insights.js';
 
-export const D = { tests: [], variants: [], stats: [], todayEvents: [], accounts: [], posts: [], loaded: false };
+export const D = { tests: [], variants: [], stats: [], todayEvents: [], accounts: [], posts: [], convos: [], loaded: false };
 const PREF = 'hq-dm-account';
 const pref = { get: () => { try { return localStorage.getItem(PREF) || ''; } catch { return ''; } }, set: v => { try { localStorage.setItem(PREF, v); } catch { } } };
 const opsDay = () => new Date(Date.now() + 6 * 3600e3).toISOString().slice(0, 10); // Malaysia time minus the 2 AM rollover
 
 export async function loadDms() {
-  const [t, v, s, e, a, p] = await Promise.all([
+  const [t, v, s, e, a, p, c] = await Promise.all([
     sb.from('dm_tests').select('*').order('created_at', { ascending: false }),
     sb.from('dm_variants').select('*').order('label'),
     sb.from('dm_variant_stats').select('*'),
     sb.from('dm_events').select('id,variant_id,event,account_name,work_date').eq('work_date', opsDay()),
     sb.from('daily_ops_accounts').select('owner_name').order('sort_order'),
     sb.from('daily_ops_posts').select('id,post_name,work_date,account_id').or('is_repost.is.null,is_repost.eq.false').order('work_date', { ascending: false }).limit(60),
+    sb.from('dm_conversations').select('id,thread_url,account_name,prospect_name,prospect_url,prospect_headline,message_count,replied,meeting_booked,dm_variant_id,variant_match,captured_at,captured_by_email,messages,ai').order('captured_at', { ascending: false }).limit(200),
   ]);
+  D.convos = c.data || [];
   D.missing = !!t.error;
   D.tests = t.data || []; D.variants = v.data || []; D.stats = s.data || []; D.todayEvents = e.data || [];
   D.accounts = (a.data || []).map(x => x.owner_name).filter(Boolean); D.posts = p.data || []; D.loaded = true;
@@ -112,6 +114,7 @@ export async function dmTestsView(body) {
   if (D.missing) { body.innerHTML = '<div class="card"><div class="empty">DM tests need the database update (supabase/2026-09-30-dm-tests-analysis.sql).</div></div>'; return; }
   const draw = () => {
     body.innerHTML = `<section class="card"><header><div><h2>DM tests</h2><p>Test DM versions against each other on what matters: replies and meetings per message sent. Each DM sent is one trial, so these reach an answer far faster than post tests.</p></div><button class="btn primary" id="dmNew">New DM test</button></header>
+      <div class="body s muted" style="padding-top:0">Easiest way to feed this: the <b>OuterHaven HQ browser extension</b>. Open a LinkedIn chat, click <b>HQ → Save</b>, and the whole conversation lands here, matched to its DM version, with replies and meetings counted automatically. <a href="/hq/outerhaven-hq-extension.zip" download>Download the extension</a> · <a href="#" id="dmHow">How to install</a></div>
       ${D.tests.length ? '' : '<div class="empty">No DM tests yet. Start with your resource DM: version A as you send it today, version B with one change (shorter, a question at the end, the link up front…).</div>'}</section>
       ${D.tests.map(t => {
         const vs = variantsOf(t.id), vr = dmVerdict(t, 'replied'), vm = dmVerdict(t, 'meetings');
@@ -120,9 +123,12 @@ export async function dmTestsView(body) {
           <div class="body flush scroll"><table class="tbl"><thead><tr><th>Version</th><th>Message</th><th class="n">Sent</th><th class="n">Replies</th><th class="n">Reply rate</th><th class="n">Meetings</th><th class="n">Meeting rate</th></tr></thead><tbody>
           ${vs.map(v => { const s = statFor(v.id); return `<tr><td class="strong">${esc(v.label)}${vr.winner?.id === v.id || vm.winner?.id === v.id ? ' <span class="tag good">winner</span>' : ''}</td><td class="s" style="max-width:420px;white-space:pre-wrap">${esc(v.message)}</td><td class="n">${s.sent}</td><td class="n">${s.replied}</td><td class="n strong">${pct(s.replied, s.sent)}</td><td class="n">${s.meetings}</td><td class="n strong">${pct(s.meetings, s.sent)}</td></tr>`; }).join('')}
           </tbody></table></div>
-          <div class="body s"><div><span class="tag ${vr.tone}">Replies</span> ${esc(vr.text)}</div><div style="margin-top:6px"><span class="tag ${vm.tone}">Meetings</span> ${esc(vm.text)}</div></div></section>`;
-      }).join('')}`;
+          <div class="body s"><div class="muted" style="margin-bottom:6px">${vs.reduce((n, v) => n + (statFor(v.id).captured || 0), 0)} of these sends come from saved LinkedIn conversations; the rest from taps on Today.</div><div><span class="tag ${vr.tone}">Replies</span> ${esc(vr.text)}</div><div style="margin-top:6px"><span class="tag ${vm.tone}">Meetings</span> ${esc(vm.text)}</div></div></section>`;
+      }).join('')}
+      ${convosHtml()}`;
     $('#dmNew', body).onclick = () => editTest();
+    $('#dmHow', body).onclick = e => { e.preventDefault(); installHelp(); };
+    $$('[data-convo]', body).forEach(r => r.onclick = () => transcript(D.convos.find(c => c.id === r.dataset.convo)));
     $$('[data-edit-test]', body).forEach(b => b.onclick = () => editTest(D.tests.find(t => t.id === b.dataset.editTest)));
     $$('[data-status]', body).forEach(b => b.onclick = async () => { if (!fail(await sb.from('dm_tests').update({ status: b.dataset.to, completed_at: b.dataset.to === 'complete' ? new Date().toISOString() : null }).eq('id', b.dataset.status), 'Update test')) { await loadDms(); draw(); } });
   };
@@ -153,3 +159,31 @@ export async function dmTestsView(body) {
   draw();
 }
 const versionField = (v, i) => `<div class="dmVField"><input type="hidden" name="v_id" value="${esc(v.id || '')}"><input class="input" name="v_label" value="${esc(v.label)}" style="width:60px"><textarea class="textarea" name="v_msg" rows="4" placeholder="Version ${esc(v.label)} message, exactly as sent">${esc(v.message)}</textarea></div>`;
+
+// ---------------- Captured conversations ----------------
+function convosHtml() {
+  const vLabel = id => { const v = D.variants.find(x => x.id === id); const t = v && D.tests.find(x => x.id === v.test_id); return v ? `${t?.name || 'Test'} · ${v.label}` : ''; };
+  return `<section class="card" style="margin-top:20px"><header><div><h2>Saved LinkedIn conversations</h2><p>${D.convos.length} saved with the extension. Claude reads them every Monday for what books meetings.</p></div></header>
+    <div class="body flush scroll">${D.convos.length ? `<table class="tbl"><thead><tr><th>Prospect</th><th>Our account</th><th>DM version</th><th class="n">Messages</th><th>Outcome</th><th>Saved</th></tr></thead><tbody>
+    ${D.convos.map(c => `<tr data-convo="${c.id}" style="cursor:pointer"><td class="strong">${esc(c.prospect_name || '—')}<div class="s muted">${esc((c.prospect_headline || '').slice(0, 70))}</div></td><td>${esc(c.account_name || '—')}</td>
+      <td class="s">${c.dm_variant_id ? esc(vLabel(c.dm_variant_id)) : '<span class="muted">No match</span>'}</td><td class="n">${c.message_count}</td>
+      <td>${c.meeting_booked ? '<span class="tag good">Meeting</span>' : c.replied ? '<span class="tag warn">Replied</span>' : '<span class="tag">No reply yet</span>'}${c.ai?.stage && !c.meeting_booked ? ` <span class="tag">${esc(c.ai.stage)}</span>` : ''}</td>
+      <td class="muted s" style="white-space:nowrap">${new Date(c.captured_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">Nothing saved yet. Install the extension and click HQ → Save on a LinkedIn chat.</div>'}</div></section>`;
+}
+function transcript(c) {
+  if (!c) return;
+  const ai = c.ai || {};
+  modal({ title: c.prospect_name || 'Conversation', wide: true, submit: '', body: `<div class="s muted" style="margin-bottom:12px">${esc(c.prospect_headline || '')}${c.prospect_url ? ` · <a href="${esc(c.prospect_url)}" target="_blank" rel="noopener">Profile ↗</a>` : ''}${c.thread_url ? ` · <a href="${esc(c.thread_url)}" target="_blank" rel="noopener">Open chat ↗</a>` : ''}</div>
+    ${ai.summary ? `<div class="card" style="margin-bottom:14px"><div class="body s"><b>Claude:</b> ${esc(ai.summary)}${ai.objections?.length ? `<div class="muted" style="margin-top:6px">Objections: ${esc(ai.objections.join('; '))}</div>` : ''}</div></div>` : ''}
+    <div class="chat">${(c.messages || []).map(m => `<div class="bubble ${m.from}"><div class="s muted">${esc(m.from === 'us' ? (c.account_name || 'Us') : (m.name || c.prospect_name || 'Them'))} · ${esc(m.at || '')}</div><div>${esc(m.text)}</div></div>`).join('') || '<div class="empty">No structured messages; the raw text was saved for Claude.</div>'}</div>` });
+}
+function installHelp() {
+  modal({ title: 'Install the OuterHaven HQ extension', submit: '', body: `<ol class="report">
+    <li><a href="/hq/outerhaven-hq-extension.zip" download>Download the zip</a> and unzip it (you get a folder called <b>outerhaven-capture</b>).</li>
+    <li><b>Chrome:</b> open <code>chrome://extensions</code>, turn on <b>Developer mode</b> (top right), click <b>Load unpacked</b> and pick that folder.</li>
+    <li><b>AdsPower:</b> Extensions → Upload extension → pick the zip, then enable it for the LinkedIn profiles you use (Peter, Chase, …).</li>
+    <li>Click the black <b>O</b> icon in the toolbar and sign in with your HQ email and password.</li>
+    <li>On LinkedIn, open a conversation. A black <b>HQ</b> button appears bottom right: tick <b>meeting booked</b> if it is, then <b>Save conversation</b>. Saving again later updates it.</li></ol>
+    <p class="s muted" style="margin-top:12px">It only reads the chat you have open, only when you click Save, and never sends or clicks anything on LinkedIn.</p>` });
+}

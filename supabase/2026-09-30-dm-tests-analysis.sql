@@ -89,3 +89,6 @@ alter table public.growth_settings add column if not exists analysis_enabled boo
 
 -- Also applied: resource_jobs.payload jsonb (resource_jobs_payload); resource_config() counts only kind='resource';
 -- invoke_weekly_growth_analysis() + pg_cron 'weekly-growth-analysis' '5 2 * * 1' (weekly_analysis_cron).
+
+-- Also applied: dm_conversations (+ match_dm_variant, dm_variant_stats counting captured conversations) as
+-- migration dm_conversations; edge function dm-capture receives chats from the browser extension.
