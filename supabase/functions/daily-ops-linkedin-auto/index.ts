@@ -7,6 +7,8 @@
 //  3. Obeys growth_settings: on/off switch and monthly budget, both editable in HQ.
 //  4. Admins can trigger a run from HQ ("Run now") with their normal login; cron still uses the secret.
 //  6. (v4) Posts pass: own posts identified by author==profile (not the unreliable repost flag); last 7 days tracked.
+//  7. (v5) Every posts pass (automatic or Run now) saves each original post's creative to storage, so HQ can
+//     show it after LinkedIn's image links expire.
 //  5. (v3) Daily mode (default): one scrape a day at scrape_hour Malaysia time: posts, then comment threads.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -240,7 +242,33 @@ async function syncPosts(apifyToken: string, _allowDetail: boolean) {
     } catch (e) { errors.push(`${account.owner_name}: ${e instanceof Error ? e.message : String(e)}`); }
   }
   const no_own_post = accounts.filter((a: any) => !ownByAccount.has(a.id)).map((a: any) => a.owner_name);
-  return { mode: "posts", actor_runs_estimate: 1, profiles_checked: profiles.length, rows_returned: rows.length, posts_saved: saved, original_posts: originals, reposts, skipped_older_than_7d: skippedOld, unmatched_post_rows: unmatched, no_own_post_last_7d: no_own_post, missing_profiles: [], errors };
+  const creatives = await saveCreatives();
+  return { mode: "posts", actor_runs_estimate: 1, ...creatives, profiles_checked: profiles.length, rows_returned: rows.length, posts_saved: saved, original_posts: originals, reposts, skipped_older_than_7d: skippedOld, unmatched_post_rows: unmatched, no_own_post_last_7d: no_own_post, missing_profiles: [], errors };
+}
+
+// Creatives: LinkedIn media links expire, so keep our own copy in the private growth-assets bucket.
+// Images (first image of a carousel) and document PDFs are saved; videos are skipped.
+const CREATIVE_MAX_BYTES = 15 * 1024 * 1024;
+async function saveCreatives(limit = 40) {
+  const res = await sb.from("daily_ops_posts").select("id,media_url,content_type").eq("is_repost", false).not("media_url", "is", null).is("creative_path", null).neq("content_type", "video").order("posted_at", { ascending: false }).limit(limit);
+  if (res.error) return { creatives_saved: 0, creative_errors: [`creatives: ${res.error.message}`] };
+  let saved = 0; const errs: string[] = [];
+  for (const p of res.data || []) {
+    try {
+      const r = await fetch(p.media_url);
+      if (!r.ok) { errs.push(`${p.id}: image link returned ${r.status} (expired?)`); await sb.from("daily_ops_posts").update({ creative_path: "unavailable" }).eq("id", p.id); continue; }
+      const type = (r.headers.get("content-type") || "").split(";")[0] || "application/octet-stream";
+      const buf = new Uint8Array(await r.arrayBuffer());
+      if (buf.byteLength > CREATIVE_MAX_BYTES) { errs.push(`${p.id}: creative too large`); continue; }
+      const ext = type.includes("pdf") ? "pdf" : type.includes("png") ? "png" : type.includes("webp") ? "webp" : type.includes("gif") ? "gif" : "jpg";
+      const path = `creatives/${p.id}.${ext}`;
+      const up = await sb.storage.from("growth-assets").upload(path, buf, { contentType: type, upsert: true });
+      if (up.error) { errs.push(`${p.id}: ${up.error.message}`); continue; }
+      await sb.from("daily_ops_posts").update({ creative_path: path, creative_type: type, creative_saved_at: new Date().toISOString() }).eq("id", p.id);
+      saved++;
+    } catch (e) { errs.push(`${p.id}: ${e instanceof Error ? e.message : String(e)}`); }
+  }
+  return { creatives_saved: saved, creative_errors: errs };
 }
 
 async function logRun(payload: any) { try { await sb.from("daily_ops_linkedin_auto_log").insert(payload); } catch { } }
@@ -294,6 +322,7 @@ Deno.serve(async (req) => {
     pending_comment_posts: pendingComments, trigger: who.kind, by: who.email, schedule_mode: settings.mode, scrape_hour_myt: settings.hour,
   };
   if (body.status_only === true) return json(status);
+  if (body.action === "save_creatives") return json({ ok: true, ...(await saveCreatives(100)) }); // free: no Apify call
 
   if (!manual && !settings.enabled) {
     // Log at most one "off" row per 6 hours so the switch state is visible without flooding the log.

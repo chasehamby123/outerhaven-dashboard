@@ -39,16 +39,28 @@ function postsView(body) {
   const posts = store.posts, tagged = posts.filter(isTagged).length;
   const avg = posts.length ? posts.reduce((n, p) => n + METRIC_DEFS.engagement.get(p), 0) / posts.length : 0;
   body.innerHTML = `<section class="card"><header><div><h2>Posts</h2><p>${posts.length} original posts, scraped automatically. Reshares count as boosts. Add tags so Insights can explain why posts worked.</p></div><div class="row"><select class="select sm" id="pAcct" style="width:auto"><option value="">All accounts</option>${opts(accountNames())}</select></div></header>
-  <div class="body flush scroll"><table class="tbl"><thead><tr><th>Post</th><th>Account</th><th>Date</th><th class="n">Comments</th><th class="n">Reactions</th><th class="n">Reposts</th><th class="n">vs avg</th><th class="n">Meetings</th><th>Tags</th><th></th></tr></thead><tbody id="pRows"></tbody></table>${!posts.length ? '<div class="empty">No posts yet. They appear here as the LinkedIn sync picks them up.</div>' : ''}</div></section>`;
+  <div class="body flush scroll"><table class="tbl"><thead><tr><th>Creative</th><th>Post</th><th>Account</th><th>Date</th><th class="n">Comments</th><th class="n">Reactions</th><th class="n">Reposts</th><th class="n">vs avg</th><th class="n">Meetings</th><th>Tags</th><th></th></tr></thead><tbody id="pRows"></tbody></table>${!posts.length ? '<div class="empty">No posts yet. They appear here as the LinkedIn sync picks them up.</div>' : ''}</div></section>`;
   const draw = () => {
     const f = $('#pAcct', body).value;
     $('#pRows', body).innerHTML = posts.filter(p => !f || p.account === f).map(p => {
       const eng = METRIC_DEFS.engagement.get(p), d = avg ? Math.round((eng - avg) / avg * 100) : 0;
-      return `<tr><td style="max-width:280px">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a>` : esc(p.name)}${p.group ? `<div class="s muted">Creative: ${esc(p.group)}</div>` : ''}</td><td>${esc(p.account)}</td><td class="muted" style="white-space:nowrap">${fmtDate(p.date)}</td><td class="n strong">${fmt(p.m.comments)}</td><td class="n">${fmt(p.m.reactions)}</td><td class="n">${fmt(p.m.reposts)}</td><td class="n ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '+' : ''}${d}%</td><td class="n">${p.meetings || '<span class="muted">0</span>'}</td><td>${tagSummary(p)}</td><td><button class="btn sm" data-edit="${p.id}">Tag</button></td></tr>`;
+      const raw = store.rawPosts.find(r => r.id === p.id), cp = raw?.creative_path;
+      const thumb = cp && cp !== 'unavailable' ? `<button type="button" class="cthumb" data-cthumb="${esc(cp)}" data-ctype="${esc(raw.creative_type || '')}" title="View creative"></button>` : `<span class="cthumb none" title="${cp === 'unavailable' ? 'Image link had expired before it was saved' : p.m && raw?.content_type === 'text' ? 'Text-only post' : 'Saved on the next posts scrape'}">${raw?.content_type === 'text' ? 'Text' : '—'}</span>`;
+      return `<tr><td>${thumb}</td><td style="max-width:280px">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a>` : esc(p.name)}${p.group ? `<div class="s muted">Creative: ${esc(p.group)}</div>` : ''}</td><td>${esc(p.account)}</td><td class="muted" style="white-space:nowrap">${fmtDate(p.date)}</td><td class="n strong">${fmt(p.m.comments)}</td><td class="n">${fmt(p.m.reactions)}</td><td class="n">${fmt(p.m.reposts)}</td><td class="n ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '+' : ''}${d}%</td><td class="n">${p.meetings || '<span class="muted">0</span>'}</td><td>${tagSummary(p)}</td><td><button class="btn sm" data-edit="${p.id}">Tag</button></td></tr>`;
     }).join('');
     $$('[data-edit]', body).forEach(b => b.onclick = () => editPost(b.dataset.edit));
+    loadCreativeThumbs(body);
   };
   $('#pAcct', body).onchange = draw; draw();
+}
+
+// Saved creatives live in the private bucket; load short-lived links for the visible rows.
+async function loadCreativeThumbs(root) {
+  for (const el of $$('[data-cthumb]', root)) {
+    const url = await assetUrl(el.dataset.cthumb); if (!url) continue;
+    if (/pdf/.test(el.dataset.ctype)) { el.textContent = 'PDF'; el.onclick = () => window.open(url, '_blank', 'noopener'); }
+    else { el.style.backgroundImage = `url("${url}")`; el.onclick = () => lightbox(url); }
+  }
 }
 
 function editPost(id) {

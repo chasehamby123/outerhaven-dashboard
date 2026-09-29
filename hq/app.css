@@ -313,10 +313,35 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .toast button{margin-left:14px;background:none;border:0;color:inherit;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}
 @media(max-width:900px){.sHead,.sGrid{min-width:760px}}
 .tLinks{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.tLink{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:1px solid var(--line-2);border-radius:999px;background:var(--surface);color:var(--ink);font-size:var(--fs-xs);font-weight:500;text-decoration:none}
+.tLink{display:inline-flex;white-space:nowrap;max-width:100%;align-items:center;gap:6px;height:26px;padding:0 10px;border:1px solid var(--line-2);border-radius:999px;background:var(--surface);color:var(--ink);font-size:var(--fs-xs);font-weight:500;text-decoration:none}
 .tLink:hover{border-color:var(--ink)}
 .tLink em{font-style:normal;color:var(--muted);font-weight:400}
 .checklist small a{color:inherit}
 .sPost em{font-style:normal;font-size:10px;margin-top:auto;padding:1px 6px;border-radius:999px;background:color-mix(in srgb,var(--inv-ink) 18%,transparent);width:max-content}
 .main{min-width:0}
 @media(max-width:900px){.nav{min-width:0;flex-basis:100%;order:4}.side{min-width:0}}
+.cthumb{display:grid;place-items:center;width:48px;height:48px;border:1px solid var(--line);border-radius:6px;background:var(--sunk) center/cover no-repeat;font-size:10px;color:var(--muted);cursor:zoom-in;padding:0}
+.cthumb.none{cursor:default}
+
+/* Today: overdue warning, weekly ring, week history */
+.overdue{margin-bottom:24px;border-color:color-mix(in srgb,var(--bad) 45%,var(--line));background:color-mix(in srgb,var(--bad-bg) 55%,var(--surface))}
+.overdue h2::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--bad);margin-right:8px;vertical-align:middle}
+.odList{list-style:none;margin:0;padding:0}
+.odList li{display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:12px 20px;border-top:1px solid var(--line)}
+.odList li .tLinks{grid-column:2;margin-top:0}
+.weekRing{padding:18px 20px;margin-bottom:0}
+.ring.sm{background:none;color:var(--ink);padding:0;border:0;box-shadow:none}
+.ring.sm svg{width:72px;height:72px}
+.ring.sm .trk{stroke:var(--sunk)}.ring.sm .val{stroke:var(--ink)}
+.ring.sm span{color:var(--muted)}
+.wkDays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;padding:16px 20px;border-bottom:1px solid var(--line)}
+.wkDay{appearance:none;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:10px 8px;text-align:left;cursor:pointer;display:grid;gap:4px;color:var(--ink);font:inherit}
+.wkDay:hover{border-color:var(--line-2)}
+.wkDay.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.wkDay span{font-size:var(--fs-xs);color:var(--muted)}
+.wkDay.isToday span{color:var(--ink);font-weight:600}
+.wkDay b{font-size:18px;font-weight:600;letter-spacing:-.02em}
+.wkDay i{display:block;height:4px;border-radius:2px;background:var(--sunk);overflow:hidden}
+.wkDay i em{display:block;height:100%;background:var(--ink)}
+.wkDay small{font-size:11px;color:var(--muted)}
+@media(max-width:700px){.wkDays{grid-template-columns:repeat(4,minmax(0,1fr))}.odList li{grid-template-columns:1fr}.odList li .tLinks{grid-column:1}}

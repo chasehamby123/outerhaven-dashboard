@@ -44,6 +44,10 @@
   ];
   db.daily_ops_posts.forEach((p, i) => { p.post_text = p.post_text || (i % 2 ? 'Steal my 7-step screening prompt. Comment SCREEN and I will send it.' : 'Thoughts on the Singapore family office market this quarter.'); p.work_date = p.work_date || d(i + 1).slice(0, 10); p.tags = p.tags || {}; });
   db.resource_jobs[1].post_id = db.daily_ops_posts[1]?.id; db.resource_jobs.forEach(j => j.source = 'generated');
+  { const base = new Date(Date.now() - 2 * 3600e3 + 8 * 3600e3);
+    for (let back = 1; back <= 6; back++) { const day = new Date(base.getTime() - back * 864e5).toISOString().slice(0, 10);
+      [['20:00', 'Reza · Post A'], ['21:00', 'Reza · Respond to past post comments'], ['21:15', 'Dev · Post B'], ['22:15', 'Dev · Respond to past post comments'], ['13:30', 'DM follow-ups + qualification']].forEach(([st, task], i) =>
+        db.daily_ops_schedule.push({ id: id(), work_date: day, start_time: st + ':00', task, status: (i + back) % 3 === 0 && back < 3 ? 'due' : 'done', completed_by_name: 'Anaz', completed_at: day + 'T14:00:00Z', notes: '' })); } }
   db.daily_ops_schedule.forEach(r => { const a = accts.find(x => x.owner_name.split(' ')[0] === r.task.split(/[ ·]/)[0]); if (a) r.account_id = a.id; });
   db.daily_ops_weekly_posts = [];
   [[0,'21:00','Sara','A'],[0,'22:00','Razeen','B'],[0,'23:00','Peter','A'],[1,'20:00','Reza','Video'],[1,'21:00','Dev','A'],[1,'22:00','Anaz','B'],[1,'23:00','Chase','A'],[2,'21:00','Sara','B'],[2,'22:00','Peter','B'],[2,'23:00','Tengku','A'],[3,'20:00','Reza','A'],[3,'21:00','Sahid','A'],[3,'22:00','Anaz','C'],[3,'23:00','Razeen','A'],[4,'20:00','Dev','B'],[4,'21:00','Sara','C'],[4,'22:00','Peter','C'],[4,'23:00','Chase','B'],[5,'20:00','Reza','Video'],[5,'21:00','Sahid','B'],[5,'22:00','Anaz','A'],[5,'23:00','Tengku','B'],[6,'20:00','Sara','Cred Post'],[6,'21:00','Peter','Cred Post'],[6,'22:00','Reza','B'],[6,'23:00','Sara','D']]
@@ -64,7 +68,7 @@
     constructor(t) { this.t = t; this.f = []; this.op = 'select'; this.payload = null; this.single_ = false; }
     select() { if (this.op === 'select') this.op = 'select'; else this.returning = true; return this; }
     order() { return this; } limit() { return this; }
-    eq(k, v) { this.f.push(r => r[k] === v); return this; } neq(k, v) { this.f.push(r => r[k] !== v); return this; } in(k, v) { this.f.push(r => v.includes(r[k])); return this; } gte() { return this; } or() { return this; } not() { return this; }
+    eq(k, v) { this.f.push(r => r[k] === v); return this; } neq(k, v) { this.f.push(r => r[k] !== v); return this; } in(k, v) { this.f.push(r => v.includes(r[k])); return this; } gte(k, v) { this.f.push(r => r[k] == null || String(r[k]) >= String(v)); return this; } lt(k, v) { this.f.push(r => r[k] != null && String(r[k]) < String(v)); return this; } or() { return this; } not() { return this; }
     insert(p) { this.op = 'insert'; this.payload = p; return this; } update(p) { this.op = 'update'; this.payload = p; return this; } delete() { this.op = 'delete'; return this; }
     single() { this.single_ = true; return this; } maybeSingle() { return this.single(); }
     then(res, rej) { return Promise.resolve(this.run()).then(res, rej); }

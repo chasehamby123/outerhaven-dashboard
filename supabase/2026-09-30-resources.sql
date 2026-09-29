@@ -139,3 +139,14 @@ end $$;
 drop trigger if exists auto_link_resource on public.daily_ops_posts;
 create trigger auto_link_resource after insert or update of post_text on public.daily_ops_posts
   for each row execute function public.auto_link_resource_to_post();
+
+-- ---------------------------------------------------------------------------
+-- 30 Sept audit fixes
+-- ---------------------------------------------------------------------------
+-- Only pg_cron (postgres) should start the paid scraper (applied as lock_scraper_invoke).
+revoke execute on function public.invoke_daily_ops_linkedin_auto() from public, anon, authenticated;
+-- Saved copies of post creatives (applied as post_creatives); filled by every posts scrape.
+alter table public.daily_ops_posts
+  add column if not exists creative_path text,
+  add column if not exists creative_type text,
+  add column if not exists creative_saved_at timestamptz;
