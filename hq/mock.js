@@ -37,6 +37,12 @@
     { id: id(), meeting_date: d(3).slice(0, 10), account_name: 'Tengku Harris', source: 'outbound_dm', lead_name: 'M. Ali', company: 'KL developer', status: 'booked' },
     { id: id(), meeting_date: d(5).slice(0, 10), account_name: 'Chase', source: 'comment_to_dm', post_id: db.daily_ops_posts[2].id, lead_name: 'R. Cole', company: 'Independent sponsor', status: 'qualified' });
 
+  db.resource_jobs = [
+    { id: id(), created_at: d(0.02), fired_at: d(0.02), started_at: d(0.015), requested_by: 'anaz@outerhaven.test', format: 'list', poster: 'Peter Plaut', brand: 'OuterHaven Advisory', topic: '50 family offices investing in Asian real estate', status: 'building', progress: 'Running the Apify scraper (Google search results, 65 rows)', session_url: 'https://claude.ai/code/session_x' },
+    { id: id(), created_at: d(1.1), fired_at: d(1.1), finished_at: d(1.09), requested_by: 'tengku@outerhaven.test', format: 'notion', poster: 'Peter Plaut', brand: 'OuterHaven Advisory', topic: 'AI deal screening', output_title: 'AI CIO', output_url: 'https://www.notion.so/x', status: 'ready', judgment_calls: ['Worked example uses a hypothetical $1.2M ARR SaaS deal', 'Caption says "7 components": delivered 7'], session_url: 'https://claude.ai/code/session_y' },
+    { id: id(), created_at: d(2), requested_by: 'chase@outerhaven.test', format: 'pdf', poster: 'Chase Hamby', brand: 'OuterHaven Advisory', topic: 'Capital stack cheat sheet', status: 'failed', error: "Claude's daily routine limit is used up for today. Try again tomorrow." },
+  ];
+  const cfg = { connected: !location.search.includes('noconn'), daily_cap: 6, used_today: 1, notion_parent_url: null, drive_folder_url: null };
   // ?mock=real: tests inject a read-only snapshot of real rows at /__fixture.json (never committed).
   if (location.search.includes('real')) {
     try {
@@ -50,7 +56,7 @@
     constructor(t) { this.t = t; this.f = []; this.op = 'select'; this.payload = null; this.single_ = false; }
     select() { if (this.op === 'select') this.op = 'select'; else this.returning = true; return this; }
     order() { return this; } limit() { return this; }
-    eq(k, v) { this.f.push(r => r[k] === v); return this; } neq(k, v) { this.f.push(r => r[k] !== v); return this; } in(k, v) { this.f.push(r => v.includes(r[k])); return this; } gte() { return this; }
+    eq(k, v) { this.f.push(r => r[k] === v); return this; } neq(k, v) { this.f.push(r => r[k] !== v); return this; } in(k, v) { this.f.push(r => v.includes(r[k])); return this; } gte() { return this; } or() { return this; }
     insert(p) { this.op = 'insert'; this.payload = p; return this; } update(p) { this.op = 'update'; this.payload = p; return this; } delete() { this.op = 'delete'; return this; }
     single() { this.single_ = true; return this; } maybeSingle() { return this.single(); }
     then(res, rej) { return Promise.resolve(this.run()).then(res, rej); }
@@ -66,9 +72,10 @@
   const blobs = new Map();
   const client = {
     from: t => new Q(t),
-    rpc: async n => ({ data: n === 'dashboard_role' ? (location.search.includes('ops') ? 'ops' : 'admin') : true, error: null }),
+    rpc: async n => ({ data: n === 'dashboard_role' ? (location.search.includes('ops') ? 'ops' : 'admin') : n === 'resource_config' ? { ...cfg } : n === 'set_routine_secret' ? (cfg.connected = true, null) : true, error: null }),
     auth: { getSession: async () => ({ data: { session: { user: { id: 'u1', email: 'tengku@outerhaven.test' } } } }), signOut: async () => ({}), signInWithPassword: async () => ({}) },
-    functions: { invoke: async (n, { body }) => { await new Promise(r => setTimeout(r, 150)); db.daily_ops_linkedin_auto_log.unshift({ id: Date.now(), created_at: new Date().toISOString(), run_mode: 'manual_' + body.mode, usage_before: 6.3, usage_after: 6.4, detail: { by: 'tengku@chproduction.org', result: body.mode === 'posts' ? { posts_saved: 9, errors: [] } : { comment_posts_processed: 3, errors: [] } } }); return { data: { ok: true, ran: true, result: body.mode === 'posts' ? { posts_saved: 9, errors: [] } : { comment_posts_processed: 3, errors: [] } }, error: null }; } },
+    functions: { invoke: async (n, { body }) => { await new Promise(r => setTimeout(r, 150));
+      if (n === 'resource-request') { if (body.action === 'create') { const j = { id: id(), created_at: new Date().toISOString(), fired_at: new Date().toISOString(), requested_by: 'tengku@outerhaven.test', status: 'queued', progress: 'Waiting for Claude to start', ...body.job }; db.resource_jobs.unshift(j); cfg.used_today++; window.__lastJob = body.job; return { data: { ok: true, id: j.id }, error: null }; } return { data: { ok: true }, error: null }; } db.daily_ops_linkedin_auto_log.unshift({ id: Date.now(), created_at: new Date().toISOString(), run_mode: 'manual_' + body.mode, usage_before: 6.3, usage_after: 6.4, detail: { by: 'tengku@chproduction.org', result: body.mode === 'posts' ? { posts_saved: 9, errors: [] } : { comment_posts_processed: 3, errors: [] } } }); return { data: { ok: true, ran: true, result: body.mode === 'posts' ? { posts_saved: 9, errors: [] } : { comment_posts_processed: 3, errors: [] } }, error: null }; } },
     channel: () => ({ on() { return this; }, subscribe() { return this; } }),
     storage: { from: () => ({
       upload: async (path, file) => { blobs.set(path, URL.createObjectURL(file)); return { data: { path }, error: null }; },

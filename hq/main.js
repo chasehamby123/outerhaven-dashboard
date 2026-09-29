@@ -4,11 +4,13 @@ import { store, load, loadSheet, subscribe, onChange } from './data.js';
 import { renderOverview } from './overview.js';
 import { renderGrowth } from './growth.js';
 import { renderToday } from './today.js';
+import { renderResources } from './resources.js';
 
 const ROUTES = {
   today: { label: 'Today', render: r => renderToday(r), ops: true },
   overview: { label: 'Overview', render: r => renderOverview(r) },
   growth: { label: 'Growth', render: (r, sub) => renderGrowth(r, sub) },
+  resources: { label: 'Resources', render: r => renderResources(r), ops: true },
 };
 
 const home = () => state.role === 'ops' ? 'today' : 'overview';
@@ -33,6 +35,7 @@ const ICON = {
   overview: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
   today: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18M8.5 15l2 2 4-4"/></svg>',
   growth: '<svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',
+  resources: '<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>',
   pipeline: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="6" rx="1.5"/></svg>',
 };
 const THEMES = [['light', 'Light', '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>'], ['dark', 'Dark', '<svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>'], ['tan', 'Tan', '<i></i>']];
@@ -51,10 +54,11 @@ function shell() {
     <aside class="side">
       <div class="brand"><b>O</b><span>Outerhaven</span><em>HQ</em></div>
       ${themeSwitch()}
-      <nav class="nav">${state.role === 'ops' ? navLink('today', '#/today', 'Today') : `
+      <nav class="nav">${state.role === 'ops' ? navLink('today', '#/today', 'Today') + navLink('resources', '#/resources', 'Resources') : `
         ${navLink('overview', '#/overview', 'Overview')}
         ${navLink('today', '#/today', 'Today')}
         ${navLink('growth', '#/growth/posts', 'Growth')}
+        ${navLink('resources', '#/resources', 'Resources')}
         <small>Legacy</small>
         <a href="/shared.html">${ICON.pipeline}<span>Pipeline</span><em>↗</em></a>`}
       </nav>
