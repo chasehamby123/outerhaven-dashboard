@@ -11,7 +11,8 @@
  *   - It never overwrites a number a person typed. It only writes into empty cells, or cells it wrote itself
  *     (marked with a note) whose value nobody has changed since.
  *   - It adds a row block for yesterday in Daily, and a new block in Weekly when a new week starts, using the
- *     account list from the most recent block.
+ *     account list from the most recent block. New rows copy the previous block's formatting (colours, fonts),
+ *     and every block gets the black separator line under its last row, like the ones typed by hand.
  *
  * Setup (one time): Extensions → Apps Script → paste this file → Save → reload the sheet →
  * menu "Outerhaven" → "Turn on daily auto-fill". Google will ask you to authorise it once.
@@ -32,6 +33,7 @@ function onOpen() {
     .addItem('Fill scraped numbers now', 'fillFromScraper')
     .addItem('Turn on daily auto-fill', 'installDailyTrigger')
     .addItem('Turn off daily auto-fill', 'removeDailyTrigger')
+    .addItem('Redraw block lines', 'redrawAllBlockLines')
     .addToUi();
 }
 
@@ -57,17 +59,38 @@ function fillFromScraper() {
     let values = sh.getDataRange().getValues();
     const toAdd = planNewRows(values, kind, today);
     if (toAdd.length) {
-      const start = sh.getLastRow() + 1;
+      const start = sh.getLastRow() + 1, lastCol = sh.getLastColumn(), prev = lastBlock(values, today);
       sh.getRange(start, 1, toAdd.length, 2).setValues(toAdd.map(r => [r[0], toSheetDate(r[1])]));
+      // Look like the rows above: copy each row's formatting from the matching row of the previous block.
+      if (prev) for (let i = 0; i < toAdd.length; i++) {
+        const src = prev.first + (i % prev.count);
+        sh.getRange(src, 1, 1, lastCol).copyFormatToRange(sh, 1, lastCol, start + i, start + i);
+      }
       sh.getRange(start, 2, toAdd.length, 1).setNumberFormat('d/m/yyyy');
       values = sh.getDataRange().getValues();
     }
+    drawBlockLines(sh, values);
     const notes = sh.getDataRange().getNotes();
     const writes = planFill(values, notes, stats, kind, today);
     writes.forEach(w => { const c = sh.getRange(w.r + 1, w.c + 1); c.setValue(w.v); c.setNote(NOTE_PREFIX + w.v); });
     report.push(`${tab}: ${writes.length} cells${toAdd.length ? `, ${toAdd.length} rows added` : ''}`);
   }
   ss.toast(report.join(' · ') || 'Nothing to fill', 'Outerhaven', 6);
+}
+
+// Black line under the last row of every date block (Daily: each day, Weekly: each week).
+function drawBlockLines(sh, values) {
+  const ends = blockEnds(values || sh.getDataRange().getValues());
+  if (!ends.length) return;
+  const lastCol = sh.getLastColumn();
+  const a1 = ends.map(r => sh.getRange(r + 1, 1, 1, lastCol).getA1Notation());
+  sh.getRangeList(a1).setBorder(null, null, true, null, null, null, '#000000', SpreadsheetApp.BorderStyle.SOLID);
+}
+
+function redrawAllBlockLines() {
+  const ss = SpreadsheetApp.getActive();
+  for (const tab of ['Daily', 'Weekly']) { const sh = ss.getSheetByName(tab); if (sh) drawBlockLines(sh); }
+  ss.toast('Block lines redrawn.', 'Outerhaven', 4);
 }
 
 function fetchStats(from, to) {
@@ -129,6 +152,30 @@ function planFill(values, notes, stats, kind, today) {
   return out;
 }
 
+// Row indexes (0-based, in values) that end a date block: the next row has a different date, or no date.
+function blockEnds(values) {
+  const cols = columns(values[0] || []);
+  if (cols.account < 0 || cols.date < 0) return [];
+  const out = [];
+  for (let r = 1; r < values.length; r++) {
+    const d = isoDate(values[r][cols.date]); if (!d || !String(values[r][cols.account] || '').trim()) continue;
+    const next = r + 1 < values.length ? isoDate(values[r + 1][cols.date]) : null;
+    if (next !== d) out.push(r);
+  }
+  return out;
+}
+
+// The most recent block on or before today: its first row (1-based sheet row) and row count.
+function lastBlock(values, today) {
+  const cols = columns(values[0] || []);
+  if (cols.account < 0 || cols.date < 0) return null;
+  let last = null;
+  for (let r = 1; r < values.length; r++) { const d = isoDate(values[r][cols.date]); if (d && d <= today && String(values[r][cols.account] || '').trim() && (!last || d > last)) last = d; }
+  if (!last) return null;
+  const rows = []; for (let r = 1; r < values.length; r++) if (isoDate(values[r][cols.date]) === last) rows.push(r);
+  return { first: rows[0] + 1, count: rows.length };
+}
+
 // Daily: add yesterday's block. Weekly: add blocks for any week that has started since the last one.
 function planNewRows(values, kind, today) {
   const cols = columns(values[0] || []);
@@ -148,4 +195,4 @@ function planNewRows(values, kind, today) {
   return add;
 }
 
-if (typeof module !== 'undefined') module.exports = { planFill, planNewRows, isoDate, acctKey, periods, columns, NOTE_PREFIX };
+if (typeof module !== 'undefined') module.exports = { planFill, planNewRows, blockEnds, lastBlock, isoDate, acctKey, periods, columns, NOTE_PREFIX };
