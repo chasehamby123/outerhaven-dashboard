@@ -70,8 +70,12 @@ Today, Schedule, Resources. RLS helpers: `can_access_daily_ops()` (admin or ops)
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.
 - Never enter passwords, API keys or tokens for the user, even with permission. Point them to the HQ field.
-- UI: black/white SaaS look, light/dark/tan themes via tokens in `hq/app.css` (`:root`, `[data-theme=…]`); every
-  colour is a token. No pill-shaped primary buttons, no decorative gradients. Must work at 390px wide with no
+- UI (redesigned 30 Sept): navy ink on cool mist, brass (`--brass`) as the one brand accent, serif page titles, and a
+  colour per account (`--c1`…`--c12`, mapped in `acIdx()` in `hq/core.js`; use `avatar()` / `acctChip()` / `data-ac`).
+  Light/dark/tan via tokens in `hq/app.css`; every colour is a token. No pill-shaped primary buttons, no decorative gradients.
+- Today: opening it with overdue work (earlier this week, or today's slots already ended) shows `hq/whip.js`, a pixel
+  knight whipping a slave sprite with CRACK! / "Work harder!" (user asked for it; shown to everyone incl. ops). Nav badge
+  on Today = tasks left (red = overdue). Must work at 390px wide with no
   horizontal page scroll.
 - Migrations: additive, saved under `supabase/` and applied with `apply_migration`.
 - Testing HQ locally: `python3 -m http.server 8765`, open `hq.html?mock` (admin), `?mock=ops` (Anaz),

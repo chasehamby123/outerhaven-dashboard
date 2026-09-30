@@ -1,5 +1,5 @@
 // Overview: the few numbers that actually move the business.
-import { esc, fmt, pct, sum, median, fmtDate } from './core.js';
+import { esc, fmt, pct, sum, median, fmtDate, avatar } from './core.js';
 import { store, loadSheet } from './data.js';
 import { SHEET_URL } from './sheet.js';
 import { commentsNoMeetings } from './insights.js';
@@ -117,7 +117,7 @@ export function renderOverview(root) {
     <div id="ovTasks"></div>
     <section class="card"><header><div><h2>Accounts</h2><p>Click a column to sort. Flags show where effort isn't converting.</p></div></header>
         <div class="body flush scroll"><table class="tbl"><thead><tr>${COLS.map(([k, l, n]) => `<th class="sort ${n ? 'n' : ''} ${k === sortKey ? 'on' : ''} ${k === sortKey && sortAsc ? 'asc' : ''}" data-sort="${k}">${l}</th>`).join('')}<th></th></tr></thead><tbody>
-        ${acctSorted.map((a, i) => `<tr><td class="strong" style="white-space:nowrap"><span class="rank ${i === 0 ? 'top' : ''}">${i + 1}</span>${esc(a.account)}</td><td class="n">${fmt(a.posts)}</td><td class="n">${fmt(a.impressions)}</td><td class="n">${fmt(a.comments)}</td><td class="n">${fmt(a.dmsInitiated)}</td><td class="n">${fmt(a.leadsReplied)}</td><td class="n strong">${fmt(a.meetingsBooked)}</td><td class="n">${fmt(a.meetingsHeld)}</td><td class="n">${a.per1k == null ? '—' : a.per1k.toFixed(1)}</td><td>${flag(a)}</td></tr>`).join('')}
+        ${acctSorted.map((a, i) => `<tr><td class="strong" style="white-space:nowrap"><span class="rank ${i === 0 ? 'top' : ''}">${i + 1}</span><span class="acct">${avatar(a.account)}${esc(a.account)}</span></td><td class="n">${fmt(a.posts)}</td><td class="n">${fmt(a.impressions)}</td><td class="n">${fmt(a.comments)}</td><td class="n">${fmt(a.dmsInitiated)}</td><td class="n">${fmt(a.leadsReplied)}</td><td class="n strong">${fmt(a.meetingsBooked)}</td><td class="n">${fmt(a.meetingsHeld)}</td><td class="n">${a.per1k == null ? '—' : a.per1k.toFixed(1)}</td><td>${flag(a)}</td></tr>`).join('')}
         </tbody></table>${!acct.length ? '<div class="empty">No numbers entered for this week yet.</div>' : ''}${rows.filter(r => !r.filled).length ? `<div class="s muted" style="padding:10px 12px;border-top:1px solid var(--line)">Not filled in: ${esc(rows.filter(r => !r.filled).map(r => r.account).join(', '))}</div>` : ''}</div></section>
     <div class="cols">
       <section class="card"><header><div><h2>Conversion</h2><p>Where effort turns into meetings, for the selected week.</p></div></header>
@@ -131,7 +131,7 @@ export function renderOverview(root) {
     </div>
     <div class="cols">
       <section class="card"><header><div><h2>Meetings booked per week</h2><p>From the sheet</p></div></header>
-        <div class="body">${trend.length ? `<div style="display:flex;align-items:flex-end;gap:10px;height:120px">${trend.map(t => `<div style="flex:1;display:grid;gap:6px;justify-items:center"><span class="s strong">${t.v}</span><div style="width:100%;max-width:48px;height:${Math.max(3, t.v / maxT * 80)}px;background:var(--ink);border-radius:3px 3px 0 0"></div><span class="s muted">${fmtDate(t.w)}</span></div>`).join('')}</div>` : '<div class="empty">No weeks filled in yet.</div>'}</div></section>
+        <div class="body">${trend.length ? `<div style="display:flex;align-items:flex-end;gap:10px;height:120px">${trend.map((t, i) => `<div style="flex:1;display:grid;gap:6px;justify-items:center"><span class="s strong">${t.v}</span><div style="width:100%;max-width:48px;height:${Math.max(3, t.v / maxT * 80)}px;background:${i === trend.length - 1 ? 'var(--brass)' : 'var(--ink)'};border-radius:4px 4px 0 0"></div><span class="s muted">${fmtDate(t.w)}</span></div>`).join('')}</div>` : '<div class="empty">No weeks filled in yet.</div>'}</div></section>
       <section class="card"><header><div><h2>Comments, no meetings</h2><p>High-comment posts that produced nothing</p></div><a class="btn sm" href="#/growth/posts">All posts</a></header>
         <div class="body flush">${cnm.length ? `<table class="tbl"><tbody>${cnm.slice(0, 6).map(p => `<tr><td>${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a>` : esc(p.name)}<div class="s muted">${esc(p.account)} · ${fmtDate(p.date)}</div></td><td class="n strong">${fmt(p.m.comments)}<div class="s muted">comments</div></td></tr>`).join('')}</tbody></table>` : `<div class="empty">Needs posts with comment counts and meetings linked to posts.</div>`}</div></section>
     </div>

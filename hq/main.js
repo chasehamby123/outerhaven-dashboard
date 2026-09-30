@@ -1,9 +1,9 @@
 // HQ entry: auth gate, routing, sidebar.
-import { $, $$, esc, state, sb, authenticate, signIn, signOut } from './core.js';
+import { $, $$, esc, state, sb, authenticate, signIn, signOut, avatar } from './core.js';
 import { store, load, loadSheet, subscribe, onChange } from './data.js';
 import { renderOverview } from './overview.js';
 import { renderGrowth } from './growth.js';
-import { renderToday } from './today.js';
+import { renderToday, armWhip, refreshBadge } from './today.js';
 import { renderResources } from './resources.js';
 import { renderSchedule } from './schedule.js';
 
@@ -66,11 +66,13 @@ function shell() {
         <small>Legacy</small>
         <a href="/shared.html">${ICON.pipeline}<span>Pipeline</span><em>↗</em></a>`}
       </nav>
-      <div class="sideFoot"><div class="av">${esc((name[0] || '?').toUpperCase())}</div><div class="who"><b style="text-transform:capitalize">${esc(name)}</b><button class="link s" id="signOut">Sign out</button></div></div>
+      <div class="sideFoot">${avatar(name || '?', 'lg')}<div class="who"><b style="text-transform:capitalize">${esc(name)}</b><button class="link s" id="signOut">Sign out</button></div></div>
     </aside>
     <main class="main" id="view"></main></div>`;
   $('#signOut').onclick = signOut;
   $$('.themeSw button').forEach(b => b.onclick = () => setTheme(b.dataset.theme));
+  // Clicking Today (even when already there) arms the overdue check; see today.js / whip.js.
+  $('.nav a[data-page="today"]')?.addEventListener('click', () => { armWhip(); if (route().page === 'today') render(); });
 }
 
 function authScreen(msg = '') {
@@ -122,7 +124,9 @@ async function start() {
   $('#view').innerHTML = '<div class="empty">Loading…</div>';
   onChange(render);
   window.addEventListener('hq:modalclosed', render);
-  window.addEventListener('hashchange', () => { window.scrollTo(0, 0); lastScroll = 0; render(); });
+  window.addEventListener('hashchange', () => { window.scrollTo(0, 0); lastScroll = 0; if (route().page === 'today') armWhip(); render(); });
+  if (route().page === 'today') armWhip();
+  refreshBadge(); setInterval(refreshBadge, 60000);
   if (state.role === 'ops') { render(); return; }
   await Promise.all([load(), loadSheet()]);
   subscribe();

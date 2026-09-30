@@ -1,5 +1,5 @@
 // Growth lab: posts (tagged), A/B experiments with creatives, insights, meetings log, sheet history.
-import { esc, fmt, pct, fmtDate, today, opts, modal, toast, fail, lightbox, num, $, $$ } from './core.js';
+import { esc, fmt, pct, fmtDate, today, opts, modal, toast, fail, lightbox, num, $, $$, acctName } from './core.js';
 import { store, load, savePost, saveExperiment, deleteExperiment, saveMeeting, deleteMeeting, uploadAsset, assetUrl, removeAsset, accountName } from './data.js';
 import { DIMENSIONS, GROUPS, METRIC_DEFS, breakdown, accountBreakdown, sameCreative, boostEffect, commentsNoMeetings, suggestTests, verdict, confidenceLabel } from './insights.js';
 import { SOURCES, sheetStatus } from './overview.js';
@@ -53,7 +53,7 @@ function postsView(body) {
       const eng = METRIC_DEFS.engagement.get(p), d = avg ? Math.round((eng - avg) / avg * 100) : 0;
       const raw = store.rawPosts.find(r => r.id === p.id), cp = raw?.creative_path;
       const thumb = cp && cp !== 'unavailable' ? `<button type="button" class="cthumb" data-cthumb="${esc(cp)}" data-ctype="${esc(raw.creative_type || '')}" title="View creative"></button>` : `<span class="cthumb none" title="${cp === 'unavailable' ? 'Image link had expired before it was saved' : p.m && raw?.content_type === 'text' ? 'Text-only post' : 'Saved on the next posts scrape'}">${raw?.content_type === 'text' ? 'Text' : '—'}</span>`;
-      return `<tr><td>${thumb}</td><td style="max-width:280px">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a>` : esc(p.name)}${p.group ? `<div class="s muted">Creative: ${esc(p.group)}</div>` : ''}</td><td>${esc(p.account)}</td><td class="muted" style="white-space:nowrap">${fmtDate(p.date)}</td><td class="n">${commentCell(p)}</td><td class="n">${fmt(p.m.reactions)}</td><td class="n">${fmt(p.m.reposts)}</td><td class="n ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '+' : ''}${d}%</td><td class="n">${p.meetings || '<span class="muted">0</span>'}</td><td>${tagSummary(p)}</td><td><button class="btn sm" data-edit="${p.id}">Tag</button></td></tr>`;
+      return `<tr><td>${thumb}</td><td style="max-width:280px">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a>` : esc(p.name)}${p.group ? `<div class="s muted">Creative: ${esc(p.group)}</div>` : ''}</td><td style="white-space:nowrap">${acctName(p.account)}</td><td class="muted" style="white-space:nowrap">${fmtDate(p.date)}</td><td class="n">${commentCell(p)}</td><td class="n">${fmt(p.m.reactions)}</td><td class="n">${fmt(p.m.reposts)}</td><td class="n ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '+' : ''}${d}%</td><td class="n">${p.meetings || '<span class="muted">0</span>'}</td><td>${tagSummary(p)}</td><td><button class="btn sm" data-edit="${p.id}">Tag</button></td></tr>`;
     }).join('');
     $$('[data-edit]', body).forEach(b => b.onclick = () => editPost(b.dataset.edit));
     loadCreativeThumbs(body);

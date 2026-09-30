@@ -16,6 +16,20 @@ export const sum = a => a.reduce((n, x) => n + (Number(x) || 0), 0);
 
 export const state = { user: null, role: null };
 
+// ---- Account identity: one colour per account, used everywhere the account appears ----
+// Known accounts get fixed colours (tokens --c1…--c9 in app.css); anyone new hashes into --c10…--c12.
+const AC = { peter: 1, chase: 2, tengku: 3, anaz: 4, razeen: 5, sara: 6, dev: 7, sahid: 8, reza: 9 };
+export const firstName = n => String(n || '').trim().split(/\s+/)[0];
+export function acIdx(name) {
+  const k = firstName(name).toLowerCase(); if (!k) return 12;
+  if (AC[k]) return AC[k];
+  let h = 0; for (const c of k) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return 10 + (h % 3);
+}
+export const avatar = (name, size = '') => `<span class="av ${size}" data-ac="${acIdx(name)}" title="${esc(name)}">${esc((firstName(name)[0] || '?').toUpperCase())}</span>`;
+export const acctChip = name => name ? `<span class="tag acct" data-ac="${acIdx(name)}">${esc(firstName(name))}</span>` : '';
+export const acctName = name => name ? `<span class="acct" data-ac="${acIdx(name)}">${avatar(name, 'xs')}${esc(name)}</span>` : '';
+
 // ---- UI helpers ----
 export function toast(msg) {
   document.querySelectorAll('.toast').forEach(x => x.remove());
