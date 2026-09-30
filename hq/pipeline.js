@@ -40,7 +40,14 @@ async function fetchAll() {
     sb.from('daily_ops_accounts').select('owner_name,linkedin_url'),
   ]);
   if (!core) return null;
-  return { ...core, leads: (l.data || []).filter(x => x.decision !== 'not_qualified'), accts: a.data || [] };
+  // One row per person: a lead who replied twice is one lead (newest reply shown, all rows stamped together).
+  const groups = new Map();
+  for (const x of (l.data || []).filter(x => x.decision !== 'not_qualified')) {
+    const k = slug(x.linkedin_url) || x.id, g = groups.get(k);
+    if (g) { g.ids.push(x.id); g.replies++; if (x.decision.startsWith('qualified') && !g.decision.startsWith('qualified')) g.decision = x.decision; }
+    else groups.set(k, { ...x, ids: [x.id], replies: 1 });
+  }
+  return { ...core, leads: [...groups.values()], accts: a.data || [] };
 }
 
 // ---- The model: one "item" per live deal, plus one per live relationship that has no deal yet ----
@@ -197,7 +204,7 @@ function leadHtml(l) {
   const q = l.decision.startsWith('qualified'), sd = l.decision === 'qualified_buy_side' ? 'Buy Side' : l.decision === 'qualified_sell_side' ? 'Sell Side' : '';
   const age = daysSince(l.created_at);
   return `<div class="pRow" data-sev="${q && age >= 3 ? 2 : 0}"><span class="pDot"></span>
-    <div class="pMain"><div class="pTitle">${l.linkedin_url ? `<a href="${esc(l.linkedin_url)}" target="_blank" rel="noopener">${esc(l.name || 'Unknown')} ↗</a>` : esc(l.name || 'Unknown')} ${q ? `<span class="tag good">${sd} · qualified</span>` : '<span class="tag">Needs review</span>'}<span class="tag ${age >= 7 ? 'bad' : age >= 3 ? 'warn' : ''}">${age}d in inbox</span></div>
+    <div class="pMain"><div class="pTitle">${l.linkedin_url ? `<a href="${esc(l.linkedin_url)}" target="_blank" rel="noopener">${esc(l.name || 'Unknown')} ↗</a>` : esc(l.name || 'Unknown')} ${q ? `<span class="tag good">${sd} · qualified</span>` : '<span class="tag">Needs review</span>'}<span class="tag ${age >= 7 ? 'bad' : age >= 3 ? 'warn' : ''}">${age}d in inbox</span>${l.replies > 1 ? `<span class="tag">${l.replies} replies</span>` : ''}</div>
       <div class="pSub">${esc([l.headline, l.company_name].filter(Boolean).join(' · '))}</div>
       ${l.reply_text ? `<div class="pNext"><b>Said:</b> “${esc(String(l.reply_text).slice(0, 160))}${l.reply_text.length > 160 ? '…' : ''}” <button class="link s" data-ldm="${l.id}">Open full DMs</button></div>` : ''}
       ${l.suggested_next_step ? `<div class="pNext muted">Suggested: ${esc(l.suggested_next_step)}</div>` : ''}</div>
@@ -270,11 +277,11 @@ async function promoteLead(l, sd) {
   if (fail(t, 'Add task')) return false;
   const u = { person_id: p.id, reviewed_at: now, reviewed_by: state.user?.id };
   if (l.decision === 'needs_review' && sd !== 'Both') u.decision = sd === 'Buy Side' ? 'qualified_buy_side' : 'qualified_sell_side';
-  if (fail(await sb.from('lead_intake').update(u).eq('id', l.id), 'Update lead')) return false;
+  if (fail(await sb.from('lead_intake').update(u).in('id', l.ids || [l.id]), 'Update lead')) return false;
   toast(`${l.name || 'Lead'} added${sd === 'Both' ? ' as sell + buy side' : ` to the ${sd.toLowerCase()} pipeline`}`); return true;
 }
 async function rejectLead(l) {
-  if (fail(await sb.from('lead_intake').update({ decision: 'not_qualified', reviewed_at: nowIso(), reviewed_by: state.user?.id }).eq('id', l.id), 'Update lead')) return false;
+  if (fail(await sb.from('lead_intake').update({ decision: 'not_qualified', reviewed_at: nowIso(), reviewed_by: state.user?.id }).in('id', l.ids || [l.id]), 'Update lead')) return false;
   toast('Marked not a fit'); return true;
 }
 

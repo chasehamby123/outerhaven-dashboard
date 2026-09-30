@@ -84,7 +84,7 @@
       const x = new XMLHttpRequest(); x.open('GET', '/__fixture.json', false); x.send();
       const f = JSON.parse(x.responseText);
       db.daily_ops_accounts = f.accounts; db.daily_ops_posts = f.posts; db.daily_ops_schedule = f.schedule || [];
-      db.daily_ops_linkedin_auto_log = f.log; db.daily_ops_experiments = []; db.growth_meetings = [];
+      db.daily_ops_linkedin_auto_log = f.log; db.daily_ops_experiments = []; db.growth_meetings = []; ['opportunities', 'people', 'tasks', 'lead_intake'].forEach(k => { if (f[k]) db[k] = f[k]; });
     } catch (e) { console.warn('fixture', e); }
   }
   class Q {
