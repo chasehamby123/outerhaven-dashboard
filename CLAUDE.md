@@ -48,7 +48,7 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Reads `opportunities`, `people`, `tasks`, `lead_intake` (same tables as the old `shared.html` board; both stay in sync).
   Item = live deal (`pipeline_active`), or a live person with no live deal. Ball = `waiting_on` ('us'/'them'/null), clock = `waiting_on_since`.
 - Flags: ours 3d warn / 7d red; theirs 7d warn / 14d red; nobody owns the move; no next step; overdue task; no movement 21d.
-  Nav badge = red items. KPI tiles filter "Needs you now". Stage board per side (stage lists mirror `pipeline.js` at the root).
+  Nav badge = red items. KPI tiles filter "Needs you now". Stage board per side (stage lists mirror `pipeline.js` at the root); third tab **Both** = `people.primary_side='Both'` (IBs that are also capital), relationships only with a short stage list (deals can't be Both: `opportunities.side` check).
 - Leads panel: `lead_intake` rows with no `person_id`, not reviewed, not `not_qualified`. "Add as sell/buy side" inserts/reuses a
   `people` row, adds a task (owner from the lead's `source_account` profile slug) and stamps the lead. Quick actions write
   `waiting_on`/`waiting_on_since` to the deal and its person. Old board is linked in the nav as "Old pipeline board".

@@ -4,7 +4,13 @@ import { sb, state, esc, $, $$, toast, fail, modal, opts, avatar, firstName, fmt
 
 const BUY = ['New Relationship', 'Diligence Call Complete', 'NDA Signed + Thesis Captured', 'Relevant Deal Identified', 'Interest Meeting Held', 'Buyer Interest Confirmed', 'Engagement Active', 'Closed'];
 const SELL = ['New Relationship', 'Diligence Call Complete', 'NDA Signed + Buy-Side Thesis Shared', 'Opportunity Received', 'Initial Interest Identified', 'Buy-Side Interest Confirmed', 'Engagement Active', 'Closed'];
-const stagesFor = side => side === 'Buy Side' ? BUY : SELL;
+// 'Both' = banks / advisers who are also capital (an IB with family offices). They are tracked as relationships on their own
+// board; any actual deal under them is a Sell or Buy side deal with the full stage list.
+const BOTH = ['New Relationship', 'Diligence Call Complete', 'NDA Signed + Thesis Captured', 'Engagement Active', 'Closed'];
+const stagesFor = side => side === 'Buy Side' ? BUY : side === 'Both' ? BOTH : SELL;
+const SIDES = ['Sell Side', 'Buy Side', 'Both'];
+const relType = sd => sd === 'Buy Side' ? 'Buy-side Relationship' : sd === 'Both' ? 'Sell + Buy-side Relationship' : 'Sell-side Relationship';
+const sideShort = sd => sd === 'Buy Side' ? 'Buy' : sd === 'Both' ? 'Both' : 'Sell';
 const SEV = { bad: 3, warn: 2, info: 1 };
 const DAY = 864e5;
 
@@ -50,7 +56,7 @@ function buildItems({ opps, people, tasks }) {
   }
   for (const p of people) {
     if (p.pipeline_active === false || (oppsByPerson[p.id] || []).length) continue;
-    items.push(mk({ kind: 'rel', id: p.id, name: p.name, sub: [p.company_name || p.relationship_type].filter(Boolean).join(' · '), side: p.primary_side === 'Buy Side' ? 'Buy Side' : 'Sell Side', stage: p.pipeline_stage, ball: p.waiting_on, since: p.waiting_on_since || p.updated_at, updated: p.updated_at, next: null, tasks: tasksFor(null, p.id, false), row: p, person: p, raise: 0 }, today));
+    items.push(mk({ kind: 'rel', id: p.id, name: p.name, sub: [p.company_name || p.relationship_type].filter(Boolean).join(' · '), side: p.primary_side === 'Buy Side' ? 'Buy Side' : p.primary_side === 'Both' ? 'Both' : 'Sell Side', stage: p.pipeline_stage, ball: p.waiting_on, since: p.waiting_on_since || p.updated_at, updated: p.updated_at, next: null, tasks: tasksFor(null, p.id, false), row: p, person: p, raise: 0 }, today));
   }
   return items;
 }
@@ -137,8 +143,8 @@ function draw() {
     </div>
     <section class="card pSec" id="pNeed"><header><div><h2>${flt && flt !== 'leads' ? esc({ us: 'Our move', them: 'Chase them', nonext: 'No next step', overdue: 'Overdue tasks' }[flt]) : 'Needs you now'}</h2><p>${need.length} item${need.length === 1 ? '' : 's'}, most urgent first${flt && flt !== 'leads' ? '' : ' (waiting on us 3+ days, them 7+ days, or missing a next step)'}</p></div>${flt ? '<button class="btn sm" data-clear>Show all</button>' : ''}</header>
       <div class="pList">${need.length ? need.map(rowHtml).join('') : '<div class="empty">Nothing is stuck. Every live item has a next move and is on time.</div>'}</div></section>
-    <section class="card pSec"><header><div><h2>Stage board</h2><p>${live.filter(i => i.side === side).length} live on the ${side.toLowerCase()}. Click a card to update it.</p></div>
-      <div class="pSeg" role="group">${['Sell Side', 'Buy Side'].map(s => `<button type="button" data-side="${s}" class="${side === s ? 'on' : ''}">${s}</button>`).join('')}</div></header>
+    <section class="card pSec"><header><div><h2>Stage board</h2><p>${live.filter(i => i.side === side).length} live in ${side === 'Both' ? 'Both (banks and advisers who are also capital)' : side.toLowerCase()}. Click a card to update it.</p></div>
+      <div class="pSeg" role="group">${SIDES.map(s => `<button type="button" data-side="${s}" class="${side === s ? 'on' : ''}">${s}<em>${live.filter(i => i.side === s).length}</em></button>`).join('')}</div></header>
       <div class="pBoard">${boardHtml(live)}</div></section>
     <section class="card pSec" id="pLeads"><header><div><h2>LinkedIn leads not in the pipeline</h2><p>${qualified} qualified${leads.length - qualified ? `, ${leads.length - qualified} still to review` : ''}. Add them before they go cold.</p></div></header>
       <div class="pList">${leads.length ? leads.slice(0, showAllLeads ? 300 : 8).map(leadHtml).join('') : '<div class="empty">Inbox is clear.</div>'}</div>
@@ -155,20 +161,31 @@ function rowHtml(i) {
     : i.ball === 'them' ? `<button class="btn sm" data-q="replied" data-k="${i.kind}:${i.id}">They replied</button><button class="btn sm" data-q="chased" data-k="${i.kind}:${i.id}">Chased again</button>`
       : `<button class="btn sm" data-q="us" data-k="${i.kind}:${i.id}">Our move</button><button class="btn sm" data-q="them" data-k="${i.kind}:${i.id}">Their move</button>`;
   return `<div class="pRow" data-sev="${i.sev}"><span class="pDot"></span>
-    <div class="pMain"><div class="pTitle">${esc(i.name)} <span class="tag">${esc(i.stage || 'No stage')}</span><span class="tag">${i.kind === 'deal' ? 'Deal' : 'Relationship'} · ${i.side === 'Buy Side' ? 'Buy' : 'Sell'}</span></div>
+    <div class="pMain"><div class="pTitle">${esc(i.name)} <span class="tag">${esc(i.stage || 'No stage')}</span><span class="tag">${i.kind === 'deal' ? 'Deal' : 'Relationship'} · ${sideShort(i.side)}</span></div>
       ${i.sub ? `<div class="pSub">${esc(i.sub)}</div>` : ''}
       <div class="pFlags">${i.flags.filter(f => f.sev !== 'info').map(flagChip).join('')}</div>
       <div class="pNext">${i.nextText ? `<b>Next:</b> ${esc(i.nextText)}${i.due ? ` <span class="muted">· due ${fmtDate(i.due)}</span>` : ''}` : '<i>No next step set</i>'}${i.owner ? ` <span class="pOwn">${avatar(i.owner, 'xs')}${esc(firstName(i.owner))}</span>` : ''}</div></div>
     <div class="pAct">${act}<button class="btn sm ghost" data-upd="${i.kind}:${i.id}">Update</button></div></div>`;
 }
 function boardHtml(live) {
-  const st = stagesFor(side), items = live.filter(i => i.side === side);
-  return st.filter(s => s !== 'Closed').map((s, idx) => {
-    const col = items.filter(i => { const at = st.indexOf(i.stage); return (at < 0 ? 0 : at) === idx; }).sort(byHeat);
-    return `<div class="pCol"><h3>${esc(s)}<em>${col.length}</em></h3>${col.map(i => `<button type="button" class="pCard" data-sev="${i.sev}" data-upd="${i.kind}:${i.id}">
-      <b>${esc(i.name)}</b>${i.sub ? `<span class="s muted">${esc(i.sub)}</span>` : ''}
-      <span class="pMeta"><span class="tag ${i.ball === 'us' ? (i.days >= 7 ? 'bad' : i.days >= 3 ? 'warn' : '') : i.ball === 'them' ? (i.days >= 14 ? 'bad' : i.days >= 7 ? 'warn' : '') : 'warn'}">${i.ball === 'us' ? 'Us' : i.ball === 'them' ? 'Them' : 'Nobody'} · ${i.days}d</span>${i.raise ? `<span class="s">${money(i.raise)}</span>` : i.size ? `<span class="s">${esc(i.size)}</span>` : ''}${i.owner ? avatar(i.owner, 'xs') : ''}</span></button>`).join('') || '<div class="pEmpty">—</div>'}</div>`;
-  }).join('');
+  const st = stagesFor(side).filter(x => x !== 'Closed'), items = live.filter(i => i.side === side);
+  const cols = st.map((name, idx) => ({ name, items: items.filter(i => { const at = stagesFor(side).indexOf(i.stage); return (at < 0 ? 0 : at) === idx; }).sort(byHeat) }));
+  const tpl = cols.map(c => c.items.length ? 'minmax(250px,1fr)' : 'minmax(120px,150px)').join(' ');
+  return `<div class="pGrid" style="grid-template-columns:${tpl}">${cols.map((c, idx) => {
+    const hot = c.items.filter(i => i.sev >= 3).length, total = c.items.reduce((n, i) => n + i.raise, 0);
+    return `<div class="pCol ${c.items.length ? '' : 'none'}"><h3><span class="n">${idx + 1}</span>${esc(c.name)}</h3>
+      <div class="pColSum"><b>${c.items.length}</b>${hot ? `<span class="tag bad">${hot} red</span>` : ''}${total ? `<span class="s muted">${money(total)}</span>` : ''}</div>
+      ${c.items.map(cardHtml).join('') || '<div class="pEmpty">Empty</div>'}</div>`;
+  }).join('')}</div>`;
+}
+function cardHtml(i) {
+  const tone = i.ball === 'us' ? (i.days >= 7 ? 'bad' : i.days >= 3 ? 'warn' : '') : i.ball === 'them' ? (i.days >= 14 ? 'bad' : i.days >= 7 ? 'warn' : '') : 'warn';
+  const worst = i.flags.find(f => f.sev !== 'info' && f.code !== 'us' && f.code !== 'them');
+  return `<button type="button" class="pCard" data-sev="${i.sev}" data-upd="${i.kind}:${i.id}">
+    <span class="pCardTop"><b>${esc(i.name)}</b>${i.owner ? avatar(i.owner, 'xs') : ''}</span>
+    ${i.sub ? `<span class="s muted">${esc(i.sub)}</span>` : ''}
+    <span class="pCardNext ${i.nextText ? '' : 'none'}">${i.nextText ? esc(i.nextText) : 'No next step'}</span>
+    <span class="pMeta"><span class="tag ${tone}">${i.ball === 'us' ? 'Our move' : i.ball === 'them' ? 'Their move' : 'Nobody'} · ${i.days}d</span>${worst && worst.code !== 'nonext' && worst.code !== 'noball' ? `<span class="tag ${worst.sev === 'bad' ? 'bad' : 'warn'}">${esc(worst.text)}</span>` : ''}${i.raise ? `<span class="s pSize">${money(i.raise)}</span>` : i.size ? `<span class="s pSize">${esc(i.size)}</span>` : ''}</span></button>`;
 }
 function leadHtml(l) {
   const q = l.decision.startsWith('qualified'), sd = l.decision === 'qualified_buy_side' ? 'Buy Side' : l.decision === 'qualified_sell_side' ? 'Sell Side' : '';
@@ -178,7 +195,7 @@ function leadHtml(l) {
       <div class="pSub">${esc([l.headline, l.company_name].filter(Boolean).join(' · '))}</div>
       ${l.reply_text ? `<div class="pNext"><b>Said:</b> “${esc(String(l.reply_text).slice(0, 160))}${l.reply_text.length > 160 ? '…' : ''}”</div>` : ''}
       ${l.suggested_next_step ? `<div class="pNext muted">Suggested: ${esc(l.suggested_next_step)}</div>` : ''}</div>
-    <div class="pAct"><button class="btn sm ${sd === 'Sell Side' ? 'primary' : ''}" data-lead="sell:${l.id}">Add as sell side</button><button class="btn sm ${sd === 'Buy Side' ? 'primary' : ''}" data-lead="buy:${l.id}">Add as buy side</button><button class="btn sm ghost" data-lead="no:${l.id}">Not a fit</button></div></div>`;
+    <div class="pAct"><button class="btn sm ${sd === 'Sell Side' ? 'primary' : ''}" data-lead="sell:${l.id}">Add as sell side</button><button class="btn sm ${sd === 'Buy Side' ? 'primary' : ''}" data-lead="buy:${l.id}">Add as buy side</button><button class="btn sm" data-lead="both:${l.id}">Both</button><button class="btn sm ghost" data-lead="no:${l.id}">Not a fit</button></div></div>`;
 }
 
 function bind(all) {
@@ -206,7 +223,7 @@ function bind(all) {
   });
   $$('[data-lead]', root).forEach(b => b.onclick = async () => {
     const [act, id] = b.dataset.lead.split(':'), l = D.leads.find(x => x.id === id); if (!l) return; b.disabled = true;
-    const ok = act === 'no' ? await rejectLead(l) : await promoteLead(l, act === 'buy' ? 'Buy Side' : 'Sell Side');
+    const ok = act === 'no' ? await rejectLead(l) : await promoteLead(l, act === 'buy' ? 'Buy Side' : act === 'both' ? 'Both' : 'Sell Side');
     if (ok) await reload(); else b.disabled = false;
   });
 }
@@ -233,7 +250,7 @@ async function promoteLead(l, sd) {
   let p = D.people.find(x => (key && slug(x.linkedin_url) === key) || (lname && x.name.trim().toLowerCase() === lname));
   if (!p) {
     const r = await sb.from('people').insert({
-      name: l.name || 'Unknown', relationship_type: sd === 'Buy Side' ? 'Buy-side Relationship' : 'Sell-side Relationship', primary_side: sd, pipeline_stage: 'New Relationship', pipeline_active: true,
+      name: l.name || 'Unknown', relationship_type: relType(sd), primary_side: sd, pipeline_stage: 'New Relationship', pipeline_active: true,
       waiting_on: 'us', waiting_on_since: l.created_at, linkedin_url: l.linkedin_url, has_linkedin: !!l.linkedin_url, company_name: l.company_name, headline: l.headline, sell_side_kind: l.sell_side_kind || 'multi_deal', source: 'LinkedIn',
       source_campaign: l.campaign_name, source_account: l.source_account, qualification_confidence: l.confidence, qualification_reason: l.reason, last_inbound_message: l.reply_text, created_by: state.user?.id,
     }).select().single();
@@ -242,9 +259,9 @@ async function promoteLead(l, sd) {
   const t = await sb.from('tasks').insert({ person_id: p.id, action: l.suggested_next_step || 'Reply and qualify', owner_name: ownerFor(l), due_date: todayIso(), created_by: state.user?.id });
   if (fail(t, 'Add task')) return false;
   const u = { person_id: p.id, reviewed_at: now, reviewed_by: state.user?.id };
-  if (l.decision === 'needs_review') u.decision = sd === 'Buy Side' ? 'qualified_buy_side' : 'qualified_sell_side';
+  if (l.decision === 'needs_review' && sd !== 'Both') u.decision = sd === 'Buy Side' ? 'qualified_buy_side' : 'qualified_sell_side';
   if (fail(await sb.from('lead_intake').update(u).eq('id', l.id), 'Update lead')) return false;
-  toast(`${l.name || 'Lead'} added to the ${sd.toLowerCase()} pipeline`); return true;
+  toast(`${l.name || 'Lead'} added${sd === 'Both' ? ' as sell + buy side' : ` to the ${sd.toLowerCase()} pipeline`}`); return true;
 }
 async function rejectLead(l) {
   if (fail(await sb.from('lead_intake').update({ decision: 'not_qualified', reviewed_at: nowIso(), reviewed_by: state.user?.id }).eq('id', l.id), 'Update lead')) return false;
@@ -259,6 +276,7 @@ function updateModal(i) {
     title: i.name, submit: 'Save', wide: false,
     body: `<div class="form pForm">
       <p class="muted s" style="grid-column:1/-1;margin:0">${esc(i.sub || '')} ${i.kind === 'deal' ? '· Deal' : '· Relationship'} · ${i.side}</p>
+      ${i.kind === 'rel' ? `<label class="field">Side<select class="select" name="side">${opts([['Sell Side', 'Sell side'], ['Buy Side', 'Buy side'], ['Both', 'Both']], i.side)}</select></label>` : ''}
       <label class="field">Stage<select class="select" name="stage">${opts(st, st.includes(i.stage) ? i.stage : st[0])}</select></label>
       <label class="field">Who is next<select class="select" name="ball">${opts([['us', 'Us (we owe a move)'], ['them', 'Them (we are waiting)'], ['', 'Nobody yet']], i.ball || '')}</select></label>
       ${open.length ? `<div class="field" style="grid-column:1/-1">Open tasks, tick what is done<div class="pTasks">${open.map(t => `<label><input type="checkbox" name="done" value="${t.id}"> <span>${esc(t.action)}</span><em class="muted s">${t.owner_name ? esc(firstName(t.owner_name)) : ''}${t.due_date ? ' · ' + fmtDate(t.due_date) : ''}${t.due_date && t.due_date < todayIso() ? ' · overdue' : ''}</em></label>`).join('')}</div></div>` : ''}
@@ -284,17 +302,19 @@ function updateModal(i) {
         if (i.row.person_id && ballChanged) await sb.from('people').update({ waiting_on: ball, waiting_on_since: now, updated_at: now }).eq('id', i.row.person_id);
         if (stage !== i.stage) await logActivity(i.id, `Stage: ${i.stage || '—'} → ${stage}`);
         else if (ballChanged) await logActivity(i.id, ball === 'them' ? 'Waiting on them' : ball === 'us' ? 'Our move' : 'Ball cleared');
-      } else if (fail(await sb.from('people').update({ ...base, pipeline_stage: stage }).eq('id', i.id), 'Save')) return false;
+      } else if (fail(await sb.from('people').update({ ...base, pipeline_stage: stage, primary_side: fd.get('side') || i.side, relationship_type: fd.get('side') && fd.get('side') !== i.side ? relType(fd.get('side')) : i.row.relationship_type }).eq('id', i.id), 'Save')) return false;
       toast('Saved'); D = null; loadedAt = 0; refreshPipelineBadge();
     },
   });
+  const f = $('.modal'), sd = $('[name=side]', f), stg = $('[name=stage]', f);
+  if (sd) sd.onchange = () => { const l = stagesFor(sd.value); stg.innerHTML = opts(l, l.includes(stg.value) ? stg.value : l[0]); };
 }
 
 function addPersonModal() {
   modal({
     title: 'Add person', submit: 'Add to pipeline',
     body: `<div class="form pForm"><label class="field">Name<input class="input" name="name" required></label>
-      <label class="field">Side<select class="select" name="side">${opts(['Sell Side', 'Buy Side'])}</select></label>
+      <label class="field">Side<select class="select" name="side">${opts([['Sell Side', 'Sell side'], ['Buy Side', 'Buy side'], ['Both', 'Both (e.g. an IB with family offices)']])}</select></label>
       <label class="field">Company or type<input class="input" name="co" placeholder="Family office, developer…"></label>
       <label class="field">LinkedIn URL<input class="input" name="li"></label>
       <label class="field" style="grid-column:1/-1">Next step<input class="input" name="next" placeholder="Reply and qualify"></label>
@@ -302,7 +322,7 @@ function addPersonModal() {
       <label class="field">Who is next<select class="select" name="ball">${opts([['us', 'Us'], ['them', 'Them']])}</select></label></div>`,
     async onSubmit(fd) {
       const now = nowIso(), sd = fd.get('side');
-      const r = await sb.from('people').insert({ name: String(fd.get('name')).trim(), primary_side: sd, relationship_type: sd === 'Buy Side' ? 'Buy-side Relationship' : 'Sell-side Relationship', company_name: fd.get('co') || null, linkedin_url: fd.get('li') || null, has_linkedin: !!fd.get('li'), pipeline_stage: 'New Relationship', pipeline_active: true, waiting_on: fd.get('ball'), waiting_on_since: now, created_by: state.user?.id }).select().single();
+      const r = await sb.from('people').insert({ name: String(fd.get('name')).trim(), primary_side: sd, relationship_type: relType(sd), company_name: fd.get('co') || null, linkedin_url: fd.get('li') || null, has_linkedin: !!fd.get('li'), pipeline_stage: 'New Relationship', pipeline_active: true, waiting_on: fd.get('ball'), waiting_on_since: now, created_by: state.user?.id }).select().single();
       if (fail(r, 'Add person')) return false;
       if (fd.get('next')) await sb.from('tasks').insert({ person_id: r.data.id, action: String(fd.get('next')).trim(), owner_name: String(fd.get('owner') || '').trim() || null, due_date: todayIso(), created_by: state.user?.id });
       toast('Added'); D = null; loadedAt = 0; refreshPipelineBadge();
