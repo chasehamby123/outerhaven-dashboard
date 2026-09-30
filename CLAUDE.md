@@ -7,7 +7,7 @@ Read this first in any session on this repo. It is the hand-off from the session
   (Moelis / Houlihan Lokey): serif headings, navy/charcoal, generous whitespace. Styles in `finance-firm.css` and
   `headline-partner-platform.css` (type tokens `--fs-*`, `--serif`, `--sans`).
 - **HQ** (internal app): `hq.html` + `hq/*.js` (ES modules, no build step) + `hq/app.css`. Pages: Overview, Today,
-  Schedule, Growth (scraper, posts, experiments, insights, meetings, sheet), Resources.
+  Schedule, Pipeline, Growth (scraper, posts, experiments, insights, meetings, sheet), Resources.
 - **Legacy**: everything else at the root (`originator-*`, `pipeline*`, `daily-ops-*`, `shared.html`). Don't extend it.
 - Hosting: Vercel static deploy from `main` (https://outerhaven-dashboard.vercel.app). `.vercelignore` keeps
   `.claude`, `routines`, `supabase`, `sheets` off the site. Pushing to `main` deploys.
@@ -22,8 +22,8 @@ Read this first in any session on this repo. It is the hand-off from the session
   `extensions.http` from SQL for testing edge functions).
 
 ## Roles
-`dashboard_access` table → `dashboard_role()`: `admin` (Tengku, Chase, Peter) sees everything; `ops` (Anaz) sees
-Today, Schedule, Resources. RLS helpers: `can_access_daily_ops()` (admin or ops), `can_access_dashboard()` (admin).
+`dashboard_access` table → `dashboard_role()`: `admin` (Tengku, Chase, Peter, Anaz) sees everything; `ops` sees
+Today, Schedule, Resources (no one holds it right now, the role still exists). RLS helpers: `can_access_daily_ops()` (admin or ops), `can_access_dashboard()` (admin).
 
 ## Data you'll touch
 - `daily_ops_accounts` (owner_name = first name: Sara, Dev, Sahid, Tengku, Razeen, Peter, Chase, Reza, Anaz).
@@ -43,6 +43,15 @@ Today, Schedule, Resources. RLS helpers: `can_access_daily_ops()` (admin or ops)
   `daily_ops_linkedin_auto_log`. The user turned it off on 28 Sept; only they turn it back on.
 - Google Sheet "OuterHaven LinkedIn Accounts KPI" (id `1RGhFmIzQDCulzW6EVlFpVl8mmWEn_QU7rbSnzq1I01g`): HQ reads it via
   gviz CSV; `sheets/outerhaven-kpi-autofill.gs` (Apps Script) fills scraped columns from RPC `sheet_post_stats`.
+
+## Pipeline (HQ → Pipeline, `hq/pipeline.js`, admin only)
+- Reads `opportunities`, `people`, `tasks`, `lead_intake` (same tables as the old `shared.html` board; both stay in sync).
+  Item = live deal (`pipeline_active`), or a live person with no live deal. Ball = `waiting_on` ('us'/'them'/null), clock = `waiting_on_since`.
+- Flags: ours 3d warn / 7d red; theirs 7d warn / 14d red; nobody owns the move; no next step; overdue task; no movement 21d.
+  Nav badge = red items. KPI tiles filter "Needs you now". Stage board per side (stage lists mirror `pipeline.js` at the root).
+- Leads panel: `lead_intake` rows with no `person_id`, not reviewed, not `not_qualified`. "Add as sell/buy side" inserts/reuses a
+  `people` row, adds a task (owner from the lead's `source_account` profile slug) and stamps the lead. Quick actions write
+  `waiting_on`/`waiting_on_since` to the deal and its person. Old board is linked in the nav as "Old pipeline board".
 
 ## Resources (lead magnets)
 - HQ → Resources: queue of posts needing a resource, library (generated + manual links), Generate form.

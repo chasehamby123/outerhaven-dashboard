@@ -580,3 +580,50 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .comingUp li+li{margin-top:2px}.comingUp li:hover{background:var(--sunk)}
 .comingUp .t{font-size:var(--fs-s);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .comingUp time{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* ============ Pipeline ============ */
+.pKpis{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.pKpis .kpi.pf{appearance:none;font:inherit;text-align:left;color:var(--ink);cursor:pointer;position:relative;overflow:hidden;transition:border-color .12s,background .12s}
+.pKpis .kpi.pf::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent}
+.pKpis .kpi.pf[data-sev="bad"]::before{background:var(--bad)}.pKpis .kpi.pf[data-sev="warn"]::before{background:var(--warn)}
+.pKpis .kpi.pf:hover{border-color:var(--line-2);background:var(--sunk)}
+.pKpis .kpi.pf.on{border-color:var(--brass);box-shadow:0 0 0 2px color-mix(in srgb,var(--brass) 35%,transparent)}
+.pSeg{display:inline-flex;padding:3px;gap:2px;border-radius:var(--r);background:var(--sunk)}
+.pSeg button{height:26px;padding:0 12px;border:0;border-radius:6px;background:none;color:var(--muted);font:inherit;font-size:var(--fs-xs);font-weight:500;cursor:pointer}
+.pSeg button.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.pList{display:grid}
+.pRow{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:14px;align-items:start;padding:14px 20px;border-top:1px solid var(--line)}
+.pRow:first-child{border-top:0}
+.pRow:hover{background:var(--sunk)}
+.pDot{width:10px;height:10px;margin-top:6px;border-radius:50%;background:var(--line-2)}
+.pRow[data-sev="3"] .pDot{background:var(--bad)}.pRow[data-sev="2"] .pDot{background:var(--warn)}.pRow[data-sev="1"] .pDot{background:var(--good)}
+.pTitle{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-weight:600;font-size:var(--fs)}
+.pTitle a{color:inherit;text-decoration:none}.pTitle a:hover{text-decoration:underline}
+.pSub{margin-top:2px;font-size:var(--fs-xs);color:var(--muted)}
+.pFlags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.pFlags:empty{display:none}
+.pNext{margin-top:8px;font-size:var(--fs-s);color:var(--ink-2)}.pNext i{color:var(--bad);font-style:italic}
+.pOwn{display:inline-flex;align-items:center;gap:5px;margin-left:8px;font-size:var(--fs-xs);color:var(--muted)}
+.pAct{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;align-self:center}
+.pMore{padding:12px 20px;border-top:1px solid var(--line)}
+.pParked summary{display:flex;gap:12px;align-items:center;padding:14px 20px;cursor:pointer;list-style:none}
+.pParked summary::-webkit-details-marker{display:none}
+.pParked[open] summary{border-bottom:1px solid var(--line)}
+.pBoard{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(230px,1fr);gap:12px;padding:16px 20px 20px;overflow-x:auto}
+.pCol{display:grid;gap:8px;align-content:start;min-width:0}
+.pCol h3{display:flex;justify-content:space-between;gap:8px;margin:0 0 2px;font-size:var(--fs-xs);font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.pCol h3 em{font-style:normal;color:var(--faint)}
+.pCard{appearance:none;display:grid;gap:6px;width:100%;padding:10px 12px 10px 14px;position:relative;text-align:left;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;cursor:pointer;overflow:hidden}
+.pCard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--good)}
+.pCard[data-sev="3"]::before{background:var(--bad)}.pCard[data-sev="2"]::before{background:var(--warn)}.pCard[data-sev="0"]::before{background:var(--line-2)}
+.pCard:hover{border-color:var(--line-2);background:var(--sunk)}
+.pCard b{font-size:var(--fs-s);font-weight:600;line-height:1.3}
+.pMeta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pEmpty{padding:10px;border:1px dashed var(--line);border-radius:10px;text-align:center;color:var(--faint)}
+.pForm{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.pTasks{display:grid;gap:6px;font-weight:400}
+.pTasks label{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;font-size:var(--fs-s)}
+@media(max-width:700px){
+  .pRow{grid-template-columns:10px minmax(0,1fr);padding:14px 16px}
+  .pAct{grid-column:2;justify-content:flex-start}
+  .pForm{grid-template-columns:1fr}
+}

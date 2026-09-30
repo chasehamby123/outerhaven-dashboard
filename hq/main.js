@@ -6,12 +6,14 @@ import { renderGrowth } from './growth.js';
 import { renderToday, armWhip, refreshBadge } from './today.js';
 import { renderResources } from './resources.js';
 import { renderSchedule } from './schedule.js';
+import { renderPipeline, refreshPipelineBadge } from './pipeline.js';
 
 const ROUTES = {
   today: { label: 'Today', render: r => renderToday(r), ops: true },
   overview: { label: 'Overview', render: r => renderOverview(r) },
   growth: { label: 'Growth', render: (r, sub) => renderGrowth(r, sub) },
   schedule: { label: 'Schedule', render: r => renderSchedule(r), ops: true },
+  pipeline: { label: 'Pipeline', render: r => renderPipeline(r) },
   resources: { label: 'Resources', render: (r, sub) => renderResources(r, sub), ops: true },
 };
 
@@ -61,10 +63,11 @@ function shell() {
         ${navLink('overview', '#/overview', 'Overview')}
         ${navLink('today', '#/today', 'Today')}
         ${navLink('schedule', '#/schedule', 'Schedule')}
+        ${navLink('pipeline', '#/pipeline', 'Pipeline')}
         ${navLink('growth', '#/growth/posts', 'Growth')}
         ${navLink('resources', '#/resources', 'Resources')}
         <small>Legacy</small>
-        <a href="/shared.html">${ICON.pipeline}<span>Pipeline</span><em>↗</em></a>`}
+        <a href="/shared.html">${ICON.pipeline}<span>Old pipeline board</span><em>↗</em></a>`}
       </nav>
       <div class="sideFoot">${avatar(name || '?', 'lg')}<div class="who"><b style="text-transform:capitalize">${esc(name)}</b><button class="link s" id="signOut">Sign out</button></div></div>
     </aside>
@@ -128,6 +131,7 @@ async function start() {
   if (route().page === 'today') armWhip();
   refreshBadge(); setInterval(refreshBadge, 60000);
   if (state.role === 'ops') { render(); return; }
+  refreshPipelineBadge(); setInterval(refreshPipelineBadge, 120000);
   await Promise.all([load(), loadSheet()]);
   subscribe();
 }
