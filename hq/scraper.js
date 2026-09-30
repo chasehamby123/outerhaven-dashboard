@@ -1,6 +1,6 @@
 // LinkedIn scraper controls, on top of the existing daily-ops-linkedin-auto function.
 // pg_cron calls it every 30 min; it paces Apify spend across the month and obeys growth_settings.
-import { sb, state, esc, $, toast, fail } from './core.js';
+import { sb, state, esc, $, $$, toast, fail } from './core.js';
 import { store, load } from './data.js';
 
 const hourLabel = h => `${((h + 11) % 12) + 1}:00 ${h >= 12 ? 'PM' : 'AM'}`;
@@ -59,6 +59,43 @@ async function saveSettings(patch) {
   if (!fail(r, 'Save scraper settings')) { toast('Saved'); await load(); }
 }
 
+// Extra Apify accounts: the scraper sends each run to the account with the most credit left.
+// Tokens are write-only (RPC set_apify_token); the page only ever sees names and dollar amounts.
+async function accountsCard(host) {
+  let slots = [], accts = latestStatus()?.accounts || [];
+  const pull = async () => { const r = await sb.rpc('apify_token_slots'); slots = Array.isArray(r.data) ? r.data : []; };
+  const refresh = async () => { try { accts = (await invoke({ status_only: true })).accounts || []; } catch (e) { toast('Could not read Apify accounts: ' + e.message); } };
+  const draw = () => {
+    const free = [2, 3, 4, 5, 6, 7, 8, 9].filter(n => !slots.includes(n));
+    host.innerHTML = `<header><div><h2>Apify accounts</h2><p>Every run goes to the account with the most credit left. Add accounts to get more credit per month.</p></div><button class="btn sm" id="acRef">Refresh</button></header>
+    <div class="body stack" style="gap:16px">
+      ${accts.length ? `<div class="scroll"><table class="tbl"><thead><tr><th>Account</th><th class="n">Used</th><th class="n">Left</th><th></th></tr></thead><tbody>${accts.map(a => `<tr>
+        <td><b>${esc(a.name)}</b> <span class="muted s">${a.slot === 1 ? 'main' : 'extra ' + a.slot}</span></td>
+        <td class="n">${a.error ? '—' : money(a.used) + ' <span class="muted s">of ' + money(a.limit) + '</span>'}</td>
+        <td class="n">${a.error ? `<span class="tag bad">${esc(a.error)}</span>` : money(a.remaining)}</td>
+        <td class="n">${a.slot > 1 ? `<button class="btn sm ghost" data-rm="${a.slot}">Remove</button>` : ''}</td></tr>`).join('')}</tbody></table></div>
+      <div class="s"><b>${money(accts.reduce((t, a) => t + (a.error ? 0 : a.remaining), 0))}</b> of credit left across ${accts.filter(a => !a.error).length} account${accts.filter(a => !a.error).length === 1 ? '' : 's'} this billing month.</div>` : '<div class="s muted">Press Refresh to read the accounts.</div>'}
+      ${free.length ? `<form class="form" id="acForm" autocomplete="off"><label class="field">Slot<select class="select" id="acSlot">${free.map(n => `<option value="${n}">Extra account ${n}</option>`).join('')}</select></label>
+        <label class="field">Apify API token<input class="input" type="password" id="acTok" placeholder="apify_api_…" autocomplete="off" spellcheck="false"></label>
+        <div class="field full"><button class="btn primary" id="acSave" type="submit">Add account</button></div></form>` : '<div class="s muted">All 8 extra slots are in use.</div>'}
+      <div class="s muted">Get the token in that Apify account: Settings → API &amp; Integrations → Personal API tokens. It is saved write-only and never shown again; to replace one, remove the account and add it again.</div>
+    </div>`;
+    $('#acRef', host).onclick = async e => { e.target.disabled = true; await refresh(); draw(); };
+    $('#acForm', host)?.addEventListener('submit', async e => {
+      e.preventDefault(); const tok = $('#acTok', host).value.trim(); if (!tok) return;
+      $('#acSave', host).disabled = true;
+      if (!fail(await sb.rpc('set_apify_token', { p_slot: Number($('#acSlot', host).value), p_value: tok }), 'Add Apify account')) { await pull(); await refresh(); toast('Account added'); }
+      draw();
+    });
+    $$('[data-rm]', host).forEach(b => b.onclick = async () => {
+      if (!confirm('Remove this Apify account from the scraper?')) return;
+      if (!fail(await sb.rpc('set_apify_token', { p_slot: Number(b.dataset.rm), p_value: '' }), 'Remove Apify account')) { await pull(); await refresh(); toast('Removed'); }
+      draw();
+    });
+  };
+  await pull(); draw(); if (!accts.length || !accts.some(a => a.slot)) { await refresh(); draw(); }
+}
+
 export function scraperView(body) {
   const s = store.settings, admin = state.role === 'admin';
   if (!s) { body.innerHTML = `<div class="card"><div class="empty">Scraper controls need the database update (growth_settings).</div></div>`; return; }
@@ -75,7 +112,7 @@ export function scraperView(body) {
       <div class="form"><label class="field">Daily run time (Malaysia)<select class="select" id="scHour" ${admin ? '' : 'disabled'}>${[...Array(24).keys()].map(h => `<option value="${h}" ${h === hour ? 'selected' : ''}>${hourLabel(h)}</option>`).join('')}</select></label>
         <label class="field">Monthly budget cap ($)<input class="input" type="number" min="0" step="1" id="scBudget" value="${esc(budget)}" ${admin ? '' : 'disabled'}></label>
         <div class="field full">Cost<div class="s" style="padding-top:4px">${cpr ? `About <b>${money(cpr)}</b> per pass, so roughly <b>${money(cpr * 2)}–${money(cpr * 3)} a day</b> (${money(cpr * 2 * 30)}–${money(cpr * 3 * 30)} a month).` : 'Not enough runs to measure yet.'}</div></div></div>
-      <div class="s muted">Automatic runs stop once Apify spend reaches the budget, then resume when Apify's billing month resets${resets ? ` (${esc(resets)})` : ''}. A day's scrape is one posts pass, then up to 3 comment passes (4 posts each) until every changed thread is refreshed.</div>
+      <div class="s muted">Automatic runs stop once Apify spend reaches the budget, then resume when Apify's billing month resets${resets ? ` (${esc(resets)})` : ''}. A day's scrape is one posts pass, then up to 3 comment passes (one Apify run per thread, about $0.60–$1.30 each) until every changed thread is refreshed or the credit runs out.</div>
     </div></section>
   <section class="card"><header><div><h2>Apify spend this billing month</h2><p>Read live from your Apify account</p></div></header>
     <div class="body stack" style="gap:14px">
@@ -83,6 +120,7 @@ export function scraperView(body) {
       <div class="row"><button class="btn primary" id="scRun" ${admin && !running ? '' : 'disabled'}>${running ? 'Running…' : 'Run now'}</button><span class="s muted">Posts, then comments${cpr ? ` · about ${money(cpr * 2)}` : ''}</span></div>
       <div class="s muted" id="scStatus">Last run ${esc(ago(lastRun?.created_at))}${lastRun ? ` (${esc(label(lastRun.run_mode))})` : ''}.</div>
     </div></section></div>
+  ${admin ? '<section class="card" id="scAcc" style="margin-top:24px"></section>' : ''}
   <section class="card" style="margin-top:24px"><header><div><h2>Run history</h2><p>Every run with its Apify cost. Pacing checks are hidden.</p></div></header>
     <div class="body flush scroll"><table class="tbl"><thead><tr><th>When</th><th>Run</th><th class="n">Posts</th><th class="n">Comment threads</th><th class="n">Cost</th><th>Notes</th></tr></thead><tbody>
     ${store.scrapeLog.slice(0, 60).map((r, i, arr) => {
@@ -96,6 +134,7 @@ export function scraperView(body) {
     }).join('')}
     </tbody></table>${!store.scrapeLog.length ? '<div class="empty">No runs logged yet.</div>' : ''}</div></section>`;
   if (!admin) return;
+  accountsCard($('#scAcc', body));
   $('#scOn', body).onchange = e => saveSettings({ scrape_enabled: e.target.checked });
   $('#scHour', body).onchange = e => saveSettings({ scrape_hour: Number(e.target.value) });
   $('#scBudget', body).onchange = e => saveSettings({ monthly_budget: Math.max(0, Number(e.target.value) || 0) });

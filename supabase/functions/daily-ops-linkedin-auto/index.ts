@@ -1,4 +1,4 @@
-// daily-ops-linkedin-auto · v8 (Outerhaven HQ)
+// daily-ops-linkedin-auto · v9 (Outerhaven HQ)
 // Changes from v1:
 //  1. FIX: posts are matched by the same key the database trigger stores (derived from the post URL),
 //     not the scraper's activity id. Reshared posts no longer crash the run with a duplicate-key error
@@ -13,6 +13,7 @@
 //  9. (v7) Comment threads: one Apify run per post inside a 120 s budget; unfinished runs are aborted and the post stays pending.
 // 10. (v8) Comment runs log their real cost (from the Apify run) and stop before the monthly budget: a thread costs ~$0.6-1.3.
 //     Automatic comment passes are paced: at most (remaining budget / days left), minimum one thread, per pass.
+// 11. (v9) Account pool: APIFY_TOKEN + APIFY_TOKEN_2..9 (added in HQ). Each run goes to the account with the most credit left.
 //  5. (v3) Daily mode (default): one scrape a day at scrape_hour Malaysia time: posts, then comment threads.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -111,21 +112,28 @@ async function apifyUsage(token: string) {
   if (!r.ok || !data?.data) throw new Error(`Apify usage returned ${r.status}: ${raw.slice(0, 600)}`);
   return data.data;
 }
-async function runApify(token: string, actor: string, input: unknown, timeoutMs = 95000) {
-  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const id = actor.replace("/", "~");
-    const r = await fetch(`https://api.apify.com/v2/acts/${id}/run-sync-get-dataset-items?clean=true&format=json`, {
-      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(input), signal: ctrl.signal,
-    });
-    const raw = await r.text(); let data: any = null; try { data = raw ? JSON.parse(raw) : []; } catch { data = { raw: raw.slice(0, 1500) }; }
-    if (!r.ok) throw new Error(`Apify ${actor} returned ${r.status}: ${JSON.stringify(data).slice(0, 1200)}`);
-    return Array.isArray(data) ? data : [];
-  } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") throw new Error(`Apify ${actor} timed out after ${Math.round(timeoutMs / 1000)}s`);
-    throw e;
-  } finally { clearTimeout(timer); }
+// v9: several Apify accounts. Slot 1 is APIFY_TOKEN (capped by the HQ budget); slots 2-9 are APIFY_TOKEN_2.. added in HQ.
+// Every Apify call goes to the account with the most credit left; an account is used up to its own plan limit.
+type Acct = { slot: number; name: string; token: string; used: number; limit: number; remaining: number; primary: boolean; error?: string };
+async function loadPool(budget: number): Promise<Acct[]> {
+  const r = await sb.from("integration_secrets").select("key,secret_value").like("key", "APIFY_TOKEN%");
+  const rows = (r.data || []).filter((x: any) => /^APIFY_TOKEN(_\d+)?$/.test(x.key) && x.secret_value);
+  const out = await Promise.all(rows.map(async (x: any): Promise<Acct> => {
+    const slot = x.key === "APIFY_TOKEN" ? 1 : Number(x.key.split("_")[2]), primary = slot === 1, headers = { authorization: `Bearer ${x.secret_value}` };
+    const base = { slot, name: `account ${slot}`, token: x.secret_value as string, used: 0, limit: 0, remaining: 0, primary };
+    try {
+      const [lr, mr] = await Promise.all([fetch("https://api.apify.com/v2/users/me/limits", { headers }), fetch("https://api.apify.com/v2/users/me", { headers })]);
+      const l: any = (await lr.json().catch(() => null))?.data, m: any = (await mr.json().catch(() => null))?.data;
+      if (!lr.ok || !l?.limits) throw new Error(`Apify returned ${lr.status} (bad token?)`);
+      const max = Number(l.limits.maxMonthlyUsageUsd) || 0, used = Number(l.current?.monthlyUsageUsd) || 0;
+      const limit = primary ? (max ? Math.min(max, budget) : budget) - 0.01 : max - 0.25; // spare change so a run can't overshoot a small plan
+      return { ...base, name: clean(m?.username) || base.name, used, limit, remaining: Math.max(0, limit - used) };
+    } catch (e) { return { ...base, error: e instanceof Error ? e.message : String(e) }; }
+  }));
+  return out.sort((a, b) => a.slot - b.slot);
 }
+const pick = (pool: Acct[], need: number) => pool.filter(a => !a.error && a.remaining >= need).sort((a, b) => b.remaining - a.remaining)[0] || null;
+const charge = (a: Acct, cost: number) => { a.used += cost; a.remaining = Math.max(0, a.remaining - cost); };
 
 // v7: start the actor run, poll it, and abort it if our time budget runs out (a fetch that just gives up leaves the
 // run going and billed on Apify). Used for comment threads, where one big post can take minutes.
@@ -156,23 +164,25 @@ async function runApifyBudgeted(token: string, actor: string, input: unknown, de
 // Whatever doesn't finish stays "comments_pending" and is picked up by the next run.
 const COMMENTS_BUDGET_MS = 120000;
 const COMMENT_RUN_RESERVE_USD = 1.0; // a 250-comment thread with replies costs ~$0.6-1.3 (measured 30 Sept), not the $0.06 pass estimate
-async function syncComments(apifyToken: string, roomUsd: number) {
+async function syncComments(pool: Acct[], roomUsd: number) {
   const postsRes = await sb.from("daily_ops_posts").select("*").eq("is_repost", false).gt("commenter_count", 0)
     .in("scrape_status", ["comments_pending", "comments_capped"]).order("posted_at", { ascending: false }).limit(8);
   if (postsRes.error) throw new Error(`comment targets: ${postsRes.error.message}`);
   const targets = postsRes.data || [];
   if (!targets.length) return { mode: "comments", actor_runs_estimate: 0, comment_posts_processed: 0, comment_records_saved: 0, unreplied_total: 0 };
   const deadline = Date.now() + COMMENTS_BUDGET_MS;
-  let processed = 0, stored = 0, unrepliedTotal = 0, runs = 0, spent = 0, stopped = ""; const errors: string[] = [];
+  let processed = 0, stored = 0, unrepliedTotal = 0, runs = 0, spent = 0, stopped = ""; const errors: string[] = [], usedAccts = new Set<string>();
   for (const post of targets) {
     if (deadline - Date.now() < 20000) { stopped = "time_budget"; break; }
     if (spent + COMMENT_RUN_RESERVE_USD > roomUsd) { stopped = "monthly_budget"; break; }
+    const acct = pick(pool, COMMENT_RUN_RESERVE_USD);
+    if (!acct) { stopped = "no_account_has_credit"; break; }
     try {
-      runs++;
-      const run = await runApifyBudgeted(apifyToken, "atomus/linkedin-comments-scraper-pro", {
+      runs++; usedAccts.add(acct.name);
+      const run = await runApifyBudgeted(acct.token, "atomus/linkedin-comments-scraper-pro", {
         postUrls: [post.linkedin_post_url], maxComments: 250, sortBy: "date", metadataOnly: false, includeReplies: true, maxRepliesPerComment: 50,
       }, deadline);
-      spent += run.cost; const rows = run.items;
+      spent += run.cost; charge(acct, run.cost); const rows = run.items;
       const pr = rows.filter((r: any) => {
         if (r?.type === "summary" || r?.type === "metadata") return false;
         const inputUrl = canon(clean(r?._metadata?.post_url) || clean(r?.post_url) || clean(r?.postUrl));
@@ -202,7 +212,7 @@ async function syncComments(apifyToken: string, roomUsd: number) {
     } catch (e) { errors.push(`${post.post_name || post.id}: ${e instanceof Error ? e.message : String(e)}`); if (/time budget/.test(String(e))) break; }
   }
   if (!processed && errors.length) throw new Error(errors[0]); // nothing saved: surface the real reason in HQ
-  return { mode: "comments", actor_runs_estimate: runs, apify_cost_usd: Number(spent.toFixed(4)), stopped_reason: stopped || null, comment_posts_processed: processed, comment_posts_queued: targets.length, comment_records_saved: stored, unreplied_total: unrepliedTotal, errors };
+  return { mode: "comments", actor_runs_estimate: runs, apify_cost_usd: Number(spent.toFixed(4)), stopped_reason: stopped || null, accounts_used: [...usedAccts], comment_posts_processed: processed, comment_posts_queued: targets.length, comment_records_saved: stored, unreplied_total: unrepliedTotal, errors };
 }
 
 // Posts pass (v4). One Apify call per run: each profile's 10 most recent items. We decide ourselves what is an
@@ -221,14 +231,17 @@ function sameProfile(a: string, b: string) {
   const ia = profileId(a), ib = profileId(b);
   return !!ia && ia === ib;
 }
-async function syncPosts(apifyToken: string, _allowDetail: boolean) {
+async function syncPosts(pool: Acct[], _allowDetail: boolean) {
   const acctRes = await sb.from("daily_ops_accounts").select("id,owner_name,linkedin_url").eq("active", true).not("linkedin_url", "is", null).order("sort_order");
   if (acctRes.error) throw new Error(`accounts: ${acctRes.error.message}`);
   const accounts = acctRes.data || [];
   const profiles = accounts.map((a: any) => a.linkedin_url).filter(Boolean);
   if (!profiles.length) return { mode: "posts", actor_runs_estimate: 0, profiles_checked: 0, posts_saved: 0 };
   const acctByUrl = new Map(accounts.map((a: any) => [canon(a.linkedin_url), a]));
-  const rows = await runApify(apifyToken, "atomus/linkedin-posts-scraper-pro", { profiles, maxPosts: RECENT_ITEMS, postedLimit: "month", sortBy: "date", latestPostOnly: false, includeReposts: true, includeSharedPosts: true }, 140000);
+  const acct = pick(pool, 0.3);
+  if (!acct) throw new Error("No Apify account has credit left for a posts run. Add an account or raise the budget in HQ.");
+  const run = await runApifyBudgeted(acct.token, "atomus/linkedin-posts-scraper-pro", { profiles, maxPosts: RECENT_ITEMS, postedLimit: "month", sortBy: "date", latestPostOnly: false, includeReposts: true, includeSharedPosts: true }, Date.now() + 140000);
+  charge(acct, run.cost); const rows = run.items;
 
   const existingRes = await sb.from("daily_ops_posts").select("*").order("posted_at", { ascending: false }).limit(1500);
   if (existingRes.error) throw new Error(`existing posts: ${existingRes.error.message}`);
@@ -284,7 +297,7 @@ async function syncPosts(apifyToken: string, _allowDetail: boolean) {
   }
   const no_own_post = accounts.filter((a: any) => !ownByAccount.has(a.id)).map((a: any) => a.owner_name);
   const creatives = await saveCreatives();
-  return { mode: "posts", actor_runs_estimate: 1, ...creatives, profiles_checked: profiles.length, rows_returned: rows.length, posts_saved: saved, original_posts: originals, reposts, skipped_older_than_7d: skippedOld, unmatched_post_rows: unmatched, no_own_post_last_7d: no_own_post, missing_profiles: [], errors };
+  return { mode: "posts", actor_runs_estimate: 1, apify_cost_usd: Number(run.cost.toFixed(4)), accounts_used: [acct.name], ...creatives, profiles_checked: profiles.length, rows_returned: rows.length, posts_saved: saved, original_posts: originals, reposts, skipped_older_than_7d: skippedOld, unmatched_post_rows: unmatched, no_own_post_last_7d: no_own_post, missing_profiles: [], errors };
 }
 
 // Creatives: LinkedIn media links expire, so keep our own copy in the private growth-assets bucket.
@@ -346,7 +359,9 @@ Deno.serve(async (req) => {
   try { usage = await apifyUsage(apifyToken); }
   catch (e) { return json({ ok: false, error: "usage_check_failed", detail: e instanceof Error ? e.message : String(e) }, 502); }
 
-  const used = Number(usage.totalUsageCreditsUsdAfterVolumeDiscount || 0);
+  const pool = await loadPool(settings.budget);
+  const poolRemaining = pool.reduce((t, a) => t + (a.error ? 0 : a.remaining), 0);
+  const used = Math.max(Number(usage.totalUsageCreditsUsdAfterVolumeDiscount || 0), pool.find(a => a.primary && !a.error)?.used || 0);
   const cycleStart = new Date(usage.usageCycle?.startAt || Date.now()), cycleEnd = new Date(usage.usageCycle?.endAt || Date.now()), now = new Date();
   const totalMs = Math.max(1, cycleEnd.getTime() - cycleStart.getTime());
   const progress = Math.min(totalMs, Math.max(0, now.getTime() - cycleStart.getTime())) / totalMs;
@@ -360,7 +375,9 @@ Deno.serve(async (req) => {
     remaining_to_ceiling_usd: Number(remaining.toFixed(4)), usage_cycle_start: cycleStart.toISOString(), usage_cycle_end: cycleEnd.toISOString(),
     cycle_progress: Number(progress.toFixed(6)), paced_target_now_usd: Number(targetNow.toFixed(4)), remaining_runs_approx: remainingRunsApprox,
     recommended_average_interval_minutes: remainingRunsApprox > 0 ? Number((remainingMinutes / remainingRunsApprox).toFixed(1)) : null,
-    pending_comment_posts: pendingComments, trigger: who.kind, by: who.email, schedule_mode: settings.mode, scrape_hour_myt: settings.hour,
+    pending_comment_posts: pendingComments, pool_remaining_usd: Number(poolRemaining.toFixed(4)),
+    accounts: pool.map(a => ({ slot: a.slot, name: a.name, used: Number(a.used.toFixed(4)), limit: Number(a.limit.toFixed(2)), remaining: Number(a.remaining.toFixed(4)), error: a.error || null })),
+    trigger: who.kind, by: who.email, schedule_mode: settings.mode, scrape_hour_myt: settings.hour,
   };
   if (body.status_only === true) return json(status);
   if (body.action === "save_creatives") return json({ ok: true, ...(await saveCreatives(100)) }); // free: no Apify call
@@ -390,9 +407,9 @@ Deno.serve(async (req) => {
     await logRun({ run_mode: "skip_pace", usage_before: used, target_usage: targetNow, detail: status });
     return json({ ...status, ran: false, reason: "ahead_of_budget_pace" });
   }
-  if (used + RUN_ESTIMATE_USD > ceiling + 1e-9 && !(manual && body.allow_over_budget === true)) {
+  if (poolRemaining < RUN_ESTIMATE_USD && !(manual && body.allow_over_budget === true)) {
     await logRun({ run_mode: "skip_budget", usage_before: used, target_usage: targetNow, detail: status });
-    return json({ ...status, ok: !manual, ran: false, reason: "monthly_budget_ceiling_reached", detail: `Monthly budget of $${settings.budget} reached ($${used.toFixed(2)} used)` });
+    return json({ ...status, ok: !manual, ran: false, reason: "monthly_budget_ceiling_reached", detail: `No Apify account has budget left this month (${pool.length} account${pool.length === 1 ? "" : "s"}; $${used.toFixed(2)} used on the main one)` });
   }
 
   const requested = clean(body.mode);
@@ -401,9 +418,9 @@ Deno.serve(async (req) => {
   const started = new Date().toISOString();
   const tag = manual ? `manual_${mode}` : mode;
   try {
-    const result: any = mode === "comments" ? await syncComments(apifyToken, manual ? remaining : Math.min(remaining, Math.max(COMMENT_RUN_RESERVE_USD, remaining / Math.max(1, remainingMinutes / 1440)))) : await syncPosts(apifyToken, allowDetail);
+    const result: any = mode === "comments" ? await syncComments(pool, manual ? poolRemaining : Math.min(poolRemaining, Math.max(COMMENT_RUN_RESERVE_USD, poolRemaining / Math.max(1, remainingMinutes / 1440)))) : await syncPosts(pool, allowDetail);
     let usageAfter = used;
-    // Apify's monthly usage lags a finished run, so for comment runs trust the per-run cost we read from the runs themselves.
+    // Apify's monthly usage lags a finished run (and may belong to another account), so trust the per-run cost read from the runs.
     if (typeof result.apify_cost_usd === "number") usageAfter = used + result.apify_cost_usd;
     else try { await new Promise(r => setTimeout(r, 1200)); const after = await apifyUsage(apifyToken); usageAfter = Number(after.totalUsageCreditsUsdAfterVolumeDiscount || used); } catch { }
     await logRun({ run_mode: result.errors?.length ? `${tag}_partial` : tag, usage_before: used, usage_after: usageAfter, target_usage: targetNow, detail: { ...status, allow_detail: allowDetail, result, started_at: started } });
