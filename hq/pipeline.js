@@ -14,7 +14,7 @@ const sideShort = sd => sd === 'Buy Side' ? 'Buy' : sd === 'Both' ? 'Both' : 'Se
 const SEV = { bad: 3, warn: 2, info: 1 };
 const DAY = 864e5;
 
-let root, D = null, loadedAt = 0, side = 'Sell Side', flt = null, showAllLeads = false;
+let root, D = null, loadedAt = 0, side = 'Sell Side', flt = null, showAllLeads = false, tab = 'need';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const daysSince = ts => ts ? Math.max(0, Math.floor((Date.now() - Date.parse(ts)) / DAY)) : null;
@@ -123,34 +123,36 @@ function draw() {
   const leads = D.leads.slice().sort((a, b) => (b.decision.startsWith('qualified') ? 1 : 0) - (a.decision.startsWith('qualified') ? 1 : 0));
   const qualified = leads.filter(l => l.decision.startsWith('qualified')).length;
   const raise = liveDeals.reduce((n, i) => n + i.raise, 0);
-  const kpi = (f, label, n, sev, sub) => `<button type="button" class="kpi pf ${flt === f ? 'on' : ''}" data-f="${f}" data-sev="${n ? sev : ''}"><label>${label}</label><b>${n}</b><small>${sub}</small></button>`;
+  const kpi = (f, label, n, sev) => `<button type="button" class="pChip pf ${flt === f ? 'on' : ''}" data-f="${f}" data-sev="${n ? sev : ''}"><b>${n}</b>${label}</button>`;
 
   let need = live.filter(i => i.sev >= 2);
   if (flt === 'us') need = k.us; else if (flt === 'them') need = k.them; else if (flt === 'nonext') need = k.nonext; else if (flt === 'overdue') need = k.overdue;
   need = need.slice().sort(byHeat);
   const parked = [...D.opps.filter(o => o.pipeline_active === false).map(o => ({ kind: 'deal', id: o.id, name: o.title, sub: o.side })), ...D.people.filter(p => p.pipeline_active === false && !D.opps.some(o => o.person_id === p.id && o.pipeline_active !== false)).map(p => ({ kind: 'rel', id: p.id, name: p.name, sub: p.primary_side || '' }))];
 
-  root.innerHTML = `<div class="stack pipe">
-    <div class="head"><div><h1>Pipeline</h1><p>Every live opportunity and relationship, who has the ball, and what has gone quiet.</p></div>
-      <div class="row"><button class="btn" id="pRefresh">Refresh</button><button class="btn" id="pAddPerson">Add person</button><button class="btn primary" id="pAddDeal">Add deal</button></div></div>
-    <div class="kpis pKpis">
-      ${kpi('us', 'Our move', k.us.length, 'bad', `${k.us.filter(i => i.days >= 7).length} waiting 7+ days`)}
-      ${kpi('them', 'Chase them', k.them.length, 'warn', 'quiet 7+ days')}
-      ${kpi('nonext', 'No next step', k.nonext.length, 'warn', 'nobody owns it')}
-      ${kpi('overdue', 'Overdue tasks', k.overdue.length, 'bad', 'past due date')}
-      ${kpi('leads', 'Leads to review', qualified, 'warn', `${leads.length} in the inbox`)}
-      <div class="kpi"><label>Deal size in play</label><b>${raise ? money(raise) : '—'}</b><small>${liveDeals.length} live deal${liveDeals.length === 1 ? '' : 's'} · ${live.length - liveDeals.length} relationships</small></div>
-    </div>
-    <section class="card pSec" id="pNeed"><header><div><h2>${flt && flt !== 'leads' ? esc({ us: 'Our move', them: 'Chase them', nonext: 'No next step', overdue: 'Overdue tasks' }[flt]) : 'Needs you now'}</h2><p>${need.length} item${need.length === 1 ? '' : 's'}, most urgent first${flt && flt !== 'leads' ? '' : ' (waiting on us 3+ days, them 7+ days, or missing a next step)'}</p></div>${flt ? '<button class="btn sm" data-clear>Show all</button>' : ''}</header>
-      <div class="pList">${need.length ? need.map(rowHtml).join('') : '<div class="empty">Nothing is stuck. Every live item has a next move and is on time.</div>'}</div></section>
-    <section class="card pSec"><header><div><h2>Stage board</h2><p>${live.filter(i => i.side === side).length} live in ${side === 'Both' ? 'Both (banks and advisers who are also capital)' : side.toLowerCase()}. Click a card to update it.</p></div>
-      <div class="pSeg" role="group">${SIDES.map(s => `<button type="button" data-side="${s}" class="${side === s ? 'on' : ''}">${s}<em>${live.filter(i => i.side === s).length}</em></button>`).join('')}</div></header>
-      <div class="pBoard">${boardHtml(live)}</div></section>
-    <section class="card pSec" id="pLeads"><header><div><h2>LinkedIn leads not in the pipeline</h2><p>${qualified} qualified${leads.length - qualified ? `, ${leads.length - qualified} still to review` : ''}. Add them before they go cold.</p></div></header>
+  const inFlt = new Set((flt && flt !== 'leads' ? need : []).map(i => i.kind + ':' + i.id));
+  const tabs = [['need', flt && flt !== 'leads' ? { us: 'Our move', them: 'Chase them', nonext: 'No next step', overdue: 'Overdue' }[flt] : 'Needs you', need.length], ['leads', 'LinkedIn leads', leads.length], ...(parked.length ? [['parked', 'Parked', parked.length]] : [])];
+  const panel = tab === 'leads'
+    ? `<p class="pHint">${qualified} qualified${leads.length - qualified ? `, ${leads.length - qualified} still to review` : ''}. Add them before they go cold.</p>
       <div class="pList">${leads.length ? leads.slice(0, showAllLeads ? 300 : 8).map(leadHtml).join('') : '<div class="empty">Inbox is clear.</div>'}</div>
-      ${leads.length > 8 ? `<footer class="pMore"><button class="btn sm" data-more>${showAllLeads ? 'Show fewer' : `Show all ${leads.length}`}</button></footer>` : ''}</section>
-    ${parked.length ? `<details class="card pSec pParked"><summary><b>Parked</b><span class="muted s">${parked.length} off the board</span></summary>
-      <div class="pList">${parked.map(x => `<div class="pRow" data-sev="0"><span class="pDot"></span><div class="pMain"><div class="pTitle">${esc(x.name)}</div><div class="pSub">${esc(x.sub)}</div></div><div class="pAct"><button class="btn sm" data-react="${x.kind}:${x.id}">Reactivate</button></div></div>`).join('')}</div></details>` : ''}
+      ${leads.length > 8 ? `<footer class="pMore"><button class="btn sm" data-more>${showAllLeads ? 'Show fewer' : `Show all ${leads.length}`}</button></footer>` : ''}`
+    : tab === 'parked'
+      ? `<div class="pList">${parked.map(x => `<div class="pRow" data-sev="0"><span class="pDot"></span><div class="pMain"><div class="pTitle">${esc(x.name)}</div><div class="pSub">${esc(x.sub)}</div></div><div class="pAct"><button class="btn sm" data-react="${x.kind}:${x.id}">Reactivate</button></div></div>`).join('')}</div>`
+      : `<p class="pHint">${flt && flt !== 'leads' ? 'Filtered. Matching cards are highlighted on the board.' : 'Waiting on us 3+ days, on them 7+ days, or missing a next step. Most urgent first.'}${flt ? ' <button class="link s" data-clear>Clear filter</button>' : ''}</p>
+      <div class="pList">${need.length ? need.map(rowHtml).join('') : '<div class="empty">Nothing is stuck. Every live item has a next move and is on time.</div>'}</div>`;
+  root.innerHTML = `<div class="pipe">
+    <div class="pTop">
+      <div class="pTitleRow"><h1>Pipeline</h1><span class="muted s">${liveDeals.length} deal${liveDeals.length === 1 ? '' : 's'} · ${live.length - liveDeals.length} relationships${raise ? ` · <b class="pRaise">${money(raise)}</b> in play` : ''}</span></div>
+      <div class="row"><button class="btn sm" id="pRefresh">Refresh</button><button class="btn sm" id="pAddPerson">Add person</button><button class="btn sm primary" id="pAddDeal">Add deal</button></div>
+    </div>
+    <div class="pChips">
+      ${kpi('us', 'our move', k.us.length, 'bad')}${kpi('them', 'to chase', k.them.length, 'warn')}${kpi('nonext', 'no next step', k.nonext.length, 'warn')}${kpi('overdue', 'overdue', k.overdue.length, 'bad')}${kpi('leads', 'leads waiting', qualified, 'warn')}
+    </div>
+    <section class="card pSec pBoardCard ${inFlt.size ? 'filtering' : ''}"><header><div class="pSeg" role="group">${SIDES.map(s => `<button type="button" data-side="${s}" class="${side === s ? 'on' : ''}">${s}<em>${live.filter(i => i.side === s).length}</em></button>`).join('')}</div>
+      <p>${side === 'Both' ? 'Banks and advisers who are also capital. ' : ''}Click a card to update it.</p></header>
+      <div class="pBoard">${boardHtml(live, inFlt)}</div></section>
+    <section class="card pSec" id="pNeed"><header class="pTabs">${tabs.map(([k, l, n]) => `<button type="button" data-tab="${k}" class="${tab === k ? 'on' : ''}">${esc(l)}<em>${n}</em></button>`).join('')}</header>
+      ${panel}</section>
   </div>`;
   bind(all);
 }
@@ -167,7 +169,7 @@ function rowHtml(i) {
       <div class="pNext">${i.nextText ? `<b>Next:</b> ${esc(i.nextText)}${i.due ? ` <span class="muted">· due ${fmtDate(i.due)}</span>` : ''}` : '<i>No next step set</i>'}${i.owner ? ` <span class="pOwn">${avatar(i.owner, 'xs')}${esc(firstName(i.owner))}</span>` : ''}</div></div>
     <div class="pAct">${act}<button class="btn sm ghost" data-upd="${i.kind}:${i.id}">Update</button></div></div>`;
 }
-function boardHtml(live) {
+function boardHtml(live, inFlt = new Set()) {
   const st = stagesFor(side).filter(x => x !== 'Closed'), items = live.filter(i => i.side === side);
   const cols = st.map((name, idx) => ({ name, items: items.filter(i => { const at = stagesFor(side).indexOf(i.stage); return (at < 0 ? 0 : at) === idx; }).sort(byHeat) }));
   const tpl = cols.map(c => c.items.length ? 'minmax(250px,1fr)' : 'minmax(120px,150px)').join(' ');
@@ -175,13 +177,13 @@ function boardHtml(live) {
     const hot = c.items.filter(i => i.sev >= 3).length, total = c.items.reduce((n, i) => n + i.raise, 0);
     return `<div class="pCol ${c.items.length ? '' : 'none'}"><h3><span class="n">${idx + 1}</span>${esc(c.name)}</h3>
       <div class="pColSum"><b>${c.items.length}</b>${hot ? `<span class="tag bad">${hot} red</span>` : ''}${total ? `<span class="s muted">${money(total)}</span>` : ''}</div>
-      ${c.items.map(cardHtml).join('') || '<div class="pEmpty">Empty</div>'}</div>`;
+      ${c.items.map(i => cardHtml(i, inFlt.has(i.kind + ':' + i.id))).join('') || '<div class="pEmpty">Empty</div>'}</div>`;
   }).join('')}</div>`;
 }
-function cardHtml(i) {
+function cardHtml(i, hit) {
   const tone = i.ball === 'us' ? (i.days >= 7 ? 'bad' : i.days >= 3 ? 'warn' : '') : i.ball === 'them' ? (i.days >= 14 ? 'bad' : i.days >= 7 ? 'warn' : '') : 'warn';
   const worst = i.flags.find(f => f.sev !== 'info' && f.code !== 'us' && f.code !== 'them');
-  return `<button type="button" class="pCard" data-sev="${i.sev}" data-upd="${i.kind}:${i.id}">
+  return `<button type="button" class="pCard ${hit ? 'hit' : ''}" data-sev="${i.sev}" data-upd="${i.kind}:${i.id}">
     <span class="pCardTop"><b>${esc(i.name)}</b>${i.owner ? avatar(i.owner, 'xs') : ''}</span>
     ${i.sub ? `<span class="s muted">${esc(i.sub)}</span>` : ''}
     <span class="pCardNext ${i.nextText ? '' : 'none'}">${i.nextText ? esc(i.nextText) : 'No next step'}</span>
@@ -203,9 +205,10 @@ function bind(all) {
   $('#pRefresh').onclick = async () => { await reload(); toast('Refreshed'); };
   $('#pAddPerson').onclick = addPersonModal; $('#pAddDeal').onclick = addDealModal;
   $$('.pf', root).forEach(b => b.onclick = () => {
-    if (b.dataset.f === 'leads') { $('#pLeads').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
-    flt = flt === b.dataset.f ? null : b.dataset.f; draw(); $('#pNeed').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (b.dataset.f === 'leads') { tab = 'leads'; flt = null; draw(); $('#pNeed').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    flt = flt === b.dataset.f ? null : b.dataset.f; tab = 'need'; draw();
   });
+  $$('[data-tab]', root).forEach(b => b.onclick = () => { tab = b.dataset.tab; draw(); });
   $('[data-clear]', root)?.addEventListener('click', () => { flt = null; draw(); });
   $$('[data-side]', root).forEach(b => b.onclick = () => { side = b.dataset.side; draw(); });
   $('[data-more]', root)?.addEventListener('click', () => { showAllLeads = !showAllLeads; draw(); });
