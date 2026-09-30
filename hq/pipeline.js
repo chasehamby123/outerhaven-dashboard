@@ -11,6 +11,8 @@ const stagesFor = side => side === 'Buy Side' ? BUY : side === 'Both' ? BOTH : S
 const SIDES = ['Sell Side', 'Buy Side', 'Both'];
 const relType = sd => sd === 'Buy Side' ? 'Buy-side Relationship' : sd === 'Both' ? 'Sell + Buy-side Relationship' : 'Sell-side Relationship';
 const sideShort = sd => sd === 'Buy Side' ? 'Buy' : sd === 'Both' ? 'Both' : 'Sell';
+const nextStage = i => { const st = stagesFor(i.side), at = st.indexOf(i.stage); return at < st.length - 1 ? st[at < 0 ? 1 : at + 1] : null; };
+const hasDms = i => !!(i.person?.linkedin_url || i.person?.last_inbound_message);
 const SEV = { bad: 3, warn: 2, info: 1 };
 const DAY = 864e5;
 
@@ -167,7 +169,7 @@ function rowHtml(i) {
       ${i.sub ? `<div class="pSub">${esc(i.sub)}</div>` : ''}
       <div class="pFlags">${i.flags.filter(f => f.sev !== 'info').map(flagChip).join('')}</div>
       <div class="pNext">${i.nextText ? `<b>Next:</b> ${esc(i.nextText)}${i.due ? ` <span class="muted">· due ${fmtDate(i.due)}</span>` : ''}` : '<i>No next step set</i>'}${i.owner ? ` <span class="pOwn">${avatar(i.owner, 'xs')}${esc(firstName(i.owner))}</span>` : ''}</div></div>
-    <div class="pAct">${act}<button class="btn sm ghost" data-upd="${i.kind}:${i.id}">Update</button></div></div>`;
+    <div class="pAct">${act}${nextStage(i) ? `<button class="btn sm" data-adv="${i.kind}:${i.id}" title="Move to ${esc(nextStage(i))}">Next stage →</button>` : ''}${hasDms(i) ? `<button class="btn sm ghost" data-dm="${i.kind}:${i.id}">DMs</button>` : ''}<button class="btn sm ghost" data-upd="${i.kind}:${i.id}">Update</button></div></div>`;
 }
 function boardHtml(live, inFlt = new Set()) {
   const st = stagesFor(side).filter(x => x !== 'Closed'), items = live.filter(i => i.side === side);
@@ -183,11 +185,13 @@ function boardHtml(live, inFlt = new Set()) {
 function cardHtml(i, hit) {
   const tone = i.ball === 'us' ? (i.days >= 7 ? 'bad' : i.days >= 3 ? 'warn' : '') : i.ball === 'them' ? (i.days >= 14 ? 'bad' : i.days >= 7 ? 'warn' : '') : 'warn';
   const worst = i.flags.find(f => f.sev !== 'info' && f.code !== 'us' && f.code !== 'them');
-  return `<button type="button" class="pCard ${hit ? 'hit' : ''}" data-sev="${i.sev}" data-upd="${i.kind}:${i.id}">
+  const nx = nextStage(i), key = `${i.kind}:${i.id}`;
+  return `<div role="button" tabindex="0" class="pCard ${hit ? 'hit' : ''}" data-sev="${i.sev}" data-upd="${key}">
     <span class="pCardTop"><b>${esc(i.name)}</b>${i.owner ? avatar(i.owner, 'xs') : ''}</span>
     ${i.sub ? `<span class="s muted">${esc(i.sub)}</span>` : ''}
     <span class="pCardNext ${i.nextText ? '' : 'none'}">${i.nextText ? esc(i.nextText) : 'No next step'}</span>
-    <span class="pMeta"><span class="tag ${tone}">${i.ball === 'us' ? 'Our move' : i.ball === 'them' ? 'Their move' : 'Nobody'} · ${i.days}d</span>${worst && worst.code !== 'nonext' && worst.code !== 'noball' ? `<span class="tag ${worst.sev === 'bad' ? 'bad' : 'warn'}">${esc(worst.text)}</span>` : ''}${i.raise ? `<span class="s pSize">${money(i.raise)}</span>` : i.size ? `<span class="s pSize">${esc(i.size)}</span>` : ''}</span></button>`;
+    <span class="pMeta"><span class="tag ${tone}">${i.ball === 'us' ? 'Our move' : i.ball === 'them' ? 'Their move' : 'Nobody'} · ${i.days}d</span>${worst && worst.code !== 'nonext' && worst.code !== 'noball' ? `<span class="tag ${worst.sev === 'bad' ? 'bad' : 'warn'}">${esc(worst.text)}</span>` : ''}${i.raise ? `<span class="s pSize">${money(i.raise)}</span>` : i.size ? `<span class="s pSize">${esc(i.size)}</span>` : ''}</span>
+    <span class="pCardAct">${nx ? `<button type="button" class="btn sm" data-adv="${key}" title="Move to ${esc(nx)}">Next stage →</button>` : ''}${hasDms(i) ? `<button type="button" class="btn sm ghost" data-dm="${key}">DMs</button>` : ''}</span></div>`;
 }
 function leadHtml(l) {
   const q = l.decision.startsWith('qualified'), sd = l.decision === 'qualified_buy_side' ? 'Buy Side' : l.decision === 'qualified_sell_side' ? 'Sell Side' : '';
@@ -195,7 +199,7 @@ function leadHtml(l) {
   return `<div class="pRow" data-sev="${q && age >= 3 ? 2 : 0}"><span class="pDot"></span>
     <div class="pMain"><div class="pTitle">${l.linkedin_url ? `<a href="${esc(l.linkedin_url)}" target="_blank" rel="noopener">${esc(l.name || 'Unknown')} ↗</a>` : esc(l.name || 'Unknown')} ${q ? `<span class="tag good">${sd} · qualified</span>` : '<span class="tag">Needs review</span>'}<span class="tag ${age >= 7 ? 'bad' : age >= 3 ? 'warn' : ''}">${age}d in inbox</span></div>
       <div class="pSub">${esc([l.headline, l.company_name].filter(Boolean).join(' · '))}</div>
-      ${l.reply_text ? `<div class="pNext"><b>Said:</b> “${esc(String(l.reply_text).slice(0, 160))}${l.reply_text.length > 160 ? '…' : ''}”</div>` : ''}
+      ${l.reply_text ? `<div class="pNext"><b>Said:</b> “${esc(String(l.reply_text).slice(0, 160))}${l.reply_text.length > 160 ? '…' : ''}” <button class="link s" data-ldm="${l.id}">Open full DMs</button></div>` : ''}
       ${l.suggested_next_step ? `<div class="pNext muted">Suggested: ${esc(l.suggested_next_step)}</div>` : ''}</div>
     <div class="pAct"><button class="btn sm ${sd === 'Sell Side' ? 'primary' : ''}" data-lead="sell:${l.id}">Add as sell side</button><button class="btn sm ${sd === 'Buy Side' ? 'primary' : ''}" data-lead="buy:${l.id}">Add as buy side</button><button class="btn sm" data-lead="both:${l.id}">Both</button><button class="btn sm ghost" data-lead="no:${l.id}">Not a fit</button></div></div>`;
 }
@@ -212,7 +216,10 @@ function bind(all) {
   $('[data-clear]', root)?.addEventListener('click', () => { flt = null; draw(); });
   $$('[data-side]', root).forEach(b => b.onclick = () => { side = b.dataset.side; draw(); });
   $('[data-more]', root)?.addEventListener('click', () => { showAllLeads = !showAllLeads; draw(); });
-  $$('[data-upd]', root).forEach(b => b.onclick = () => { const i = find(b.dataset.upd); if (i) updateModal(i); });
+  $$('[data-upd]', root).forEach(b => { const open = () => { const i = find(b.dataset.upd); if (i) updateModal(i); }; b.onclick = open; b.onkeydown = e => { if (e.target === b && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(); } }; });
+  $$('[data-adv]', root).forEach(b => b.onclick = async e => { e.stopPropagation(); const i = find(b.dataset.adv); if (!i) return; b.disabled = true; if (await advance(i)) await reload(); else b.disabled = false; });
+  $$('[data-dm]', root).forEach(b => b.onclick = e => { e.stopPropagation(); const i = find(b.dataset.dm); if (i) dmModal({ name: i.person?.name || i.name, url: i.person?.linkedin_url, personId: i.person?.id, fallback: i.person?.last_inbound_message }); });
+  $$('[data-ldm]', root).forEach(b => b.onclick = () => { const l = D.leads.find(x => x.id === b.dataset.ldm); if (l) dmModal({ name: l.name, url: l.linkedin_url, leadId: l.id, fallback: l.reply_text }); });
   $$('[data-q]', root).forEach(b => b.onclick = async () => {
     const i = find(b.dataset.k); if (!i) return; b.disabled = true;
     const q = b.dataset.q, now = new Date().toISOString();
@@ -269,6 +276,43 @@ async function promoteLead(l, sd) {
 async function rejectLead(l) {
   if (fail(await sb.from('lead_intake').update({ decision: 'not_qualified', reviewed_at: nowIso(), reviewed_by: state.user?.id }).eq('id', l.id), 'Update lead')) return false;
   toast('Marked not a fit'); return true;
+}
+
+// One click forward. The update window still lets you set any stage (or go back).
+async function advance(i) {
+  const nx = nextStage(i); if (!nx) return false;
+  const now = nowIso();
+  if (i.kind === 'deal') {
+    if (fail(await sb.from('opportunities').update({ pipeline_stage: nx, stage: nx, updated_at: now }).eq('id', i.id), 'Move')) return false;
+    await logActivity(i.id, `Stage: ${i.stage || '—'} → ${nx}`);
+  } else if (fail(await sb.from('people').update({ pipeline_stage: nx, updated_at: now }).eq('id', i.id), 'Move')) return false;
+  toast(`${i.name} → ${nx}`); return true;
+}
+
+// Everything they've sent us: every reply the LinkedIn tool logged (full text), plus any thread saved with the HQ extension.
+async function dmModal({ name, url, personId, leadId, fallback }) {
+  const s = slug(url);
+  const { el } = modal({ title: name || 'Messages', submit: '', wide: true, body: '<div class="empty">Loading messages…</div>' });
+  const ors = [s && `linkedin_url.ilike.%${s}%`, personId && `person_id.eq.${personId}`, leadId && `id.eq.${leadId}`].filter(Boolean).join(',');
+  const [li, cv] = await Promise.all([
+    ors ? sb.from('lead_intake').select('id,reply_text,created_at,campaign_name,source_account,reason,confidence,headline,company_name,raw_payload,linkedin_url').or(ors).order('created_at', { ascending: true }).limit(50) : { data: [] },
+    s ? sb.from('dm_conversations').select('*').ilike('prospect_url', `%${s}%`).order('captured_at', { ascending: false }).limit(3) : { data: [] },
+  ]);
+  const rows = (li.data || []).filter((r, idx, a) => a.findIndex(x => (x.reply_text || '') === (r.reply_text || '')) === idx);
+  const acct = u => { const a = D?.accts.find(x => slug(x.linkedin_url) === slug(u)); return a ? a.owner_name : ''; };
+  const prof = rows.map(r => r.raw_payload?.eventData?.profileInfo).find(Boolean) || {};
+  const bubble = (who, at, text, mine) => `<div class="pMsg ${mine ? 'me' : ''}"><div class="pMsgMeta">${esc(who)}${at ? ' · ' + esc(at) : ''}</div><div class="pMsgText">${esc(text)}</div></div>`;
+  const threads = (cv.data || []).map(c => `<div class="dmBlock"><h4>Full thread saved from LinkedIn${c.account_name ? ' · ' + esc(c.account_name) : ''} <span class="muted s">${fmtDate(c.captured_at)}</span></h4>
+    <div class="dmThread">${(c.messages || []).map(m => bubble(m.from === 'us' ? (c.account_name || 'Us') : (m.name || name), m.at, m.text, m.from === 'us')).join('')}</div></div>`).join('');
+  const replies = rows.length ? `<div class="dmBlock"><h4>Their replies <span class="muted s">${rows.length} logged by the outreach tool</span></h4>
+    <div class="dmThread">${rows.map(r => bubble(name || 'Them', `${new Date(r.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}${r.source_account ? ' · to ' + (acct(r.source_account) || 'our account') : ''}${r.campaign_name ? ' · ' + r.campaign_name : ''}`, String(r.reply_text || '').replace(/^A lead has replied\s*/i, '').replace(/^\s*Re:\s*/i, ''), false)).join('')}</div>
+    ${rows.at(-1)?.reason ? `<p class="s muted" style="margin:10px 0 0"><b>Why it was qualified:</b> ${esc(rows.at(-1).reason)}${rows.at(-1).confidence != null ? ` (${Math.round(rows.at(-1).confidence * 100)}%)` : ''}</p>` : ''}</div>`
+    : fallback ? `<div class="dmBlock"><h4>Last message</h4><div class="dmThread">${bubble(name || 'Them', '', fallback, false)}</div></div>` : '';
+  const about = [prof.jobTitle && prof.company ? `${prof.jobTitle}, ${prof.company}` : prof.headline, prof.email, prof.websiteUrl].filter(Boolean);
+  $('.body', el).innerHTML = `<div class="dmHead">${about.length ? `<div class="s muted">${about.map(esc).join(' · ')}</div>` : ''}
+      <div class="row">${url ? `<a class="btn sm primary" href="${esc(url)}" target="_blank" rel="noopener">Open their LinkedIn ↗</a>` : ''}</div></div>
+    ${threads}${replies || '<div class="empty">No messages logged for this person yet.</div>'}
+    ${threads ? '' : '<p class="s muted" style="margin:12px 0 0">Our side of the conversation is not logged by the outreach tool. Save the chat with the HQ button in LinkedIn (browser extension) to see the full two-way thread here.</p>'}`;
 }
 
 // ---- Modals ----

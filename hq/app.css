@@ -663,3 +663,17 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .pTabs button.on::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;background:var(--brass)}
 .pHint{margin:0;padding:12px 20px 4px;font-size:var(--fs-xs);color:var(--muted)}
 @media(max-width:700px){.pTabs{overflow-x:auto;flex-wrap:nowrap!important}.pTabs button{white-space:nowrap}}
+
+.pCardAct{display:flex;gap:6px;margin-top:2px}.pCardAct:empty{display:none}
+.pCardAct .btn{height:26px;padding:0 9px}
+.pCard:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.dmHead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.dmBlock+.dmBlock{margin-top:18px}
+.dmBlock h4{margin:0 0 10px;font-size:var(--fs-s);font-weight:600}
+.dmThread{display:flex;flex-direction:column;gap:10px;max-height:56vh;overflow:auto;padding:12px;border-radius:12px;background:var(--sunk)}
+.pMsg{flex:none;max-width:86%;align-self:flex-start}
+.pMsg.me{align-self:flex-end}
+.pMsgMeta{font-size:11px;color:var(--muted);margin:0 4px 3px}
+.pMsg.me .pMsgMeta{text-align:right}
+.pMsgText{padding:10px 12px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:var(--fs-s);line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.pMsg.me .pMsgText{background:var(--inv);color:var(--inv-ink);border-color:var(--inv)}

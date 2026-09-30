@@ -50,7 +50,7 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Flags: ours 3d warn / 7d red; theirs 7d warn / 14d red; nobody owns the move; no next step; overdue task; no movement 21d.
   Layout: slim header + filter chips, stage board first, then one tabbed card (Needs you | LinkedIn leads | Parked). Chips filter the list and highlight matching board cards. Nav badge = red items. Stage board per side (stage lists mirror `pipeline.js` at the root); third tab **Both** = `people.primary_side='Both'` (IBs that are also capital), relationships only with a short stage list (deals can't be Both: `opportunities.side` check).
 - Leads panel: `lead_intake` rows with no `person_id`, not reviewed, not `not_qualified`. "Add as sell/buy side" inserts/reuses a
-  `people` row, adds a task (owner from the lead's `source_account` profile slug) and stamps the lead. Quick actions write
+  `people` row, adds a task (owner from the lead's `source_account` profile slug) and stamps the lead. Quick actions ("Next stage →" on cards and rows moves one stage; "DMs" opens every logged reply from `lead_intake` plus any extension-saved `dm_conversations` thread) write
   `waiting_on`/`waiting_on_since` to the deal and its person. Old board is linked in the nav as "Old pipeline board".
 
 ## Resources (lead magnets)
