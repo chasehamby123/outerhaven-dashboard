@@ -73,7 +73,7 @@ Today, Schedule, Resources. RLS helpers: `can_access_daily_ops()` (admin or ops)
 - UI (redesigned 30 Sept): navy ink on cool mist, brass (`--brass`) as the one brand accent, serif page titles, and a
   colour per account (`--c1`…`--c12`, mapped in `acIdx()` in `hq/core.js`; use `avatar()` / `acctChip()` / `data-ac`).
   Light/dark/tan via tokens in `hq/app.css`; every colour is a token. No pill-shaped primary buttons, no decorative gradients.
-- Today: opening it with overdue work (earlier this week, or today's slots already ended) shows `hq/whip.js`, a pixel
+- Today is about today only (no week history there; that lives on Overview). Opening it with today's slots already ended and unticked shows `hq/whip.js`, a pixel
   knight whipping a slave sprite with CRACK! / "Work harder!" (user asked for it; shown to everyone incl. ops). Nav badge
   on Today = tasks left (red = overdue). Must work at 390px wide with no
   horizontal page scroll.

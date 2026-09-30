@@ -79,7 +79,7 @@ const endMin = r => r.end_time ? opMin(r.end_time) : opMin(r.start_time) + 45;
 const dur = m => { m = Math.max(0, Math.round(m)); const h = Math.floor(m / 60); return h ? `${h} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`; };
 // Today's open tasks whose slot has already ended, plus anything still open from earlier this week.
 const lateToday = () => { const now = nowMin(); return rows.filter(r => OPEN(r) && endMin(r) <= now); };
-export const overdueNow = () => [...past.filter(OPEN).map(r => ({ r, when: `${dayLabel(r.work_date)} · ${fmtTime(r.start_time)}` })), ...lateToday().map(r => ({ r, when: fmtTime(r.start_time) }))];
+export const overdueNow = () => lateToday().map(r => ({ r, when: fmtTime(r.start_time) }));
 
 const justDone = new Map(); // task id → time ticked, so only that row animates
 function draw() {
@@ -90,8 +90,6 @@ function draw() {
   const current = rows.find(r => r.status !== 'done' && opMin(r.start_time) <= now && now <= endMin(r));
   const pending = rows.filter(r => r.status !== 'done'), next = current || pending.find(r => opMin(r.start_time) >= now) || pending[0];
   const late = new Set(lateToday().map(r => r.id));
-  const w = week(), wTotal = w.reduce((n, x) => n + x.total, 0), wDone = w.reduce((n, x) => n + x.done, 0);
-  const missed = past.filter(OPEN).length;
   const dayName = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
   const headline = !total ? 'Nothing scheduled yet' : !left ? 'All done for today' : `${left} task${left === 1 ? '' : 's'} left today`;
   let whenTxt = '';
@@ -106,9 +104,8 @@ function draw() {
     <div>
       <span class="date">${esc(dayName)} · Malaysia time</span>
       <h1>${esc(headline)}</h1>
-      <div class="stats"><span><b>${done}/${total}</b>done today</span><span><b>${wTotal ? Math.round(wDone / wTotal * 100) : 0}%</b>this week</span>${late.size ? `<span class="bad"><b>${late.size}</b>late today</span>` : ''}${missed ? `<span class="bad"><b>${missed}</b>missed this week</span>` : ''}</div>
-      ${total ? `<div class="segs" role="img" aria-label="${done} of ${total} tasks done">${rows.map(r => `<i data-ac="${acIdx(acctOf(r))}" class="${r.status === 'done' ? 'done' : late.has(r.id) ? 'late' : current && current.id === r.id ? 'now' : ''}" title="${esc(fmtTime(r.start_time) + ' · ' + r.task)}"></i>`).join('')}</div>
-      <div class="segTimes"><span>${fmtTime(rows[0].start_time)}</span><span>${fmtTime(rows.at(-1).start_time)}</span></div>` : ''}
+      <div class="tRing"><svg viewBox="0 0 100 100"><circle class="trk" cx="50" cy="50" r="42"/><circle class="val" cx="50" cy="50" r="42" stroke-dasharray="263.9" stroke-dashoffset="${263.9 * (1 - (total ? done / total : 0))}"/></svg>
+        <div><b>${total ? Math.round(done / total * 100) : 0}%</b><span>${done} of ${total} tasks done${late.size ? ` · <em>${late.size} late</em>` : ''}</span></div></div>
     </div>
     <div class="tNow">
       <label>${current ? 'Now' : next ? 'Up next' : 'Done'}</label>
@@ -116,7 +113,6 @@ function draw() {
       <div class="row"><button class="btn brass sm" id="tMtg">Meeting booked</button>${state.role === 'admin' ? '<button class="btn sm" id="tAdd">Add task</button>' : ''}</div>
     </div>
   </section>
-  ${overdueHtml()}
   <div class="today">
     <div>${total ? `<ul class="checklist">${rows.map(r => {
       const acct = acctOf(r), isNow = current && current.id === r.id, isLate = late.has(r.id);
@@ -127,10 +123,6 @@ function draw() {
       </label></li>`;
     }).join('')}</ul>` : '<div class="card"><div class="empty">No tasks for today yet. They appear once Schedule has posts for today.</div></div>'}
     ${dmCardHtml()}</div>
-    <aside class="todayAside">
-      ${weekStripHtml(w)}
-      ${total && !left ? '<div class="card mtgCard"><b>Run finished.</b><p>Every task is ticked. If a conversation turned into a call, log it with Meeting booked so it counts.</p></div>' : ''}
-    </aside>
   </div>`;
   $$('[data-t]', root).forEach(cb => cb.onchange = () => toggle(cb.dataset.t, cb.checked, cb));
   $$('.checklist a', root).forEach(a => a.addEventListener('click', e => e.stopPropagation())); // open the link, don't tick the task
@@ -139,13 +131,7 @@ function draw() {
   bindDmCard(root, draw);
   $$('[data-late]', root).forEach(b => b.onclick = () => settle(b.dataset.late, 'done'));
   $$('[data-skip]', root).forEach(b => b.onclick = () => settle(b.dataset.skip, 'skipped'));
-  setBadge(left, late.size + missed, total);
-}
-
-function weekStripHtml(w) {
-  return `<div class="card wkStrip"><h3>This week</h3><p>Monday to Sunday, resets every Monday</p>
-    <div class="wkBars">${w.map(x => { const p = x.total ? x.done / x.total : 0, miss = x.d < date && x.list.some(OPEN);
-      return `<div class="${x.d === date ? 'isToday' : ''} ${miss ? 'miss' : ''}" title="${esc(dayLabel(x.d))}: ${x.future ? 'later' : `${x.done} of ${x.total} done`}"><i>${x.future ? '' : `<em style="height:${Math.max(x.total ? 6 : 0, p * 100)}%"></em>`}</i><span>${esc(dayLabel(x.d).slice(0, 2))}</span></div>`; }).join('')}</div></div>`;
+  setBadge(left, late.size, total);
 }
 
 // ---- Nav badge: tasks left today, red when something is late ----
@@ -160,13 +146,10 @@ function setBadge(left, lateCount, total) {
 export async function refreshBadge() {
   if (root?.dataset.page === 'today' && date) return; // Today keeps it current itself
   const d = opsDate();
-  const [t, p] = await Promise.all([
-    sb.from('daily_ops_schedule').select('id,status,start_time,end_time').eq('work_date', d),
-    sb.from('daily_ops_schedule').select('id,status').gte('work_date', weekStart(d)).lt('work_date', d),
-  ]);
-  if (t.error || p.error) return;
+  const t = await sb.from('daily_ops_schedule').select('id,status,start_time,end_time').eq('work_date', d);
+  if (t.error) return;
   const now = nowMin(), open = (t.data || []).filter(OPEN);
-  setBadge(open.length, open.filter(r => endMin(r) <= now).length + (p.data || []).filter(OPEN).length, (t.data || []).length);
+  setBadge(open.length, open.filter(r => endMin(r) <= now).length, (t.data || []).length);
 }
 
 // ---- The whip: armed when someone navigates to Today, fired once the data is fresh ----
@@ -180,7 +163,6 @@ async function checkWhip() {
   showWhip(list.map(x => ({ when: x.when, task: x.r.task })), () => {
     const firstToday = list.find(x => x.r.work_date === date);
     if (firstToday) { const li = root.querySelector(`[data-row="${firstToday.r.id}"]`); li?.scrollIntoView({ behavior: 'smooth', block: 'center' }); li?.classList.add('flash'); return; }
-    const od = root.querySelector('.overdue'); if (od) { od.open = true; od.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   });
 }
 
@@ -190,15 +172,6 @@ function confetti() {
   const cols = ['var(--brass)', 'var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c6)', 'var(--c7)'];
   c.innerHTML = Array.from({ length: 70 }, (_, i) => `<i style="left:${Math.random() * 100}%;background:${cols[i % cols.length]};--dx:${(Math.random() * 2 - 1) * 160}px;--rot:${Math.random() * 720 - 360}deg;animation-delay:${Math.random() * .35}s;animation-duration:${1.2 + Math.random() * .9}s"></i>`).join('');
   document.body.appendChild(c); setTimeout(() => c.remove(), 2600);
-}
-
-// Earlier this week, still open: one red line, collapsed. Resets on Monday.
-function overdueHtml() {
-  const open = past.filter(OPEN); if (!open.length) return '';
-  const list = open.slice().reverse();
-  return `<details class="overdue"><summary><b>${open.length} unfinished from earlier this week</b><span class="s">Show</span></summary>
-    <ul class="odList">${list.map(r => `<li><span class="s muted">${esc(dayLabel(r.work_date))} · ${fmtTime(r.start_time)}</span><b>${esc(r.task)}</b>
-      <span class="row" style="gap:6px"><button class="btn sm primary" data-late="${r.id}">Done now</button><button class="btn sm ghost" data-skip="${r.id}">Skip</button></span></li>`).join('')}</ul></details>`;
 }
 
 // Week history for the Overview page: loads its own data so Overview doesn't depend on Today being open.
