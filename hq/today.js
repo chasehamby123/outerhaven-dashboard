@@ -99,7 +99,12 @@ function draw() {
       : st > now ? `${fmtTime(next.start_time)} · starts in ${dur(st - now)}` : `${fmtTime(next.start_time)} · ${dur(now - en)} overdue`;
   }
   const fresh = [...justDone].filter(([, t]) => Date.now() - t < 1200).map(([id]) => id);
+  const upcoming = rows.filter(r => r.status !== 'done' && !late.has(r.id) && !(current && current.id === r.id) && !(next && !current && next.id === r.id)).slice(0, 5);
+  const comingHtml = upcoming.length ? `<section class="card comingUp"><header><div><h2>Coming up</h2><p>${upcoming.length === 5 ? 'Next 5 tasks' : `${upcoming.length} more after this`}</p></div></header>
+    <ul>${upcoming.map(r => { const acct = acctOf(r); return `<li ${acct ? `data-ac="${acIdx(acct)}"` : ''}>${acct ? avatar(acct) : ''}<span class="t">${esc(r.task)}</span><time>${fmtTime(r.start_time)}</time></li>`; }).join('')}</ul></section>` : '';
+  const asideHtml = comingHtml + dmCardHtml();
   root.innerHTML = `
+  <div class="tPage${asideHtml ? ' hasAside' : ''}"><div class="tMain">
   <section class="tHero">
     <div>
       <span class="date">${esc(dayName)} · Malaysia time</span>
@@ -123,8 +128,8 @@ function draw() {
         <span class="what"><span class="t">${acct ? avatar(acct) : ''}<b>${esc(r.task)}</b>${isNow ? '<span class="nowTag">Now</span>' : isLate ? '<span class="lateTag">Late</span>' : ''}</span>${r.notes ? `<small>${linkify(r.notes)}</small>` : ''}${taskLinks(r)}${r.status === 'done' && r.completed_by_name ? `<small class="up">Done by ${esc(r.completed_by_name)}</small>` : ''}</span>
       </label></li>`;
     }).join('')}</ul>` : '<div class="card"><div class="empty">No tasks for today yet. They appear once Schedule has posts for today.</div></div>'}
-    ${dmCardHtml()}</div>
-  </div>`;
+    </div>
+  </div></div>${asideHtml ? `<aside class="todayAside">${asideHtml}</aside>` : ''}</div>`;
   $$('[data-t]', root).forEach(cb => cb.onchange = () => toggle(cb.dataset.t, cb.checked, cb));
   $$('.checklist a', root).forEach(a => a.addEventListener('click', e => e.stopPropagation())); // open the link, don't tick the task
   $('#tAdd', root)?.addEventListener('click', addTask);

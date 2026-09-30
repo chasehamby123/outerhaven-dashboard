@@ -38,7 +38,7 @@ Today, Schedule, Resources. RLS helpers: `can_access_daily_ops()` (admin or ops)
   (includes ours); only use it as a fallback before a thread is scraped. Reply quota: 20 comments/account/day.
 - `growth_settings` (id 1): scraper on/off (`scrape_enabled`), `scrape_hour`, `monthly_budget`, resource cap and
   Drive folder.
-- Scraper: edge function `daily-ops-linkedin-auto` (Apify actors atomus/linkedin-posts-scraper-pro and
+- Scraper (v7: comment threads run one Apify run per post inside a 120 s budget, unfinished runs are aborted and stay pending): edge function `daily-ops-linkedin-auto` (Apify actors atomus/linkedin-posts-scraper-pro and
   comments-scraper-pro), pg_cron every 30 min, runs once a day after `scrape_hour` MYT. Log:
   `daily_ops_linkedin_auto_log`. The user turned it off on 28 Sept; only they turn it back on.
 - Google Sheet "OuterHaven LinkedIn Accounts KPI" (id `1RGhFmIzQDCulzW6EVlFpVl8mmWEn_QU7rbSnzq1I01g`): HQ reads it via

@@ -1,4 +1,4 @@
-// daily-ops-linkedin-auto · v2 (Outerhaven HQ)
+// daily-ops-linkedin-auto · v7 (Outerhaven HQ)
 // Changes from v1:
 //  1. FIX: posts are matched by the same key the database trigger stores (derived from the post URL),
 //     not the scraper's activity id. Reshared posts no longer crash the run with a duplicate-key error
@@ -10,6 +10,7 @@
 //  7. (v5) Every posts pass (automatic or Run now) saves each original post's creative to storage, so HQ can
 //     show it after LinkedIn's image links expire.
 //  8. (v6) Comments from our own accounts don't count: unreplied/audience counts come from recount_post_comments().
+//  9. (v7) Comment threads: one Apify run per post inside a 120 s budget; unfinished runs are aborted and the post stays pending.
 //  5. (v3) Daily mode (default): one scrape a day at scrape_hour Malaysia time: posts, then comment threads.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -124,18 +125,49 @@ async function runApify(token: string, actor: string, input: unknown, timeoutMs 
   } finally { clearTimeout(timer); }
 }
 
+// v7: start the actor run, poll it, and abort it if our time budget runs out (a fetch that just gives up leaves the
+// run going and billed on Apify). Used for comment threads, where one big post can take minutes.
+async function runApifyBudgeted(token: string, actor: string, input: unknown, deadline: number) {
+  const id = actor.replace("/", "~"), headers = { "content-type": "application/json", authorization: `Bearer ${token}` };
+  const start = await fetch(`https://api.apify.com/v2/acts/${id}/runs`, { method: "POST", headers, body: JSON.stringify(input) });
+  const sraw = await start.text(); let sdata: any = null; try { sdata = JSON.parse(sraw); } catch { }
+  if (!start.ok || !sdata?.data?.id) throw new Error(`Apify ${actor} start returned ${start.status}: ${sraw.slice(0, 600)}`);
+  const runId = sdata.data.id as string, dataset = sdata.data.defaultDatasetId as string;
+  let status = "RUNNING";
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 3000));
+    const r = await fetch(`https://api.apify.com/v2/actor-runs/${runId}`, { headers });
+    const d: any = await r.json().catch(() => null); status = d?.data?.status || status;
+    if (["SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"].includes(status)) break;
+  }
+  if (status !== "SUCCEEDED") {
+    if (!["FAILED", "ABORTED", "TIMED-OUT"].includes(status)) { try { await fetch(`https://api.apify.com/v2/actor-runs/${runId}/abort`, { method: "POST", headers }); } catch { } }
+    throw new Error(status === "RUNNING" || status === "READY" ? `Apify ${actor} still running when the time budget ran out; run stopped, post left pending` : `Apify ${actor} run ${status}`);
+  }
+  const items = await fetch(`https://api.apify.com/v2/datasets/${dataset}/items?clean=true&format=json`, { headers });
+  const data: any = await items.json().catch(() => []);
+  if (!items.ok) throw new Error(`Apify dataset returned ${items.status}`);
+  return Array.isArray(data) ? data : [];
+}
+
+// v7: one Apify run per post (a 4-post batch with replies blew the 95 s limit), inside a shared time budget.
+// Whatever doesn't finish stays "comments_pending" and is picked up by the next run.
+const COMMENTS_BUDGET_MS = 120000;
 async function syncComments(apifyToken: string) {
   const postsRes = await sb.from("daily_ops_posts").select("*").eq("is_repost", false).gt("commenter_count", 0)
-    .in("scrape_status", ["comments_pending", "comments_capped"]).order("posted_at", { ascending: false }).limit(4);
+    .in("scrape_status", ["comments_pending", "comments_capped"]).order("posted_at", { ascending: false }).limit(8);
   if (postsRes.error) throw new Error(`comment targets: ${postsRes.error.message}`);
   const targets = postsRes.data || [];
   if (!targets.length) return { mode: "comments", actor_runs_estimate: 0, comment_posts_processed: 0, comment_records_saved: 0, unreplied_total: 0 };
-  const rows = await runApify(apifyToken, "atomus/linkedin-comments-scraper-pro", {
-    postUrls: targets.map((p: any) => p.linkedin_post_url), maxComments: 250, sortBy: "date", metadataOnly: false, includeReplies: true, maxRepliesPerComment: 50,
-  });
-  let processed = 0, stored = 0, unrepliedTotal = 0; const errors: string[] = [];
+  const deadline = Date.now() + COMMENTS_BUDGET_MS;
+  let processed = 0, stored = 0, unrepliedTotal = 0, runs = 0; const errors: string[] = [];
   for (const post of targets) {
+    if (deadline - Date.now() < 20000) break;
     try {
+      runs++;
+      const rows = await runApifyBudgeted(apifyToken, "atomus/linkedin-comments-scraper-pro", {
+        postUrls: [post.linkedin_post_url], maxComments: 250, sortBy: "date", metadataOnly: false, includeReplies: true, maxRepliesPerComment: 50,
+      }, deadline);
       const pr = rows.filter((r: any) => {
         if (r?.type === "summary" || r?.type === "metadata") return false;
         const inputUrl = canon(clean(r?._metadata?.post_url) || clean(r?.post_url) || clean(r?.postUrl));
@@ -162,9 +194,10 @@ async function syncComments(apifyToken: string) {
       const up = await sb.from("daily_ops_posts").update({ scrape_status: num(post.commenter_count) > 250 ? "comments_capped" : "ok", last_scraped_at: new Date().toISOString(), source_actor: "atomus/linkedin-comments-scraper-pro", updated_at: new Date().toISOString() }).eq("id", post.id);
       if (up.error) throw new Error(`update unreplied: ${up.error.message}`);
       processed++; stored += rowsToStore.length; unrepliedTotal += unreplied;
-    } catch (e) { errors.push(`${post.post_name || post.id}: ${e instanceof Error ? e.message : String(e)}`); }
+    } catch (e) { errors.push(`${post.post_name || post.id}: ${e instanceof Error ? e.message : String(e)}`); if (/time budget/.test(String(e))) break; }
   }
-  return { mode: "comments", actor_runs_estimate: 1, comment_posts_processed: processed, comment_posts_queued: targets.length, comment_records_saved: stored, unreplied_total: unrepliedTotal, errors };
+  if (!processed && errors.length) throw new Error(errors[0]); // nothing saved: surface the real reason in HQ
+  return { mode: "comments", actor_runs_estimate: runs, comment_posts_processed: processed, comment_posts_queued: targets.length, comment_records_saved: stored, unreplied_total: unrepliedTotal, errors };
 }
 
 // Posts pass (v4). One Apify call per run: each profile's 10 most recent items. We decide ourselves what is an
