@@ -194,23 +194,47 @@ function sceneSvg() {
   </svg>`;
 }
 
-// A short whip crack: a noise snap through a high band-pass plus a low thump. Muted with the toggle.
+// Cartoon whip, not a realistic one: "ka-PISSH". A rising whoosh (wind-up), a hard bright snap with a
+// laser-like pitch dive, then a fizzing tail with an echo. Starts ~150 ms before the visual hit so the snap lands on it.
 let audio = null;
 const soundOn = () => { try { return localStorage.getItem('hq-whip-sound') !== 'off'; } catch { return true; } };
+function noise(ctx, secs, curve) {
+  const len = Math.floor(ctx.sampleRate * secs), buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * curve(i / len);
+  const s = ctx.createBufferSource(); s.buffer = buf; return s;
+}
 function crackSound() {
   if (!soundOn()) return;
   try {
     audio ||= new (window.AudioContext || window.webkitAudioContext)();
     if (audio.state === 'suspended') audio.resume();
-    const t = audio.currentTime, len = Math.floor(audio.sampleRate * 0.12);
-    const buf = audio.createBuffer(1, len, audio.sampleRate), d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 6);
-    const src = audio.createBufferSource(); src.buffer = buf;
-    const bp = audio.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2600; bp.Q.value = 0.7;
-    const g = audio.createGain(); g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-    src.connect(bp).connect(g).connect(audio.destination); src.start(t);
-    const o = audio.createOscillator(), og = audio.createGain(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(50, t + 0.08);
-    og.gain.setValueAtTime(0.35, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.1); o.connect(og).connect(audio.destination); o.start(t); o.stop(t + 0.12);
+    const ctx = audio, t = ctx.currentTime, hit = t + 0.15;
+    const out = ctx.createGain(); out.gain.value = 0.8;
+    const echo = ctx.createDelay(); echo.delayTime.value = 0.13;
+    const fb = ctx.createGain(); fb.gain.value = 0.3; echo.connect(fb).connect(echo);
+    const wet = ctx.createGain(); wet.gain.value = 0.35; echo.connect(wet).connect(out);
+    out.connect(ctx.destination); out.connect(echo);
+    // 1) whoosh: noise through a band-pass sweeping up, swelling into the snap
+    const w = noise(ctx, 0.2, x => Math.sin(Math.min(1, x) * Math.PI / 2));
+    const wf = ctx.createBiquadFilter(); wf.type = 'bandpass'; wf.Q.value = 3;
+    wf.frequency.setValueAtTime(300, t); wf.frequency.exponentialRampToValueAtTime(5000, hit);
+    const wg = ctx.createGain(); wg.gain.setValueAtTime(0.02, t); wg.gain.exponentialRampToValueAtTime(0.7, hit);
+    w.connect(wf).connect(wg).connect(out); w.start(t);
+    // 2) snap: a hard click of bright noise
+    const c = noise(ctx, 0.05, x => Math.pow(1 - x, 3));
+    const cf = ctx.createBiquadFilter(); cf.type = 'highpass'; cf.frequency.value = 2500;
+    const cg = ctx.createGain(); cg.gain.setValueAtTime(1.2, hit); cg.gain.exponentialRampToValueAtTime(0.001, hit + 0.05);
+    c.connect(cf).connect(cg).connect(out); c.start(hit);
+    // 3) zap: square wave diving from very high to low, the cartoon "pew" in the middle of the crack
+    const z = ctx.createOscillator(); z.type = 'square';
+    z.frequency.setValueAtTime(3600, hit); z.frequency.exponentialRampToValueAtTime(260, hit + 0.16);
+    const zg = ctx.createGain(); zg.gain.setValueAtTime(0.32, hit); zg.gain.exponentialRampToValueAtTime(0.001, hit + 0.18);
+    z.connect(zg).connect(out); z.start(hit); z.stop(hit + 0.2);
+    // 4) "pissh": fizzing tail, hiss that falls away
+    const f = noise(ctx, 0.4, x => Math.pow(1 - x, 2));
+    const ff = ctx.createBiquadFilter(); ff.type = 'highpass'; ff.frequency.setValueAtTime(6000, hit); ff.frequency.exponentialRampToValueAtTime(1800, hit + 0.4);
+    const fg = ctx.createGain(); fg.gain.setValueAtTime(0.5, hit + 0.02); fg.gain.exponentialRampToValueAtTime(0.001, hit + 0.4);
+    f.connect(ff).connect(fg).connect(out); f.start(hit + 0.02);
   } catch { /* no audio, no problem */ }
 }
 
@@ -239,7 +263,8 @@ export function showWhip(list, onWork) {
   let tick = 0;
   const step = () => {
     const i = tick++ % 8;                        // 8 ticks of 150 ms: six of typing wind-up, two of lash
-    if (i === 6) { scene.dataset.f = 'hit'; scene.classList.remove('hit'); void scene.offsetWidth; scene.classList.add('hit'); crackSound(); }
+    if (i === 5) crackSound();                   // the sound leads by 150 ms so its snap lands on the hit frame
+    if (i === 6) { scene.dataset.f = 'hit'; scene.classList.remove('hit'); void scene.offsetWidth; scene.classList.add('hit'); }
     else if (i < 6) { scene.dataset.f = i % 2 ? 'b' : 'a'; scene.classList.remove('hit'); }
   };
   const timer = reduce ? (scene.dataset.f = 'hit', scene.classList.add('hit'), null) : setInterval(step, 150);

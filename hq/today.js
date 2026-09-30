@@ -170,6 +170,8 @@ async function checkWhip() {
   if (!armed || !date || root?.dataset.page !== 'today') return;
   armed = false;
   const list = overdueNow(); if (!list.length) return;
+  // Once per ops day per browser: the whip is a wake-up call, not a toll booth on the Today tab.
+  try { if (localStorage.getItem('hq-whip-day') === date) return; localStorage.setItem('hq-whip-day', date); } catch { /* no storage: fall through and show */ }
   const { showWhip } = await import('./whip.js');
   showWhip(list.map(x => ({ when: x.when, task: x.r.task })), () => {
     const firstToday = list.find(x => x.r.work_date === date);
