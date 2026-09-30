@@ -113,6 +113,7 @@ function draw() {
       <div class="row"><button class="btn brass sm" id="tMtg">Meeting booked</button>${state.role === 'admin' ? '<button class="btn sm" id="tAdd">Add task</button>' : ''}</div>
     </div>
   </section>
+  ${unfinishedHtml()}
   <div class="today">
     <div>${total ? `<ul class="checklist">${rows.map(r => {
       const acct = acctOf(r), isNow = current && current.id === r.id, isLate = late.has(r.id);
@@ -132,6 +133,16 @@ function draw() {
   $$('[data-late]', root).forEach(b => b.onclick = () => settle(b.dataset.late, 'done'));
   $$('[data-skip]', root).forEach(b => b.onclick = () => settle(b.dataset.skip, 'skipped'));
   setBadge(left, late.size, total);
+}
+
+// Earlier this week, never finished: one red line so he knows, collapsed so today stays the focus.
+// Opens to settle each one (done late or skipped). Resets every Monday.
+function unfinishedHtml() {
+  const open = past.filter(OPEN); if (!open.length) return '';
+  const days = [...new Set(open.map(r => dayLabel(r.work_date)))];
+  return `<details class="overdue"><summary><b>You didn't finish ${open.length} task${open.length === 1 ? '' : 's'} earlier this week</b><span class="muted" style="color:inherit;opacity:.8">${esc(days.join(', '))}</span><span class="s">Sort them out</span></summary>
+    <ul class="odList">${open.slice().reverse().map(r => `<li><span class="s muted">${esc(dayLabel(r.work_date))} · ${fmtTime(r.start_time)}</span><b>${esc(r.task)}</b>
+      <span class="row" style="gap:6px"><button class="btn sm primary" data-late="${r.id}">Done now</button><button class="btn sm ghost" data-skip="${r.id}">Skip</button></span></li>`).join('')}</ul></details>`;
 }
 
 // ---- Nav badge: tasks left today, red when something is late ----

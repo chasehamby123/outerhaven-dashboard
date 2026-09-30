@@ -570,3 +570,4 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .tRing span{display:block;margin-top:6px;font-size:var(--fs-s);color:var(--side-ink)}
 .tRing em{font-style:normal;color:var(--live);font-weight:600}
 .tHero{max-width:1100px}
+.tHero+.overdue{max-width:1100px}
