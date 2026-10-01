@@ -118,8 +118,9 @@ export async function refreshPipelineBadge() {
 }
 
 // ---- Render ----
-export async function renderPipeline(r) {
+export async function renderPipeline(r, sub) {
   root = r;
+  if (sub === 'leads' && tab !== 'leads') { tab = 'leads'; flt = null; history.replaceState(null, '', '#/pipeline'); }
   const fresh = D && Date.now() - loadedAt < 8000;
   if (!D) root.innerHTML = '<div class="empty">Loading pipeline…</div>';
   if (!fresh) {
@@ -421,4 +422,20 @@ function addDealModal() {
   // Stage list follows the side.
   const f = $('.modal'), sd = $('[name=side]', f), stg = $('[name=stage]', f);
   sd.onchange = () => { const l = stagesFor(sd.value); stg.innerHTML = opts(l, sd.value === 'Buy Side' ? 'Relevant Deal Identified' : 'Opportunity Received'); };
+}
+
+// Overview card: the people who replied to outreach and are still waiting on us, hottest first.
+let rqHtml = '';
+export async function renderReplyQueue(el) {
+  if (rqHtml && !el.innerHTML) el.innerHTML = rqHtml;
+  const r = await sb.from('lead_intake').select('id,name,headline,company_name,reply_text,decision,created_at,source_account,linkedin_url').is('person_id', null).is('reviewed_at', null).neq('decision', 'not_qualified').order('created_at', { ascending: false }).limit(300);
+  if (r.error || !el.isConnected) return;
+  const seen = new Set(), list = (r.data || []).filter(l => { const k = slug(l.linkedin_url) || l.id; if (seen.has(k)) return false; seen.add(k); return true; })
+    .map(l => ({ l, h: leadHeat(l) })).filter(x => x.h.score >= 0).sort((a, b) => b.h.score - a.h.score || String(b.l.created_at).localeCompare(String(a.l.created_at)));
+  const hot = list.filter(x => x.h.label === 'Wants to talk').length, acct = u => { const s = slug(u); return s.startsWith('peter') ? 'Peter' : s.startsWith('chase') ? 'Chase' : s.startsWith('tengku') ? 'Tengku' : s ? s.split('-')[0] : '—'; };
+  el.innerHTML = `<section class="card rqCard"><header><div><h2>Waiting on our reply</h2><p>${list.length} people answered our outreach and haven't heard back${hot ? ` · <b class="rqHot">${hot} asked for a call</b>` : ''}. Hottest first.</p></div><a class="btn sm primary" href="#/pipeline/leads">Work them in Pipeline →</a></header>
+    ${list.length ? `<ul class="rqList">${list.slice(0, 8).map(({ l, h }) => `<li><span class="rqName">${l.linkedin_url ? `<a href="${esc(l.linkedin_url)}" target="_blank" rel="noopener">${esc(l.name || 'Unknown')} ↗</a>` : esc(l.name || 'Unknown')}<small>${esc(l.company_name || l.headline || '')}</small></span>
+      <span class="rqWhy">${h.label ? `<b class="pFlag ${h.tone}">${h.label}</b>` : ''}<span>“${esc(String(l.reply_text || '').replace(/^A lead has replied\s*(Re:)?\s*/i, '').slice(0, 90))}…”</span></span>
+      <span class="rqMeta">${esc(acct(l.source_account))}'s account<b class="${daysSince(l.created_at) >= 7 ? 'bad' : ''}">${daysSince(l.created_at)}d waiting</b></span></li>`).join('')}</ul>${list.length > 8 ? `<div class="rqMore"><a href="#/pipeline/leads">+ ${list.length - 8} more in Pipeline → LinkedIn leads</a></div>` : ''}` : '<div class="empty">Nobody is waiting on a reply.</div>'}</section>`;
+  rqHtml = el.innerHTML;
 }

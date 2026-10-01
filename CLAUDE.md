@@ -60,6 +60,9 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   verified (scraper off / no posts run since), a popup shows once per ops day per browser (localStorage `hq-postcheck-<day>`)
   with "Check LinkedIn now" = one manual posts run (~$0.18). It never turns the scraper on.
 
+- Second card on Overview: "Waiting on our reply" (`renderReplyQueue` in pipeline.js): top 8 unanswered outreach replies by `leadHeat`, links to `#/pipeline/leads` (opens the LinkedIn leads tab).
+- HQ checks `/hq/main.js` ETag every 5 min and shows an "HQ has been updated · Reload" bar, because people leave the tab open for days.
+
 ## Pipeline (HQ → Pipeline, `hq/pipeline.js`, admin only)
 - Reads `opportunities`, `people`, `tasks`, `lead_intake` (same tables as the old `shared.html` board; both stay in sync).
   Item = live deal (`pipeline_active`), or a live person with no live deal. Ball = `waiting_on` ('us'/'them'/null), clock = `waiting_on_since`.

@@ -6,6 +6,7 @@ import { commentsNoMeetings } from './insights.js';
 import { scraperStatus } from './scraper.js';
 import { renderWeekHistory } from './today.js';
 import { renderPostCheck } from './postcheck.js';
+import { renderReplyQueue } from './pipeline.js';
 
 export const SOURCES = {
   inbound_post: ['Inbound · from a post', 'in'], inbound_dm: ['Inbound · DM', 'in'], comment_to_dm: ['Comment → DM', 'in'],
@@ -107,6 +108,7 @@ export function renderOverview(root) {
     <button class="btn sm" id="ovRefresh">Refresh sheet</button><a class="btn sm ghost" href="${SHEET_URL}" target="_blank" rel="noopener">Open sheet ↗</a></div></div>
   <div class="stack">
     <div id="ovPosts"></div>
+    <div id="ovReplies"></div>
     <div class="kpis">
       ${kpi('Meetings booked', fmt(booked), 'meetingsBooked', '', true)}
       ${kpi('Impressions', fmt(imp), 'impressions')}
@@ -142,6 +144,7 @@ export function renderOverview(root) {
   root.querySelectorAll('[data-sort]').forEach(th => th.onclick = () => { const k = th.dataset.sort; if (k === sortKey) sortAsc = !sortAsc; else { sortKey = k; sortAsc = k === 'account'; } renderOverview(root); });
   root.querySelector('#ovWeek')?.addEventListener('change', e => { week = e.target.value; renderOverview(root); });
   const ovPosts = root.querySelector('#ovPosts'); if (ovPosts) renderPostCheck(ovPosts);
+  const ovReplies = root.querySelector('#ovReplies'); if (ovReplies) renderReplyQueue(ovReplies);
   const ovTasks = root.querySelector('#ovTasks'); if (ovTasks) renderWeekHistory(ovTasks);
   root.querySelector('#ovRefresh')?.addEventListener('click', async e => { e.target.disabled = true; e.target.textContent = 'Refreshing…'; await loadSheet(); });
 }

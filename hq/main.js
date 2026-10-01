@@ -13,7 +13,7 @@ const ROUTES = {
   overview: { label: 'Overview', render: r => renderOverview(r) },
   growth: { label: 'Growth', render: (r, sub) => renderGrowth(r, sub) },
   schedule: { label: 'Schedule', render: (r, sub) => renderSchedule(r, sub), ops: true },
-  pipeline: { label: 'Pipeline', render: r => renderPipeline(r) },
+  pipeline: { label: 'Pipeline', render: (r, sub) => renderPipeline(r, sub) },
   resources: { label: 'Resources', render: (r, sub) => renderResources(r, sub), ops: true },
 };
 
@@ -135,6 +135,22 @@ async function start() {
   await Promise.all([load(), loadSheet()]);
   subscribe();
 }
+
+// HQ is a single-page app that people leave open for days: when a new version is deployed, offer a reload.
+let builtTag = null;
+async function checkUpdate() {
+  try {
+    const r = await fetch('/hq/main.js', { method: 'HEAD', cache: 'no-store' });
+    const tag = r.headers.get('etag') || r.headers.get('last-modified'); if (!tag) return;
+    if (builtTag == null) { builtTag = tag; return; }
+    if (tag !== builtTag && !document.querySelector('.hqUpdate')) {
+      const b = document.createElement('div'); b.className = 'hqUpdate';
+      b.innerHTML = '<span>HQ has been updated.</span><button class="btn sm brass">Reload</button>';
+      b.querySelector('button').onclick = () => location.reload(); document.body.appendChild(b);
+    }
+  } catch { }
+}
+if (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) { checkUpdate(); setInterval(checkUpdate, 5 * 60000); document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); }); }
 
 start();
 window.__hq = { store }; // handy for debugging in the console
