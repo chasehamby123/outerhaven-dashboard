@@ -102,10 +102,12 @@
     button.go{height:34px;border:0;border-radius:6px;background:#111;color:#fff;font-size:13px;font-weight:600;cursor:pointer}
     button.go:disabled{opacity:.5;cursor:default}
     button.link{background:none;border:0;padding:0;color:#111;text-decoration:underline;font-size:12px;cursor:pointer;justify-self:start}
+    .pick{display:grid;grid-template-columns:1fr 1fr;gap:6px}.pick select{height:30px;border:1px solid #d8d8d4;border-radius:6px;font-size:12px;background:#fff;color:#111;min-width:0}
     .msg{font-size:12px;color:#6b6b6b;min-height:1em;white-space:pre-wrap}.msg.bad{color:#b42318}.msg.good{color:#067647}
   </style>
   <div class="card" id="card">
     <div><div class="who" id="who">—</div><div class="sub" id="sub"></div></div>
+    <div class="pick"><select id="me" title="Who is saving / who booked"></select><select id="acct" title="Which LinkedIn account this is"></select></div>
     <label><input type="checkbox" id="mtg"> A meeting is booked with this person</label>
     <button class="go" id="save">Save conversation to HQ</button>
     <button class="link" id="full">Load full history first (long chats)</button>
@@ -124,20 +126,30 @@
     $('who').textContent = p.prospect_name || 'This conversation';
     $('sub').textContent = `${p.messages.length} messages visible · ${ours} from ${p.our_name || 'us'}`;
   }
-  $('pill').onclick = () => { $('card').classList.toggle('open'); say(''); refresh(); };
+  // Who's saving and which account: remembered per browser profile, changeable right here.
+  async function loadPicks() {
+    const s = await new Promise(ok => chrome.runtime.sendMessage({ type: 'setup' }, ok));
+    if (!s?.ok) { say(s?.error || 'Could not reach HQ', 'bad'); return; }
+    const o = (list, sel, ph) => `<option value="">${ph}</option>` + list.map(v => `<option ${v === sel ? 'selected' : ''}>${v}</option>`).join('');
+    $('me').innerHTML = o(s.team, s.prefs.who, 'You are…'); $('acct').innerHTML = o(s.accounts, s.prefs.account, 'Account…');
+  }
+  const savePicks = () => chrome.runtime.sendMessage({ type: 'prefs', prefs: { who: $('me').value, account: $('acct').value } });
+  $('me').onchange = savePicks; $('acct').onchange = savePicks;
+  $('pill').onclick = () => { $('card').classList.toggle('open'); say(''); refresh(); if ($('card').classList.contains('open')) loadPicks(); };
   $('full').onclick = async () => { const t = activeThread(); if (!t) return; await loadHistory(t.root, m => say(m)); refresh(); say('Full history loaded. Now save.'); };
   $('save').onclick = async () => {
     const r = read(); if (!r) { say('Open a conversation first.', 'bad'); return; }
     if (!r.payload.thread_key) { say("Couldn't identify this conversation. Open it in the full Messaging page and try again.", 'bad'); return; }
-    if (!r.payload.our_name) say('Could not read your LinkedIn name; saving anyway.');
+    if (!$('me').value) { say('Pick who you are first.', 'bad'); return; }
+    if (!$('acct').value) { say('Pick which LinkedIn account this is.', 'bad'); return; }
     $('save').disabled = true; say('Saving…');
-    const res = await new Promise(ok => chrome.runtime.sendMessage({ type: 'capture', payload: { ...r.payload, meeting_booked: $('mtg').checked } }, ok));
+    const res = await new Promise(ok => chrome.runtime.sendMessage({ type: 'capture', payload: { ...r.payload, meeting_booked: $('mtg').checked, booked_by: $('me').value, account: $('acct').value } }, ok));
     $('save').disabled = false;
     if (!res?.ok) { say(res?.error || 'Save failed', 'bad'); return; }
     const x = res.result;
     say([`${x.updated ? 'Updated' : 'Saved'} · ${x.messages} messages${x.account_name ? ` · ${x.account_name}'s account` : ''}`,
       x.variant ? `Matched DM test “${x.variant.test}”, version ${x.variant.label}` : 'No DM test version matched the first message',
-      x.replied ? 'They replied' : 'No reply yet', x.meeting_logged ? 'Meeting logged in HQ' : ''].filter(Boolean).join('\n'), 'good');
+      x.replied ? 'They replied' : 'No reply yet', x.meeting_logged ? `Meeting logged in HQ for ${$('me').value}` : ''].filter(Boolean).join('\n'), 'good');
     $('mtg').checked = false;
   };
 

@@ -4,7 +4,7 @@
 import { sb, state, esc, $, $$, toast, fail, modal, opts, avatar, firstName } from './core.js';
 import { opsDate } from './today.js';
 
-export const TEAM = ['Tengku', 'Chase', 'Anaz', 'Peter'];
+export const TEAM = ['Tengku', 'Chase', 'Anaz', 'Peter', 'Razeen'];
 // Who is signed in, as a team first name (emails aren't always first.last).
 export function me() {
   const local = String(state.user?.email || '').split('@')[0].toLowerCase();

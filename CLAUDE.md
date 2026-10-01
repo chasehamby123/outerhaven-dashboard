@@ -89,6 +89,11 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   `growth_meetings` (with `dm_variant_id` / `post_id`). `dm_variant_stats` view gives per-version totals.
 - Today shows the running DM test (tap + Sent / + Reply / Meeting booked) and a "Meeting booked" button.
   Growth → DM tests compares versions; a winner needs 30+ sends per version and p < 0.05.
+- Browser extension v2 (no sign-in): `hq/outerhaven-hq-extension.zip` is a public TEMPLATE with `__OHQ_CAPTURE_KEY__` in
+  background.js. HQ → Growth → DM tests "Download" (dms.js `downloadExtension`) fetches it, gets the key from admin-only RPC
+  `extension_capture_key()` (secret `EXT_CAPTURE_KEY`), injects it with JSZip and downloads a connected copy. `dm-capture`
+  (verify_jwt=false) accepts `x-capture-key` or a user JWT; with the key, `booked_by` (team name) and `account` come from the
+  extension's pickers (remembered per browser profile). Rotate by changing EXT_CAPTURE_KEY (old zips stop working).
 - Browser extension `extension/outerhaven-capture` (MV3; zipped to `hq/outerhaven-hq-extension.zip` for download):
   HQ button on LinkedIn chats → `dm-capture` edge function → `dm_conversations` (one row per thread, re-save updates,
   opening message fuzzy-matched to a DM version via `match_dm_variant`, "meeting booked" creates a growth_meetings row).

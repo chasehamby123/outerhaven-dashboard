@@ -1,15 +1,11 @@
 const $ = id => document.getElementById(id);
 const send = msg => new Promise(r => chrome.runtime.sendMessage(msg, r));
-async function show() {
-  const s = await send({ type: 'status' });
-  $('login').hidden = !!s?.email; $('in').hidden = !s?.email; $('who').textContent = s?.email || '';
-}
-$('login').onsubmit = async e => {
-  e.preventDefault(); $('err').textContent = ''; const b = e.submitter; b.disabled = true; b.textContent = 'Signing in…';
-  const r = await send({ type: 'login', email: $('email').value.trim(), password: $('password').value });
-  b.disabled = false; b.textContent = 'Sign in';
-  if (!r?.ok) { $('err').textContent = r?.error || 'Sign-in failed'; return; }
-  $('password').value = ''; show();
-};
-$('logout').onclick = async () => { await send({ type: 'logout' }); show(); };
-show();
+const opts = (list, sel, ph) => `<option value="">${ph}</option>` + list.map(v => `<option ${v === sel ? 'selected' : ''}>${v}</option>`).join('');
+(async () => {
+  const s = await send({ type: 'setup' });
+  if (!s?.ok) { $('err').textContent = s?.error || 'Could not reach HQ'; return; }
+  $('who').innerHTML = opts(s.team, s.prefs.who, 'Pick your name…');
+  $('acct').innerHTML = opts(s.accounts, s.prefs.account, 'Pick the account…');
+  const save = async () => { await send({ type: 'prefs', prefs: { who: $('who').value, account: $('acct').value } }); $('ok').textContent = $('who').value && $('acct').value ? `Saved. Chats saved here count as ${$('who').value} on ${$('acct').value}'s account.` : ''; };
+  $('who').onchange = save; $('acct').onchange = save; save();
+})();

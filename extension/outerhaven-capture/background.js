@@ -1,41 +1,34 @@
-// Holds the HQ login and talks to Supabase. The LinkedIn page never sees the token.
+// Talks to HQ. No sign-in: this copy carries the team capture key, baked in when an admin downloaded it from HQ.
+// Who you are and which LinkedIn account this browser profile runs are picked once and remembered here.
 const SUPABASE_URL = 'https://nfcysxqdwpdhrdpgxrlo.supabase.co';
 const KEY = 'sb_publishable_nBRZvesX4tz7zUPq5QLYfQ__in76dF5'; // public key, same one the HQ website uses
+const CAPTURE_KEY = '__OHQ_CAPTURE_KEY__'; // replaced with the real key when HQ builds your download
 
-async function auth(path, body) {
-  const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=${path}`, { method: 'POST', headers: { apikey: KEY, 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(/invalid login/i.test(j.error_description || j.msg || '') ? 'Wrong email or password. It is the same login as HQ; if you forgot it, use "Forgot password?" on the HQ sign-in page.' : (j.error_description || j.msg || j.error || `Sign-in failed (${r.status})`));
-  const session = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000, email: j.user?.email || '' };
-  await chrome.storage.local.set({ session });
-  return session;
-}
-async function token() {
-  const { session } = await chrome.storage.local.get('session');
-  if (!session) throw new Error('Not signed in. Click the OuterHaven icon in the toolbar and sign in with your HQ account.');
-  if (session.expires_at - Date.now() > 60000) return session.access_token;
-  return (await auth('refresh_token', { refresh_token: session.refresh_token })).access_token;
-}
-async function capture(payload) {
-  const r = await fetch(`${SUPABASE_URL}/functions/v1/dm-capture`, { method: 'POST', headers: { apikey: KEY, authorization: `Bearer ${await token()}`, 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+async function call(payload) {
+  if (CAPTURE_KEY.startsWith('__')) throw new Error('This copy is not connected. Download the extension from HQ → Growth → DM tests (the download button builds a connected copy).');
+  let r;
+  try { r = await fetch(`${SUPABASE_URL}/functions/v1/dm-capture`, { method: 'POST', headers: { apikey: KEY, 'x-capture-key': CAPTURE_KEY, 'content-type': 'application/json' }, body: JSON.stringify(payload) }); }
+  catch { throw new Error("Can't reach HQ. Check the internet connection and try again."); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.ok) throw new Error(j.error || `HQ returned ${r.status}`);
   return j;
+}
+async function config() {
+  const { cfg } = await chrome.storage.local.get('cfg');
+  if (cfg && Date.now() - cfg.at < 6 * 3600e3) return cfg;
+  const j = await call({ action: 'config' });
+  const fresh = { team: j.team, accounts: j.accounts, at: Date.now() };
+  await chrome.storage.local.set({ cfg: fresh }); return fresh;
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   (async () => {
     try {
-      if (msg.type === 'login') { const s = await auth('password', { email: msg.email, password: msg.password }); await capture({ action: 'whoami' }); reply({ ok: true, email: s.email }); }
-      else if (msg.type === 'logout') { await chrome.storage.local.remove('session'); reply({ ok: true }); }
-      else if (msg.type === 'status') { const { session } = await chrome.storage.local.get('session'); reply({ ok: true, email: session?.email || null }); }
-      else if (msg.type === 'capture') reply({ ok: true, result: await capture(msg.payload) });
+      if (msg.type === 'setup') { const c = await config(); const { prefs } = await chrome.storage.local.get('prefs'); reply({ ok: true, team: c.team, accounts: c.accounts, prefs: prefs || {} }); }
+      else if (msg.type === 'prefs') { await chrome.storage.local.set({ prefs: msg.prefs }); reply({ ok: true }); }
+      else if (msg.type === 'capture') reply({ ok: true, result: await call(msg.payload) });
       else reply({ ok: false, error: 'unknown message' });
-    } catch (e) {
-      if (/failed to fetch|networkerror/i.test(e.message || '')) e = new Error("Can't reach HQ. Check the internet connection and try again.");
-      if (msg.type === 'login') await chrome.storage.local.remove('session'); // wrong role / bad password: don't keep it
-      reply({ ok: false, error: e.message || String(e) });
-    }
+    } catch (e) { reply({ ok: false, error: e.message || String(e) }); }
   })();
   return true; // async reply
 });

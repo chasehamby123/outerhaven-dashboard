@@ -11,22 +11,16 @@
   button.ghost{background:none;color:var(--ink);border:1px solid var(--line)}
   .msg{font-size:12px;color:#b42318;min-height:1em}.ok{color:#067647}
   p{margin:0;color:var(--muted);font-size:12px}
+  select{width:100%;height:32px;margin-top:4px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff}
 </style></head><body>
 <header><b>O</b><strong>OuterHaven HQ</strong></header>
 <main id="out">
-  <form id="login" hidden>
-    <p>Use the <b>same email and password</b> you use to sign in to HQ. You only do this once per browser profile (each AdsPower profile is its own browser).</p>
-    <label>Email<input id="email" type="email" autocomplete="username" required></label>
-    <label>Password<input id="password" type="password" autocomplete="current-password" required></label>
-    <button type="submit">Sign in</button>
-    <div class="msg" id="err"></div>
-    <p><a href="https://outerhaven-dashboard.vercel.app/hq.html" target="_blank" rel="noopener">Forgot it? Reset it on the HQ sign-in page</a></p>
-  </form>
-  <div id="in" hidden>
-    <p class="ok">Signed in as <span id="who"></span></p>
-    <p>Open a conversation on LinkedIn and use the <b>HQ</b> button at the bottom right to save it.</p>
-    <button class="ghost" id="logout">Sign out</button>
-  </div>
+  <p>No sign-in needed. Pick who you are and which LinkedIn account this browser profile runs. It's remembered for this profile.</p>
+  <label>You are<select id="who"></select></label>
+  <label>LinkedIn account in this browser<select id="acct"></select></label>
+  <p class="ok" id="ok"></p>
+  <div class="msg" id="err"></div>
+  <p>Then open a chat on LinkedIn and use the <b>HQ</b> button at the bottom right.</p>
 </main>
 <script src="popup.js"></script>
 </body></html>

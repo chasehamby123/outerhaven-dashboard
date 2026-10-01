@@ -114,7 +114,7 @@ export async function dmTestsView(body) {
   if (D.missing) { body.innerHTML = '<div class="card"><div class="empty">DM tests need the database update (supabase/2026-09-30-dm-tests-analysis.sql).</div></div>'; return; }
   const draw = () => {
     body.innerHTML = `<section class="card"><header><div><h2>DM tests</h2><p>Test DM versions against each other on what matters: replies and meetings per message sent. Each DM sent is one trial, so these reach an answer far faster than post tests.</p></div><button class="btn primary" id="dmNew">New DM test</button></header>
-      <div class="body s muted" style="padding-top:0">Easiest way to feed this: the <b>OuterHaven HQ browser extension</b>. Open a LinkedIn chat, click <b>HQ → Save</b>, and the whole conversation lands here, matched to its DM version, with replies and meetings counted automatically. <a href="/hq/outerhaven-hq-extension.zip" download>Download the extension</a> · <a href="#" id="dmHow">How to install</a></div>
+      <div class="body s muted" style="padding-top:0">Easiest way to feed this: the <b>OuterHaven HQ browser extension</b>. Open a LinkedIn chat, click <b>HQ → Save</b>, and the whole conversation lands here, matched to its DM version, with replies and meetings counted automatically. <a href="#" data-extdl>Download the extension</a> · <a href="#" id="dmHow">How to install</a></div>
       ${D.tests.length ? '' : '<div class="empty">No DM tests yet. Start with your resource DM: version A as you send it today, version B with one change (shorter, a question at the end, the link up front…).</div>'}</section>
       ${D.tests.map(t => {
         const vs = variantsOf(t.id), vr = dmVerdict(t, 'replied'), vm = dmVerdict(t, 'meetings');
@@ -128,6 +128,7 @@ export async function dmTestsView(body) {
       ${convosHtml()}`;
     $('#dmNew', body).onclick = () => editTest();
     $('#dmHow', body).onclick = e => { e.preventDefault(); installHelp(); };
+    bindExtDownload(body);
     $$('[data-convo]', body).forEach(r => r.onclick = () => transcript(D.convos.find(c => c.id === r.dataset.convo)));
     $$('[data-edit-test]', body).forEach(b => b.onclick = () => editTest(D.tests.find(t => t.id === b.dataset.editTest)));
     $$('[data-status]', body).forEach(b => b.onclick = async () => { if (!fail(await sb.from('dm_tests').update({ status: b.dataset.to, completed_at: b.dataset.to === 'complete' ? new Date().toISOString() : null }).eq('id', b.dataset.status), 'Update test')) { await loadDms(); draw(); } });
@@ -178,12 +179,32 @@ function transcript(c) {
     ${ai.summary ? `<div class="card" style="margin-bottom:14px"><div class="body s"><b>Claude:</b> ${esc(ai.summary)}${ai.objections?.length ? `<div class="muted" style="margin-top:6px">Objections: ${esc(ai.objections.join('; '))}</div>` : ''}</div></div>` : ''}
     <div class="chat">${(c.messages || []).map(m => `<div class="bubble ${m.from}"><div class="s muted">${esc(m.from === 'us' ? (c.account_name || 'Us') : (m.name || c.prospect_name || 'Them'))} · ${esc(m.at || '')}</div><div>${esc(m.text)}</div></div>`).join('') || '<div class="empty">No structured messages; the raw text was saved for Claude.</div>'}</div>` });
 }
+// The download is built here, in your signed-in browser: the public template zip + the team capture key (admin only),
+// so the extension never needs a sign-in and the key never sits in the public repo.
+function bindExtDownload(scope) { scope.querySelectorAll('[data-extdl]').forEach(a => a.onclick = e => { e.preventDefault(); downloadExtension(a); }); }
+async function downloadExtension(a) {
+  const old = a.textContent; a.textContent = 'Building…';
+  try {
+    if (!window.JSZip) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; s.onload = ok; s.onerror = () => no(new Error('Could not load the zip library')); document.head.appendChild(s); });
+    const [k, tpl] = await Promise.all([sb.rpc('extension_capture_key'), fetch('/hq/outerhaven-hq-extension.zip', { cache: 'no-store' }).then(r => r.arrayBuffer())]);
+    if (k.error || !k.data) throw new Error('Only admins can download a connected copy');
+    const zip = await JSZip.loadAsync(tpl);
+    const bg = await zip.file('background.js').async('string');
+    zip.file('background.js', bg.replace('__OHQ_CAPTURE_KEY__', k.data));
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob), dl = document.createElement('a');
+    dl.href = url; dl.download = 'outerhaven-hq-extension.zip'; document.body.appendChild(dl); dl.click(); dl.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('Downloaded. Unzip and load it; no sign-in needed.');
+  } catch (err) { toast('Download failed: ' + err.message); }
+  finally { a.textContent = old; }
+}
 function installHelp() {
   modal({ title: 'Install the OuterHaven HQ extension', submit: '', body: `<ol class="report">
-    <li><a href="/hq/outerhaven-hq-extension.zip" download>Download the zip</a> and unzip it (you get a folder called <b>outerhaven-capture</b>).</li>
+    <li><a href="#" data-extdl>Download the zip</a> (it comes already connected to HQ, no sign-in) and unzip it (you get a folder called <b>outerhaven-capture</b>).</li>
     <li><b>Chrome:</b> open <code>chrome://extensions</code>, turn on <b>Developer mode</b> (top right), click <b>Load unpacked</b> and pick that folder.</li>
     <li><b>AdsPower:</b> Extensions → Upload extension → pick the zip, then enable it for the LinkedIn profiles you use (Peter, Chase, …).</li>
-    <li>Click the black <b>O</b> icon in the toolbar and sign in with your HQ email and password.</li>
-    <li>On LinkedIn, open a conversation. A black <b>HQ</b> button appears bottom right: tick <b>meeting booked</b> if it is, then <b>Save conversation</b>. Saving again later updates it.</li></ol>
-    <p class="s muted" style="margin-top:12px">It only reads the chat you have open, only when you click Save, and never sends or clicks anything on LinkedIn.</p>` });
+    <li>Click the black <b>O</b> icon in the toolbar once per browser profile and pick <b>who you are</b> and <b>which LinkedIn account</b> that profile runs. No password.</li>
+    <li>On LinkedIn, open a conversation. A black <b>HQ</b> button appears bottom right: tick <b>meeting booked</b> if it is (it's credited to the name you picked), then <b>Save conversation</b>. Saving again later updates it.</li></ol>
+    <p class="s muted" style="margin-top:12px">It only reads the chat you have open, only when you click Save, and never sends or clicks anything on LinkedIn. Keep the zip inside the team: anyone with it can save chats into HQ.</p>` });
+  setTimeout(() => bindExtDownload(document.querySelector('.modal') || document), 0);
 }
