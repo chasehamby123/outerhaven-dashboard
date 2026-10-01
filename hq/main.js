@@ -12,7 +12,7 @@ const ROUTES = {
   today: { label: 'Today', render: r => renderToday(r), ops: true },
   overview: { label: 'Overview', render: r => renderOverview(r) },
   growth: { label: 'Growth', render: (r, sub) => renderGrowth(r, sub) },
-  schedule: { label: 'Schedule', render: r => renderSchedule(r), ops: true },
+  schedule: { label: 'Schedule', render: (r, sub) => renderSchedule(r, sub), ops: true },
   pipeline: { label: 'Pipeline', render: r => renderPipeline(r) },
   resources: { label: 'Resources', render: (r, sub) => renderResources(r, sub), ops: true },
 };

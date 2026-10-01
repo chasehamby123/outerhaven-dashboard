@@ -30,6 +30,9 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - `daily_ops_weekly_posts`: the weekly posting template. `sync_daily_ops_today()` turns it into today's
   `daily_ops_schedule` rows (post 60 min, then 15-min reply block except Sara; Sara's 30-min comment block before the
   first post; posts run back to back). Ops day rolls over at 2 AM GMT+8. Edited by HQ → Schedule (drag and drop).
+- `daily_ops_creation_blocks`: the weekend post creation batch (HQ → Schedule, slider → Post creation, `hq/creation.js`).
+  Block = day + start + account + creatives × minutes_per (end derived). `sync_daily_ops_today()` adds today's blocks to
+  Today as 'create:<id>' tasks. Migration: `supabase/2026-10-02-creation-schedule.sql`.
 - `daily_ops_posts`: scraped LinkedIn posts. `post_key` comes from a trigger. `is_repost` is set by trigger; reshares
   are boosts, never the account's own post. `tags` / `metrics` jsonb hold HQ tagging and `no_resource`.
 - Comments from our own accounts never count. `daily_ops_post_comments.is_team` is set by trigger;

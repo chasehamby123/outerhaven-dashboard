@@ -3,6 +3,10 @@
 // so a change to today's posts shows up on Today straight away.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, acIdx, avatar } from './core.js';
 import { opsDate } from './today.js';
+import { renderCreation } from './creation.js';
+
+// The slider at the top of Schedule: posting calendar vs the weekend post creation batch.
+const viewToggle = on => `<div class="viewSw" data-on="${on}" role="tablist"><a href="#/schedule" class="${on === 'post' ? 'on' : ''}">Posting</a><a href="#/schedule/creation" class="${on === 'create' ? 'on' : ''}">Post creation</a><i></i></div>`;
 
 const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
 const DAY_NAME = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -40,7 +44,8 @@ async function load() {
   posts = w.data || []; accounts = (a.data || []).filter(x => x.active !== false); loaded = true;
 }
 
-export async function renderSchedule(el) {
+export async function renderSchedule(el, sub) {
+  if (sub === 'creation') return renderCreation(el, viewToggle('create'));
   root = el;
   if (!loaded) { root.innerHTML = '<div class="empty">Loading…</div>'; await load(); if (root.dataset.page !== 'schedule') return; }
   draw();
@@ -110,7 +115,7 @@ function draw() {
   for (let m = START; m < END; m += 60) hours.push(m);
   const active = posts.filter(p => p.active !== false);
   const perDay = DAYS.map(([d]) => active.filter(p => p.day_of_week === d).length), avg = perDay.reduce((a, b) => a + b, 0) / 7;
-  root.innerHTML = `<div class="head"><div><h1>Schedule</h1><p>The weekly posting plan in Malaysia time, with New York time under each hour. Drag a post to move it, click it to edit, click an empty slot to add one.</p></div>
+  root.innerHTML = `${viewToggle('post')}<div class="head"><div><h1>Schedule</h1><p>The weekly posting plan in Malaysia time, with New York time under each hour. Drag a post to move it, click it to edit, click an empty slot to add one.</p></div>
       <div class="row"><div class="row s muted" style="gap:14px;margin-right:6px"><span class="sKey"><i class="k1"></i>Lead magnet / video</span><span class="sKey"><i class="k3"></i>Credibility</span><span class="sKey"><i class="k2"></i>Replies</span></div><button class="btn primary sm" id="sAdd">Add post</button></div></div>
     ${summaryHtml(active)}
     <div class="card sCal">
