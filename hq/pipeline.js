@@ -195,10 +195,10 @@ function cardHtml(i, hit) {
   return `<div role="button" tabindex="0" class="pCard ${hit ? 'hit' : ''}" data-sev="${i.sev}" data-upd="${key}">
     <div class="pcHead"><b class="pcName">${esc(i.name)}</b>${size ? `<span class="pcSize">${esc(size)}</span>` : ''}</div>
     ${i.sub ? `<div class="pcSub">${esc(i.sub)}</div>` : ''}
-    <p class="pcNext ${i.nextText ? '' : 'none'}">${i.nextText ? esc(i.nextText) : 'No next step'}</p>
-    <div class="pcStatus"><span class="pFlag ${tone}">${i.ball === 'us' ? 'Our move' : i.ball === 'them' ? 'Their move' : 'Nobody owns it'} · ${i.days}d</span>${extra.map(f => `<span class="pFlag ${f.sev}">${esc(f.text)}</span>`).join('')}</div>
+    <p class="pcNext ${i.nextText ? '' : 'none'}">${i.nextText ? `<span>Next</span>${esc(i.nextText)}` : 'No next step set'}</p>
+    <div class="pcStatus" data-tone="${tone}"><b>${i.ball === 'us' ? 'Our move' : i.ball === 'them' ? 'Their move' : 'Nobody owns it'}<em>${i.days}d</em></b>${extra.map(f => `<span class="${f.sev}">${esc(f.text)}</span>`).join('')}</div>
     <div class="pcFoot"><span class="pcOwner">${i.owner ? avatar(i.owner, 'xs') + esc(firstName(i.owner)) : '<span class="muted">No owner</span>'}</span>
-      <span class="pcAct">${hasDms(i) ? `<button type="button" class="pcLink" data-dm="${key}">DMs</button>` : ''}${nx ? `<button type="button" class="pcNextBtn" data-adv="${key}" title="Move to ${esc(nx)}">Next stage →</button>` : ''}</span></div></div>`;
+      <span class="pcAct">${hasDms(i) ? `<button type="button" class="pcLink" data-dm="${key}">DMs</button>` : ''}${nx ? `<button type="button" class="btn sm pcNextBtn" data-adv="${key}" title="Move to ${esc(nx)}">Next stage →</button>` : ''}</span></div></div>`;
 }
 function leadHtml(l) {
   const q = l.decision.startsWith('qualified'), sd = l.decision === 'qualified_buy_side' ? 'Buy Side' : l.decision === 'qualified_sell_side' ? 'Sell Side' : '';

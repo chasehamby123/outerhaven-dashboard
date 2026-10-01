@@ -702,3 +702,31 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .pColSum{gap:10px}
 .pcStatus{flex-direction:column;align-items:flex-start}
 .pcStatus .pFlag+.pFlag::before{content:none}
+
+/* Pipeline cards v4: white board, crisp cards, status as a tinted block (square corners, bold) */
+.pCol,.pCol.none{background:none;border:0;border-top:3px solid var(--brass);border-radius:0;padding:12px 0 0}
+.pCol.none{border-top-color:var(--line-2)}
+.pCol.none .pEmpty{padding:14px;border:1px dashed var(--line-2);border-radius:10px;text-align:center}
+.pGrid{gap:18px}
+.pCard{padding:14px 14px 0 17px;border:1px solid var(--line);box-shadow:var(--shadow);background:var(--surface)}
+.pCard::before{width:4px}
+.pCard:hover{border-color:var(--line-2);box-shadow:var(--shadow-lg)}
+.pcName{font-size:15px;font-weight:650;letter-spacing:-.01em}
+.pcSize{font-size:var(--fs-s);font-weight:700;color:var(--ink)}
+.pcNext{color:var(--ink);font-size:var(--fs-s)}
+.pcNext span{display:block;margin-bottom:2px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.pcNext.none{color:var(--bad);font-style:normal;font-weight:600}
+.pcStatus{display:grid;gap:2px;margin-top:12px;padding:8px 10px;border-radius:6px;background:var(--sunk);border-left:3px solid var(--line-2)}
+.pcStatus b{display:flex;justify-content:space-between;gap:8px;font-size:var(--fs-s);font-weight:700;color:var(--ink)}
+.pcStatus b em{font-style:normal;font-variant-numeric:tabular-nums}
+.pcStatus span{font-size:var(--fs-xs);font-weight:600}
+.pcStatus span.bad{color:var(--bad)}.pcStatus span.warn{color:var(--warn)}
+.pcStatus[data-tone="bad"]{background:var(--bad-bg);border-left-color:var(--bad)}.pcStatus[data-tone="bad"] b{color:var(--bad)}
+.pcStatus[data-tone="warn"]{background:var(--warn-bg);border-left-color:var(--warn)}.pcStatus[data-tone="warn"] b{color:var(--warn)}
+.pcFoot{margin-top:12px;padding:10px 14px 10px 17px;margin-left:-17px}
+.pcOwner{font-weight:500;color:var(--ink-2)}
+.pcNextBtn.btn{height:28px;padding:0 10px;font-size:var(--fs-xs);font-weight:600;color:var(--ink)}
+.pcNextBtn.btn:hover{color:var(--ink);text-decoration:none;border-color:var(--brass)}
+.pFlag{font-weight:600}
+.pColSum b{font-size:24px}
+.pcNext{-webkit-line-clamp:3}
