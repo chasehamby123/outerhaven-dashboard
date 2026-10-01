@@ -841,3 +841,4 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .tTeam.narrow{display:none;margin-bottom:20px}
 @media(max-width:1179px){.tTeam.wide{display:none}.tTeam.narrow{display:block}}
 @media(max-width:600px){.tRing svg{width:120px;height:120px}.tRing b{font-size:52px}}
+.tLinks a.quota{text-decoration:none}.tLinks .quota.hot{background:var(--bad-bg);color:var(--bad);font-weight:600}

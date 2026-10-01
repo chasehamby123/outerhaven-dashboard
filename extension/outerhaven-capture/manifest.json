@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "OuterHaven HQ: save LinkedIn chats",
   "short_name": "OuterHaven HQ",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Saves the LinkedIn conversation you have open to OuterHaven HQ, so we can see which DMs book meetings. Only reads a chat when you click Save.",
   "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
   "action": { "default_title": "OuterHaven HQ", "default_popup": "popup.html", "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png" } },

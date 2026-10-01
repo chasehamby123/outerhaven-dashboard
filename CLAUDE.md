@@ -68,6 +68,8 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Leads panel: `lead_intake` rows with no `person_id`, not reviewed, not `not_qualified`. "Add as sell/buy side" inserts/reuses a
   `people` row, adds a task (owner from the lead's `source_account` profile slug) and stamps the lead. Quick actions ("Next stage →" on cards and rows moves one stage; "DMs" opens every logged reply from `lead_intake` plus any extension-saved `dm_conversations` thread) write
   `waiting_on`/`waiting_on_since` to the deal and its person. Old board is linked in the nav as "Old pipeline board".
+- Leads are ranked by `leadHeat()` (pipeline.js): asks for a call / gives contact = "Wants to talk", deal words = "Has a deal", polite no = "Looks like a no". Chase's inbox tasks on Today show unanswered outreach replies per account (by `source_account` slug).
+- Outbound reality (Oct 2026): Peter, Tengku, Chase run campaigns in Prosp (replies arrive in `lead_intake` via webhook; sends are not tracked); the other 6 accounts are manual in AdsPower.
 
 ## Resources (lead magnets)
 - HQ → Resources: queue of posts needing a resource, library (generated + manual links), Generate form.

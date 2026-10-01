@@ -1,6 +1,7 @@
 // Today: the daily task checklist. This is the only screen the ops role (Anaz) sees.
 import { sb, state, esc, $, $$, toast, fail, modal, acIdx, avatar, firstName } from './core.js';
 import { loadDms, dmCardHtml, bindDmCard, meetingModal } from './dms.js';
+import { leadHeat } from './pipeline.js';
 import { taskModal, openTaskById, me, TEAM, syncTeamTasks } from './tasks.js';
 
 const TZ = 'Asia/Singapore';
@@ -19,7 +20,12 @@ const REPLY_CAP = 20; // LinkedIn comments per account per day (30+ is possible 
 function taskLinks(r) {
   const a = accounts.find(x => x.id === r.account_id); if (!a) return '';
   const link = (href, text, sub = '') => `<a class="tLink" href="${esc(href)}" target="_blank" rel="noopener">${esc(text)} ↗${sub ? `<em>${esc(sub)}</em>` : ''}</a>`;
-  if (/inbox/i.test(r.task)) return `<span class="tLinks">${link('https://www.linkedin.com/messaging/', `${firstName(a.owner_name)}'s inbox`)}</span>`;
+  if (/inbox/i.test(r.task)) {
+    const slug = u => String(u || '').replace(/[?#].*$/, '').replace(/\/+$/, '').split('/').pop().toLowerCase();
+    const mine = leads.filter(l => slug(l.source_account) && slug(l.source_account) === slug(a.linkedin_url)), hot = mine.filter(l => leadHeat(l).label === 'Wants to talk');
+    const waiting = mine.length ? `<a class="quota${hot.length ? ' hot' : ''}" href="#/pipeline">${mine.length} outreach repl${mine.length === 1 ? 'y' : 'ies'} not answered${hot.length ? ` · ${hot.length} want${hot.length === 1 ? 's' : ''} a call` : ''} →</a>` : '';
+    return `<span class="tLinks">${waiting}${link('https://www.linkedin.com/messaging/', `${firstName(a.owner_name)}'s inbox`)}</span>`;
+  }
   if (/respond|comment|repl/i.test(r.task)) {
     const mine = posts.filter(p => p.account_id === a.id && p.work_date < date);
     const recent = mine.filter(p => p.work_date >= new Date(Date.parse(date) - 14 * 864e5).toISOString().slice(0, 10));
@@ -51,6 +57,7 @@ function weekDays(today, todayRows, earlier) {
 }
 const week = () => weekDays(date, rows, past);
 
+let leads = [];
 let rows = [], past = [], accounts = [], posts = [], date = '', channel = null, loading = false, root = null, lastLoad = 0;
 // Whose tasks Today shows: a person, or 'Everyone'. Remembered per browser; defaults to whoever is signed in.
 let who = (() => { try { return localStorage.getItem('hq-today-who'); } catch { return null; } })();
@@ -71,6 +78,7 @@ async function load() {
       sb.from('daily_ops_posts').select('id,account_id,linkedin_post_url,work_date,post_name,commenter_count,external_comment_count,unreplied_count,is_repost').or('is_repost.is.null,is_repost.eq.false').not('linkedin_post_url', 'is', null).order('work_date', { ascending: false }).limit(200),
       sb.from('daily_ops_schedule').select('*').gte('work_date', weekStart(date)).lt('work_date', date),
       loadDms().catch(e => console.warn('dms', e)),
+      sb.from('lead_intake').select('name,reply_text,decision,created_at,source_account').is('person_id', null).is('reviewed_at', null).neq('decision', 'not_qualified').limit(500).then(r => { leads = r.data || []; }, () => {}),
     ]);
     if (fail(s, 'Load tasks')) return;
     rows = (s.data || []).sort((x, y) => opMin(x.start_time) - opMin(y.start_time));

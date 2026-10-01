@@ -5,7 +5,7 @@ const KEY = 'sb_publishable_nBRZvesX4tz7zUPq5QLYfQ__in76dF5'; // public key, sam
 async function auth(path, body) {
   const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=${path}`, { method: 'POST', headers: { apikey: KEY, 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error_description || j.msg || j.error || `Sign-in failed (${r.status})`);
+  if (!r.ok) throw new Error(/invalid login/i.test(j.error_description || j.msg || '') ? 'Wrong email or password. It is the same login as HQ; if you forgot it, use "Forgot password?" on the HQ sign-in page.' : (j.error_description || j.msg || j.error || `Sign-in failed (${r.status})`));
   const session = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000, email: j.user?.email || '' };
   await chrome.storage.local.set({ session });
   return session;

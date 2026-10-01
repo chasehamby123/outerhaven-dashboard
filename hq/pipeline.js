@@ -15,6 +15,18 @@ const nextStage = i => { const st = stagesFor(i.side), at = st.indexOf(i.stage);
 const hasDms = i => !!(i.person?.linkedin_url || i.person?.last_inbound_message);
 const SEV = { bad: 3, warn: 2, info: 1 };
 const DAY = 864e5;
+// How urgent a LinkedIn reply is. Someone asking for a call or handing over contact details is a meeting waiting to happen.
+const NO_RE = /\b(not (for me|our market|a fit|interested|quite a fit)|no thanks|done with|unsubscribe|remove me|not relevant)\b/i;
+const HOT_RE = /\b(call|meeting|meet|chat|zoom|teams|whatsapp|calendar|schedule|available|catch up|speak|connect this week|drop me an email|email me|send me)\b|@[a-z0-9-]+\.[a-z]|\+\d[\d\s-]{7,}/i;
+const DEAL_RE = /\b(raise|raising|capital raising|investor for|mandate|deal|teaser|deck|acquisition|concession|project|EV|enterprise value)\b/i;
+export function leadHeat(l) {
+  const t = String(l.reply_text || '');
+  if (NO_RE.test(t)) return { score: -10, label: 'Looks like a no', tone: '' };
+  let s = 0; const hot = HOT_RE.test(t), deal = DEAL_RE.test(t);
+  if (hot) s += 5; if (deal) s += 3; if (l.decision === 'qualified_sell_side') s += 2; if (l.decision?.startsWith('qualified')) s += 1;
+  const age = daysSince(l.created_at); if (age <= 10) s += 2; else if (age > 35) s -= 1;
+  return { score: s, label: hot ? 'Wants to talk' : deal ? 'Has a deal' : '', tone: hot ? 'bad' : deal ? 'warn' : '' };
+}
 
 let root, D = null, loadedAt = 0, side = 'Sell Side', flt = null, showAllLeads = false, tab = 'need';
 
@@ -129,7 +141,7 @@ function draw() {
     nonext: live.filter(i => i.has('nonext') || i.has('noball')),
     overdue: live.filter(i => i.has('overdue')),
   };
-  const leads = D.leads.slice().sort((a, b) => (b.decision.startsWith('qualified') ? 1 : 0) - (a.decision.startsWith('qualified') ? 1 : 0));
+  const leads = D.leads.slice().sort((a, b) => leadHeat(b).score - leadHeat(a).score || String(b.created_at).localeCompare(String(a.created_at)));
   const qualified = leads.filter(l => l.decision.startsWith('qualified')).length;
   const raise = liveDeals.reduce((n, i) => n + i.raise, 0);
   const kpi = (f, label, n, sev) => `<button type="button" class="pChip pf ${flt === f ? 'on' : ''}" data-f="${f}" data-sev="${n ? sev : ''}"><b>${n}</b>${label}</button>`;
@@ -203,8 +215,9 @@ function cardHtml(i, hit) {
 function leadHtml(l) {
   const q = l.decision.startsWith('qualified'), sd = l.decision === 'qualified_buy_side' ? 'Buy Side' : l.decision === 'qualified_sell_side' ? 'Sell Side' : '';
   const age = daysSince(l.created_at);
-  return `<div class="pRow" data-sev="${q && age >= 3 ? 2 : 0}"><span class="pDot"></span>
-    <div class="pMain"><div class="pTitle">${l.linkedin_url ? `<a href="${esc(l.linkedin_url)}" target="_blank" rel="noopener">${esc(l.name || 'Unknown')} ↗</a>` : esc(l.name || 'Unknown')} </div><div class="pFlags">${q ? `<span class="pFlag good">${sd} · qualified</span>` : '<span class="pFlag">Needs review</span>'}<span class="pFlag ${age >= 7 ? 'bad' : age >= 3 ? 'warn' : ''}">${age}d in inbox</span>${l.replies > 1 ? `<span class="pFlag">${l.replies} replies</span>` : ''}</div>
+  const h = leadHeat(l);
+  return `<div class="pRow" data-sev="${h.score < 0 ? 0 : h.label === 'Wants to talk' ? 3 : q && age >= 3 ? 2 : 0}"><span class="pDot"></span>
+    <div class="pMain"><div class="pTitle">${l.linkedin_url ? `<a href="${esc(l.linkedin_url)}" target="_blank" rel="noopener">${esc(l.name || 'Unknown')} ↗</a>` : esc(l.name || 'Unknown')} </div><div class="pFlags">${h.label ? `<span class="pFlag ${h.tone}">${h.label}</span>` : ''}${q ? `<span class="pFlag good">${sd} · qualified</span>` : '<span class="pFlag">Needs review</span>'}<span class="pFlag ${age >= 7 ? 'bad' : age >= 3 ? 'warn' : ''}">${age}d in inbox</span>${l.replies > 1 ? `<span class="pFlag">${l.replies} replies</span>` : ''}</div>
       <div class="pSub">${esc([l.headline, l.company_name].filter(Boolean).join(' · '))}</div>
       ${l.reply_text ? `<div class="pNext"><b>Said:</b> “${esc(String(l.reply_text).slice(0, 160))}${l.reply_text.length > 160 ? '…' : ''}” <button class="link s" data-ldm="${l.id}">Open full DMs</button></div>` : ''}
       ${l.suggested_next_step ? `<div class="pNext muted">Suggested: ${esc(l.suggested_next_step)}</div>` : ''}</div>
