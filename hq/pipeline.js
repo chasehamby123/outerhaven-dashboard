@@ -166,15 +166,14 @@ function draw() {
   bind(all);
 }
 
-const flagChip = f => `<span class="tag ${f.sev === 'bad' ? 'bad' : f.sev === 'warn' ? 'warn' : ''}">${esc(f.text)}</span>`;
+const flagChip = f => `<span class="pFlag ${f.sev}">${esc(f.text)}</span>`;
 function rowHtml(i) {
   const act = i.ball === 'us' ? `<button class="btn sm primary" data-q="followed" data-k="${i.kind}:${i.id}">Followed up</button>`
     : i.ball === 'them' ? `<button class="btn sm" data-q="replied" data-k="${i.kind}:${i.id}">They replied</button><button class="btn sm" data-q="chased" data-k="${i.kind}:${i.id}">Chased again</button>`
       : `<button class="btn sm" data-q="us" data-k="${i.kind}:${i.id}">Our move</button><button class="btn sm" data-q="them" data-k="${i.kind}:${i.id}">Their move</button>`;
   return `<div class="pRow" data-sev="${i.sev}"><span class="pDot"></span>
-    <div class="pMain"><div class="pTitle">${esc(i.name)} <span class="tag">${esc(i.stage || 'No stage')}</span><span class="tag">${i.kind === 'deal' ? 'Deal' : 'Relationship'} · ${sideShort(i.side)}</span></div>
-      ${i.sub ? `<div class="pSub">${esc(i.sub)}</div>` : ''}
-      <div class="pFlags">${i.flags.filter(f => f.sev !== 'info').map(flagChip).join('')}</div>
+    <div class="pMain"><div class="pTitle">${esc(i.name)}</div><div class="pSub">${esc(i.stage || 'No stage')} · ${i.kind === 'deal' ? 'Deal' : 'Relationship'} · ${sideShort(i.side)}${i.sub ? ' · ' + esc(i.sub) : ''}</div>
+      <div class="pFlags">${i.flags.filter(f => f.sev !== 'info' && f.code !== 'nonext').map(flagChip).join('')}</div>
       <div class="pNext">${i.nextText ? `<b>Next:</b> ${esc(i.nextText)}${i.due ? ` <span class="muted">· due ${fmtDate(i.due)}</span>` : ''}` : '<i>No next step set</i>'}${i.owner ? ` <span class="pOwn">${avatar(i.owner, 'xs')}${esc(firstName(i.owner))}</span>` : ''}</div></div>
     <div class="pAct">${act}${nextStage(i) ? `<button class="btn sm" data-adv="${i.kind}:${i.id}" title="Move to ${esc(nextStage(i))}">Next stage →</button>` : ''}${hasDms(i) ? `<button class="btn sm ghost" data-dm="${i.kind}:${i.id}">DMs</button>` : ''}<button class="btn sm ghost" data-upd="${i.kind}:${i.id}">Update</button></div></div>`;
 }
@@ -185,26 +184,27 @@ function boardHtml(live, inFlt = new Set()) {
   return `<div class="pGrid" style="grid-template-columns:${tpl}">${cols.map((c, idx) => {
     const hot = c.items.filter(i => i.sev >= 3).length, total = c.items.reduce((n, i) => n + i.raise, 0);
     return `<div class="pCol ${c.items.length ? '' : 'none'}"><h3><span class="n">${idx + 1}</span>${esc(c.name)}</h3>
-      <div class="pColSum"><b>${c.items.length}</b>${hot ? `<span class="tag bad">${hot} red</span>` : ''}${total ? `<span class="s muted">${money(total)}</span>` : ''}</div>
+      <div class="pColSum"><b>${c.items.length}</b>${hot ? `<span class="pFlag bad">${hot} red</span>` : ''}${total ? `<span class="s muted">${money(total)}</span>` : ''}</div>
       ${c.items.map(i => cardHtml(i, inFlt.has(i.kind + ':' + i.id))).join('') || '<div class="pEmpty">Empty</div>'}</div>`;
   }).join('')}</div>`;
 }
 function cardHtml(i, hit) {
   const tone = i.ball === 'us' ? (i.days >= 7 ? 'bad' : i.days >= 3 ? 'warn' : '') : i.ball === 'them' ? (i.days >= 14 ? 'bad' : i.days >= 7 ? 'warn' : '') : 'warn';
-  const worst = i.flags.find(f => f.sev !== 'info' && f.code !== 'us' && f.code !== 'them');
-  const nx = nextStage(i), key = `${i.kind}:${i.id}`;
+  const extra = i.flags.filter(f => f.sev !== 'info' && !['us', 'them', 'noball', 'nonext'].includes(f.code));
+  const nx = nextStage(i), key = `${i.kind}:${i.id}`, size = i.raise ? money(i.raise) : i.size || '';
   return `<div role="button" tabindex="0" class="pCard ${hit ? 'hit' : ''}" data-sev="${i.sev}" data-upd="${key}">
-    <span class="pCardTop"><b>${esc(i.name)}</b>${i.owner ? avatar(i.owner, 'xs') : ''}</span>
-    ${i.sub ? `<span class="s muted">${esc(i.sub)}</span>` : ''}
-    <span class="pCardNext ${i.nextText ? '' : 'none'}">${i.nextText ? esc(i.nextText) : 'No next step'}</span>
-    <span class="pMeta"><span class="tag ${tone}">${i.ball === 'us' ? 'Our move' : i.ball === 'them' ? 'Their move' : 'Nobody'} · ${i.days}d</span>${worst && worst.code !== 'nonext' && worst.code !== 'noball' ? `<span class="tag ${worst.sev === 'bad' ? 'bad' : 'warn'}">${esc(worst.text)}</span>` : ''}${i.raise ? `<span class="s pSize">${money(i.raise)}</span>` : i.size ? `<span class="s pSize">${esc(i.size)}</span>` : ''}</span>
-    <span class="pCardAct">${nx ? `<button type="button" class="btn sm" data-adv="${key}" title="Move to ${esc(nx)}">Next stage →</button>` : ''}${hasDms(i) ? `<button type="button" class="btn sm ghost" data-dm="${key}">DMs</button>` : ''}</span></div>`;
+    <div class="pcHead"><b class="pcName">${esc(i.name)}</b>${size ? `<span class="pcSize">${esc(size)}</span>` : ''}</div>
+    ${i.sub ? `<div class="pcSub">${esc(i.sub)}</div>` : ''}
+    <p class="pcNext ${i.nextText ? '' : 'none'}">${i.nextText ? esc(i.nextText) : 'No next step'}</p>
+    <div class="pcStatus"><span class="pFlag ${tone}">${i.ball === 'us' ? 'Our move' : i.ball === 'them' ? 'Their move' : 'Nobody owns it'} · ${i.days}d</span>${extra.map(f => `<span class="pFlag ${f.sev}">${esc(f.text)}</span>`).join('')}</div>
+    <div class="pcFoot"><span class="pcOwner">${i.owner ? avatar(i.owner, 'xs') + esc(firstName(i.owner)) : '<span class="muted">No owner</span>'}</span>
+      <span class="pcAct">${hasDms(i) ? `<button type="button" class="pcLink" data-dm="${key}">DMs</button>` : ''}${nx ? `<button type="button" class="pcNextBtn" data-adv="${key}" title="Move to ${esc(nx)}">Next stage →</button>` : ''}</span></div></div>`;
 }
 function leadHtml(l) {
   const q = l.decision.startsWith('qualified'), sd = l.decision === 'qualified_buy_side' ? 'Buy Side' : l.decision === 'qualified_sell_side' ? 'Sell Side' : '';
   const age = daysSince(l.created_at);
   return `<div class="pRow" data-sev="${q && age >= 3 ? 2 : 0}"><span class="pDot"></span>
-    <div class="pMain"><div class="pTitle">${l.linkedin_url ? `<a href="${esc(l.linkedin_url)}" target="_blank" rel="noopener">${esc(l.name || 'Unknown')} ↗</a>` : esc(l.name || 'Unknown')} ${q ? `<span class="tag good">${sd} · qualified</span>` : '<span class="tag">Needs review</span>'}<span class="tag ${age >= 7 ? 'bad' : age >= 3 ? 'warn' : ''}">${age}d in inbox</span>${l.replies > 1 ? `<span class="tag">${l.replies} replies</span>` : ''}</div>
+    <div class="pMain"><div class="pTitle">${l.linkedin_url ? `<a href="${esc(l.linkedin_url)}" target="_blank" rel="noopener">${esc(l.name || 'Unknown')} ↗</a>` : esc(l.name || 'Unknown')} </div><div class="pFlags">${q ? `<span class="pFlag good">${sd} · qualified</span>` : '<span class="pFlag">Needs review</span>'}<span class="pFlag ${age >= 7 ? 'bad' : age >= 3 ? 'warn' : ''}">${age}d in inbox</span>${l.replies > 1 ? `<span class="pFlag">${l.replies} replies</span>` : ''}</div>
       <div class="pSub">${esc([l.headline, l.company_name].filter(Boolean).join(' · '))}</div>
       ${l.reply_text ? `<div class="pNext"><b>Said:</b> “${esc(String(l.reply_text).slice(0, 160))}${l.reply_text.length > 160 ? '…' : ''}” <button class="link s" data-ldm="${l.id}">Open full DMs</button></div>` : ''}
       ${l.suggested_next_step ? `<div class="pNext muted">Suggested: ${esc(l.suggested_next_step)}</div>` : ''}</div>

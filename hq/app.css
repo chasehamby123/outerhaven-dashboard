@@ -677,3 +677,28 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .pMsg.me .pMsgMeta{text-align:right}
 .pMsgText{padding:10px 12px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:var(--fs-s);line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 .pMsg.me .pMsgText{background:var(--inv);color:var(--inv-ink);border-color:var(--inv)}
+
+/* Pipeline cards v3: no pills. Status is coloured text, actions live in a quiet footer. */
+.pFlag{font-size:var(--fs-xs);font-weight:500;color:var(--muted);white-space:nowrap}
+.pFlag.bad{color:var(--bad)}.pFlag.warn{color:var(--warn)}.pFlag.good{color:var(--good)}
+.pFlag+.pFlag::before{content:"·";margin:0 7px;color:var(--faint);font-weight:400}
+.pFlags{gap:0;margin-top:6px}
+.pCol{gap:10px;padding:12px}
+.pCard{display:block;padding:14px 14px 0 16px;border-radius:10px;box-shadow:none}
+.pCard::before{width:3px}
+.pcHead{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.pcName{font-size:var(--fs-s);font-weight:600;line-height:1.35;color:var(--ink)}
+.pcSize{flex:none;font-size:var(--fs-xs);font-weight:600;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.pcSub{margin-top:2px;font-size:var(--fs-xs);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pcNext{margin:10px 0 0;font-size:var(--fs-xs);line-height:1.5;color:var(--ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pcNext.none{color:var(--faint);font-style:italic}
+.pcStatus{display:flex;flex-wrap:wrap;margin-top:8px;row-gap:2px}
+.pcFoot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:12px -14px 0 -16px;padding:8px 14px 8px 16px;border-top:1px solid var(--line)}
+.pcOwner{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs);color:var(--muted)}
+.pcAct{display:inline-flex;align-items:center;gap:12px}
+.pcLink,.pcNextBtn{appearance:none;border:0;background:none;padding:2px 0;font:inherit;font-size:var(--fs-xs);font-weight:500;cursor:pointer}
+.pcLink{color:var(--muted)}.pcLink:hover{color:var(--ink)}
+.pcNextBtn{color:var(--ink)}.pcNextBtn:hover{color:var(--brass);text-decoration:underline;text-underline-offset:3px}
+.pColSum{gap:10px}
+.pcStatus{flex-direction:column;align-items:flex-start}
+.pcStatus .pFlag+.pFlag::before{content:none}
