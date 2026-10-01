@@ -781,3 +781,43 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .pcPopCard{width:min(480px,100%);padding:22px 22px 18px;background:var(--surface);border:1px solid var(--line);border-top:4px solid var(--bad);border-radius:14px;box-shadow:var(--shadow-lg)}
 .pcPopCard h3{margin:0 0 8px;font:600 21px/1.2 var(--serif)}
 .pcPopCard p{margin:0 0 12px;font-size:var(--fs-s);color:var(--ink-2);line-height:1.5}
+
+/* 3-way schedule slider */
+.viewSw{grid-template-columns:repeat(3,1fr)}
+.viewSw i{width:calc(33.333% - 2px)}
+.viewSw[data-on="create"] i{transform:translateX(100%)}.viewSw[data-on="tasks"] i{transform:translateX(200%)}
+@media(max-width:480px){.viewSw a{padding:0 10px;font-size:var(--fs-xs)}}
+/* Team tasks */
+.tkPeople{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px;align-items:start}
+.tkWho{display:flex;align-items:center;gap:10px}
+.tkList{list-style:none;margin:0;padding:6px 8px 10px}
+.tkList li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer}
+.tkList li:hover{background:var(--hover)}
+.tkList li b{display:block;font-size:var(--fs-s)}
+.tkList li span{font-size:var(--fs-xs);color:var(--muted)}
+.tkDayRow{display:flex;flex-wrap:wrap;gap:6px;font-weight:400}
+.tkDayRow label{position:relative}
+.tkDayRow input{position:absolute;opacity:0}
+.tkDayRow span{display:inline-grid;place-items:center;min-width:44px;height:32px;padding:0 8px;border:1px solid var(--line-2);border-radius:var(--r);font-size:var(--fs-s);cursor:pointer}
+.tkDayRow input:checked+span{background:var(--inv);border-color:var(--inv);color:var(--inv-ink);font-weight:600}
+.tkDayRow input:focus-visible+span{box-shadow:0 0 0 3px var(--ring)}
+@media(max-width:520px){.tkPeople{grid-template-columns:1fr}}
+
+/* Today: whose tasks */
+.tWho{display:flex;gap:8px;margin-bottom:18px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.tWho::-webkit-scrollbar{display:none}
+.tWho button{flex:none;display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 12px 0 6px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink-2);font:inherit;font-size:var(--fs-s);font-weight:500;cursor:pointer}
+.tWho button:hover{border-color:var(--line-2)}
+.tWho button.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);color:var(--ink);font-weight:600}
+.tWho em{font-style:normal;font-size:var(--fs-xs);font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
+.tWho em.late{color:var(--bad)}.tWho em.ok{color:var(--good)}
+.tWhoAll{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--sunk);font-size:11px;font-weight:700;color:var(--ink-2)}
+.checklist li.grpHead{display:flex;align-items:center;gap:10px;padding:14px 16px 8px;border:0;background:none;font-size:var(--fs-s)}
+.checklist li.grpHead b{font-size:15px}
+.checklist li.grpHead span{margin-left:auto;font-size:var(--fs-xs);color:var(--muted)}
+.checklist li.grpHead+li{border-top:0}
+.anytime{font-style:normal;font-size:var(--fs-xs);color:var(--muted)}
+.tEdit{appearance:none;margin-left:auto;padding:2px 6px;border:0;background:none;font:inherit;font-size:var(--fs-xs);color:var(--muted);cursor:pointer;opacity:0;transition:opacity .15s}
+.checklist li:hover .tEdit,.tEdit:focus-visible{opacity:1}
+@media(hover:none){.tEdit{opacity:1}}
+.checklist .what{min-width:0}.checklist .what small{overflow-wrap:anywhere}.tLinks{flex-wrap:wrap;min-width:0}.tLink{max-width:100%;overflow:hidden;text-overflow:ellipsis}

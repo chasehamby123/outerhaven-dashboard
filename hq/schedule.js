@@ -4,9 +4,10 @@
 import { sb, state, esc, $, $$, toast, fail, modal, opts, acIdx, avatar } from './core.js';
 import { opsDate } from './today.js';
 import { renderCreation } from './creation.js';
+import { renderTeamTasks } from './tasks.js';
 
 // The slider at the top of Schedule: posting calendar vs the weekend post creation batch.
-const viewToggle = on => `<div class="viewSw" data-on="${on}" role="tablist"><a href="#/schedule" class="${on === 'post' ? 'on' : ''}">Posting</a><a href="#/schedule/creation" class="${on === 'create' ? 'on' : ''}">Post creation</a><i></i></div>`;
+const viewToggle = on => `<div class="viewSw" data-on="${on}" role="tablist"><a href="#/schedule" class="${on === 'post' ? 'on' : ''}">Posting</a><a href="#/schedule/creation" class="${on === 'create' ? 'on' : ''}">Post creation</a><a href="#/schedule/tasks" class="${on === 'tasks' ? 'on' : ''}">Team tasks</a><i></i></div>`;
 
 const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
 const DAY_NAME = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -46,6 +47,7 @@ async function load() {
 
 export async function renderSchedule(el, sub) {
   if (sub === 'creation') return renderCreation(el, viewToggle('create'));
+  if (sub === 'tasks') return renderTeamTasks(el, viewToggle('tasks'));
   root = el;
   if (!loaded) { root.innerHTML = '<div class="empty">Loading…</div>'; await load(); if (root.dataset.page !== 'schedule') return; }
   draw();

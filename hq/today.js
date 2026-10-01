@@ -1,6 +1,7 @@
 // Today: the daily task checklist. This is the only screen the ops role (Anaz) sees.
 import { sb, state, esc, $, $$, toast, fail, modal, acIdx, avatar, firstName } from './core.js';
 import { loadDms, dmCardHtml, bindDmCard, meetingModal } from './dms.js';
+import { taskModal, openTaskById, me, TEAM, syncTeamTasks } from './tasks.js';
 
 const TZ = 'Asia/Singapore';
 // Ops day rolls over at 2am GMT+8, matching the server's schedule builder.
@@ -18,6 +19,7 @@ const REPLY_CAP = 20; // LinkedIn comments per account per day (30+ is possible 
 function taskLinks(r) {
   const a = accounts.find(x => x.id === r.account_id); if (!a) return '';
   const link = (href, text, sub = '') => `<a class="tLink" href="${esc(href)}" target="_blank" rel="noopener">${esc(text)} ↗${sub ? `<em>${esc(sub)}</em>` : ''}</a>`;
+  if (/inbox/i.test(r.task)) return `<span class="tLinks">${link('https://www.linkedin.com/messaging/', `${firstName(a.owner_name)}'s inbox`)}</span>`;
   if (/respond|comment|repl/i.test(r.task)) {
     const mine = posts.filter(p => p.account_id === a.id && p.work_date < date);
     const recent = mine.filter(p => p.work_date >= new Date(Date.parse(date) - 14 * 864e5).toISOString().slice(0, 10));
@@ -50,6 +52,11 @@ function weekDays(today, todayRows, earlier) {
 const week = () => weekDays(date, rows, past);
 
 let rows = [], past = [], accounts = [], posts = [], date = '', channel = null, loading = false, root = null, lastLoad = 0;
+// Whose tasks Today shows: a person, or 'Everyone'. Remembered per browser; defaults to whoever is signed in.
+let who = (() => { try { return localStorage.getItem('hq-today-who'); } catch { return null; } })();
+const assigneeOf = r => r.assignee || 'Anaz'; // posting / reply / creation blocks are the operator's
+const viewing = () => who || me();
+const mineOnly = list => list.filter(r => assigneeOf(r) === me());
 
 async function load() {
   if (loading) return; loading = true; lastLoad = Date.now();
@@ -57,6 +64,7 @@ async function load() {
     date = opsDate();
     const sync = await sb.rpc('sync_daily_ops_today'); // server builds today's recurring blocks
     if (sync.error) console.warn('sync_daily_ops_today', sync.error.message);
+    await syncTeamTasks(); // everyone's own tasks (team_tasks) for today
     const [s, a, p, h] = await Promise.all([
       sb.from('daily_ops_schedule').select('*').eq('work_date', date),
       sb.from('daily_ops_accounts').select('id,owner_name,linkedin_url'),
@@ -78,32 +86,50 @@ const acctOf = r => accounts.find(a => a.id === r.account_id)?.owner_name || (/�
 const endMin = r => r.end_time ? opMin(r.end_time) : opMin(r.start_time) + 45;
 const dur = m => { m = Math.max(0, Math.round(m)); const h = Math.floor(m / 60); return h ? `${h} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`; };
 // Today's open tasks whose slot has already ended, plus anything still open from earlier this week.
-const lateToday = () => { const now = nowMin(); return rows.filter(r => OPEN(r) && endMin(r) <= now); };
-export const overdueNow = () => lateToday().map(r => ({ r, when: fmtTime(r.start_time) }));
+const lateToday = (list = rows) => { const now = nowMin(); return list.filter(r => OPEN(r) && endMin(r) <= now); };
+export const overdueNow = () => lateToday(mineOnly(rows)).map(r => ({ r, when: fmtTime(r.start_time) || 'Today' }));
+
+function itemHtml(r) {
+  const now = nowMin(), acct = acctOf(r) || (r.auto_key?.startsWith('task:') ? assigneeOf(r) : '');
+  const isNow = r.status !== 'done' && r.start_time && opMin(r.start_time) <= now && now <= endMin(r), isLate = OPEN(r) && endMin(r) <= now;
+  const fresh = justDone.has(r.id) && Date.now() - justDone.get(r.id) < 1200, isTask = r.auto_key?.startsWith('task:');
+  return `<li ${acct ? `data-ac="${acIdx(acct)}"` : ''} data-row="${r.id}" class="${r.status === 'done' ? 'done' : ''} ${isNow ? 'now' : ''} ${isLate ? 'late' : ''} ${fresh ? 'pop' : ''}"><label>
+    <input type="checkbox" data-t="${r.id}" ${r.status === 'done' ? 'checked' : ''} aria-label="${esc(r.task)}">
+    <span class="time">${r.start_time ? fmtTime(r.start_time) : '<em class="anytime">Any time</em>'}</span>
+    <span class="what"><span class="t">${acct ? avatar(acct) : ''}<b>${esc(r.task)}</b>${isNow ? '<span class="nowTag">Now</span>' : isLate ? '<span class="lateTag">Late</span>' : ''}${isTask ? `<button type="button" class="tEdit" data-edittask="${esc(r.auto_key.slice(5))}" title="Edit this task">Edit</button>` : ''}</span>${r.notes ? `<small>${linkify(r.notes)}</small>` : ''}${taskLinks(r)}${r.status === 'done' && r.completed_by_name ? `<small class="up">Done by ${esc(r.completed_by_name)}</small>` : ''}</span>
+  </label></li>`;
+}
 
 const justDone = new Map(); // task id → time ticked, so only that row animates
 function draw() {
   if (!root || !root.isConnected || root.dataset.page !== 'today') return; // user has moved to another page
   if (!date) { root.innerHTML = '<div class="empty">Loading…</div>'; return; }
-  const done = rows.filter(r => r.status === 'done').length, total = rows.length, left = total - done;
+  const W = viewing(), vr = W === 'Everyone' ? rows : rows.filter(r => assigneeOf(r) === W);
+  const done = vr.filter(r => r.status === 'done').length, total = vr.length, left = total - done;
   const now = nowMin();
-  const current = rows.find(r => r.status !== 'done' && opMin(r.start_time) <= now && now <= endMin(r));
-  const pending = rows.filter(r => r.status !== 'done'), next = current || pending.find(r => opMin(r.start_time) >= now) || pending[0];
-  const late = new Set(lateToday().map(r => r.id));
+  const current = vr.find(r => r.status !== 'done' && r.start_time && opMin(r.start_time) <= now && now <= endMin(r));
+  const pending = vr.filter(r => r.status !== 'done'), next = current || pending.find(r => opMin(r.start_time) >= now) || pending[0];
+  const late = new Set(lateToday(vr).map(r => r.id));
   const dayName = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-  const headline = !total ? 'Nothing scheduled yet' : !left ? 'All done for today' : `${left} task${left === 1 ? '' : 's'} left today`;
+  const whose = W === 'Everyone' ? 'The team has' : W === me() ? '' : `${W} has`;
+  const headline = !total ? (W === 'Everyone' || W === me() ? 'Nothing scheduled yet' : `Nothing for ${W} today`) : !left ? (whose ? `${W === 'Everyone' ? 'Everyone' : W} is done for today` : 'All done for today') : `${whose ? whose + ' ' : ''}${left} task${left === 1 ? '' : 's'} left today`;
   let whenTxt = '';
-  if (next) {
+  if (next && !next.start_time) whenTxt = 'Any time today';
+  else if (next) {
     const st = opMin(next.start_time), en = endMin(next);
     whenTxt = current ? `${fmtTime(next.start_time)}${next.end_time ? ' – ' + fmtTime(next.end_time) : ''} · ${dur(en - now)} left`
       : st > now ? `${fmtTime(next.start_time)} · starts in ${dur(st - now)}` : `${fmtTime(next.start_time)} · ${dur(now - en)} overdue`;
   }
   const fresh = [...justDone].filter(([, t]) => Date.now() - t < 1200).map(([id]) => id);
-  const upcoming = rows.filter(r => r.status !== 'done' && !late.has(r.id) && !(current && current.id === r.id) && !(next && !current && next.id === r.id)).slice(0, 5);
+  const upcoming = vr.filter(r => r.status !== 'done' && !late.has(r.id) && !(current && current.id === r.id) && !(next && !current && next.id === r.id)).slice(0, 5);
   const comingHtml = upcoming.length ? `<section class="card comingUp"><header><div><h2>Coming up</h2><p>${upcoming.length === 5 ? 'Next 5 tasks' : `${upcoming.length} more after this`}</p></div></header>
-    <ul>${upcoming.map(r => { const acct = acctOf(r); return `<li ${acct ? `data-ac="${acIdx(acct)}"` : ''}>${acct ? avatar(acct) : ''}<span class="t">${esc(r.task)}</span><time>${fmtTime(r.start_time)}</time></li>`; }).join('')}</ul></section>` : '';
+    <ul>${upcoming.map(r => { const acct = acctOf(r); return `<li ${acct ? `data-ac="${acIdx(acct)}"` : ''}>${acct ? avatar(acct) : ''}<span class="t">${esc(r.task)}</span><time>${fmtTime(r.start_time) || 'Any time'}</time></li>`; }).join('')}</ul></section>` : '';
   const asideHtml = comingHtml + dmCardHtml();
+  const people = [...new Set([...TEAM, ...rows.map(assigneeOf)])];
+  const stat = p => { const l = p === 'Everyone' ? rows : rows.filter(r => assigneeOf(r) === p); return { n: l.length, d: l.filter(r => r.status === 'done').length, late: lateToday(l).length }; };
+  const peopleBar = `<div class="tWho" role="tablist">${['Everyone', ...people].map(p => { const x = stat(p); return `<button type="button" role="tab" class="${p === W ? 'on' : ''}" data-who="${esc(p)}">${p === 'Everyone' ? '<span class="tWhoAll">All</span>' : avatar(p)}<span class="nm">${esc(p === me() ? p + ' (you)' : p)}</span><em class="${x.late ? 'late' : x.n && x.d === x.n ? 'ok' : ''}">${x.n ? `${x.d}/${x.n}` : '—'}</em></button>`; }).join('')}</div>`;
   root.innerHTML = `
+  ${peopleBar}
   <div class="tPage${asideHtml ? ' hasAside' : ''}"><div class="tMain">
   <section class="tHero">
     <div>
@@ -115,35 +141,31 @@ function draw() {
     <div class="tNow">
       <label>${current ? 'Now' : next ? 'Up next' : 'Done'}</label>
       ${next ? `<b>${esc(next.task)}</b><span class="when">${esc(whenTxt)}</span>` : '<b>Nothing left today</b><span class="when">Booked a call? Log it so it counts.</span>'}
-      <div class="row"><button class="btn brass sm" id="tMtg">Meeting booked</button>${state.role === 'admin' ? '<button class="btn sm" id="tAdd">Add task</button>' : ''}</div>
+      <div class="row"><button class="btn brass sm" id="tMtg">Meeting booked</button><button class="btn sm" id="tAdd">Add task</button></div>
     </div>
   </section>
   ${unfinishedHtml()}
   <div class="today">
-    <div>${total ? `<ul class="checklist">${rows.map(r => {
-      const acct = acctOf(r), isNow = current && current.id === r.id, isLate = late.has(r.id);
-      return `<li ${acct ? `data-ac="${acIdx(acct)}"` : ''} data-row="${r.id}" class="${r.status === 'done' ? 'done' : ''} ${isNow ? 'now' : ''} ${isLate ? 'late' : ''} ${fresh.includes(r.id) ? 'pop' : ''}"><label>
-        <input type="checkbox" data-t="${r.id}" ${r.status === 'done' ? 'checked' : ''} aria-label="${esc(r.task)}">
-        <span class="time">${fmtTime(r.start_time)}</span>
-        <span class="what"><span class="t">${acct ? avatar(acct) : ''}<b>${esc(r.task)}</b>${isNow ? '<span class="nowTag">Now</span>' : isLate ? '<span class="lateTag">Late</span>' : ''}</span>${r.notes ? `<small>${linkify(r.notes)}</small>` : ''}${taskLinks(r)}${r.status === 'done' && r.completed_by_name ? `<small class="up">Done by ${esc(r.completed_by_name)}</small>` : ''}</span>
-      </label></li>`;
-    }).join('')}</ul>` : '<div class="card"><div class="empty">No tasks for today yet. They appear once Schedule has posts for today.</div></div>'}
+    <div>${total ? `<ul class="checklist">${W === 'Everyone' ? people.filter(p => vr.some(r => assigneeOf(r) === p)).map(p => { const l = vr.filter(r => assigneeOf(r) === p); return `<li class="grpHead">${avatar(p)}<b>${esc(p)}</b><span>${l.filter(r => r.status === 'done').length} of ${l.length} done</span></li>` + l.map(itemHtml).join(''); }).join('') : vr.map(itemHtml).join('')}</ul>` : `<div class="card"><div class="empty">${W === 'Everyone' || W === me() ? 'No tasks for today yet.' : `No tasks for ${esc(W)} today.`} <button class="link" id="tAdd2">Add one</button></div></div>`}
     </div>
   </div></div>${asideHtml ? `<aside class="todayAside">${asideHtml}</aside>` : ''}</div>`;
   $$('[data-t]', root).forEach(cb => cb.onchange = () => toggle(cb.dataset.t, cb.checked, cb));
   $$('.checklist a', root).forEach(a => a.addEventListener('click', e => e.stopPropagation())); // open the link, don't tick the task
-  $('#tAdd', root)?.addEventListener('click', addTask);
+  const add = () => taskModal(null, { assignee: W === 'Everyone' ? me() : W, on_date: date }, load);
+  $('#tAdd', root)?.addEventListener('click', add); $('#tAdd2', root)?.addEventListener('click', add);
+  $$('[data-who]', root).forEach(b => b.onclick = () => { who = b.dataset.who; try { localStorage.setItem('hq-today-who', who); } catch { } draw(); });
+  $$('[data-edittask]', root).forEach(b => b.onclick = e => { e.preventDefault(); e.stopPropagation(); openTaskById(b.dataset.edittask, load); });
   $('#tMtg', root)?.addEventListener('click', () => meetingModal());
   bindDmCard(root, draw);
   $$('[data-late]', root).forEach(b => b.onclick = () => settle(b.dataset.late, 'done'));
   $$('[data-skip]', root).forEach(b => b.onclick = () => settle(b.dataset.skip, 'skipped'));
-  setBadge(left, late.size, total);
+  { const m = mineOnly(rows), md = m.filter(r => r.status === 'done').length; setBadge(m.length - md, lateToday(m).length, m.length); }
 }
 
 // Earlier this week, never finished: one red line so he knows, collapsed so today stays the focus.
 // Opens to settle each one (done late or skipped). Resets every Monday.
 function unfinishedHtml() {
-  const open = past.filter(OPEN); if (!open.length) return '';
+  const W = viewing(), open = past.filter(r => OPEN(r) && (W === 'Everyone' || assigneeOf(r) === W)); if (!open.length) return '';
   const days = [...new Set(open.map(r => dayLabel(r.work_date)))];
   return `<details class="overdue"><summary><b>You didn't finish ${open.length} task${open.length === 1 ? '' : 's'} earlier this week</b><span class="muted" style="color:inherit;opacity:.8">${esc(days.join(', '))}</span><span class="s">Sort them out</span></summary>
     <ul class="odList">${open.slice().reverse().map(r => `<li><span class="s muted">${esc(dayLabel(r.work_date))} · ${fmtTime(r.start_time)}</span><b>${esc(r.task)}</b>
@@ -162,10 +184,10 @@ function setBadge(left, lateCount, total) {
 export async function refreshBadge() {
   if (root?.dataset.page === 'today' && date) return; // Today keeps it current itself
   const d = opsDate();
-  const t = await sb.from('daily_ops_schedule').select('id,status,start_time,end_time').eq('work_date', d);
+  const t = await sb.from('daily_ops_schedule').select('id,status,start_time,end_time,assignee').eq('work_date', d);
   if (t.error) return;
-  const now = nowMin(), open = (t.data || []).filter(OPEN);
-  setBadge(open.length, open.filter(r => endMin(r) <= now).length, (t.data || []).length);
+  const all = mineOnly(t.data || []), now = nowMin(), open = all.filter(OPEN);
+  setBadge(open.length, open.filter(r => endMin(r) <= now).length, all.length);
 }
 
 // ---- The whip: armed when someone navigates to Today, fired once the data is fresh ----
@@ -224,17 +246,6 @@ async function toggle(id, checked, cb) {
   const res = await sb.from('daily_ops_schedule').update({ status: r.status, updated_at: new Date().toISOString(), updated_by: state.user?.id || null }).eq('id', id);
   if (fail(res, 'Update task')) { r.status = checked ? 'due' : 'done'; cb.checked = !checked; }
   await load();
-}
-
-function addTask() {
-  modal({ title: 'Add a task for today', submit: 'Add', body: `<div class="form">
-    <label class="field full">Task<input class="input" name="task" required placeholder="Reply to comments on Peter's post"></label>
-    <label class="field">Time<input class="input" type="time" name="time" required value="12:00"></label>
-    <label class="field">Priority<select class="select" name="priority"><option value="normal">Normal</option><option value="high">High</option></select></label></div>`,
-    onSubmit: async fd => {
-      const r = await sb.from('daily_ops_schedule').insert({ work_date: date, start_time: fd.get('time'), task: String(fd.get('task')).trim(), priority: fd.get('priority'), status: 'due', auto_generated: false, created_by: state.user?.id || null, updated_by: state.user?.id || null });
-      if (fail(r, 'Add task')) return false; toast('Task added'); await load();
-    } });
 }
 
 export function renderToday(el) {

@@ -33,6 +33,13 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - `daily_ops_creation_blocks`: the weekend post creation batch (HQ → Schedule, slider → Post creation, `hq/creation.js`).
   Block = day + start + account + creatives × minutes_per (end derived). `sync_daily_ops_today()` adds today's blocks to
   Today as 'create:<id>' tasks. Migration: `supabase/2026-10-02-creation-schedule.sql`.
+- Team tasks (`team_tasks`, `hq/tasks.js`): everyone's own once / daily / weekdays / weekly tasks (Today → Add task, or
+  Schedule → Team tasks). `sync_team_tasks()` (called by HQ after `sync_daily_ops_today`) upserts today's occurrences into
+  `daily_ops_schedule` (auto_key 'task:<id>', `assignee`, auto_generated=false so the posting sync never deletes them);
+  stale untouched ones are deleted client-side. `daily_ops_schedule.assignee`: null/posting rows = Anaz (trigger).
+  Today has a person switcher (Everyone + each person, defaults to the signed-in user; `hq-today-who`); nav badge and
+  whip count only your own tasks. Chase has a daily "Reply in X's inbox" task per account except Anaz.
+  Note: the Supabase connector cancels migrations containing DROP/DELETE/UPDATE; ask the user to run those in the SQL editor.
 - `daily_ops_posts`: scraped LinkedIn posts. `post_key` comes from a trigger. `is_repost` is set by trigger; reshares
   are boosts, never the account's own post. `tags` / `metrics` jsonb hold HQ tagging and `no_resource`.
 - Comments from our own accounts never count. `daily_ops_post_comments.is_team` is set by trigger;
