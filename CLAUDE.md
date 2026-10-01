@@ -37,7 +37,7 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   Schedule → Team tasks). `sync_team_tasks()` (called by HQ after `sync_daily_ops_today`) upserts today's occurrences into
   `daily_ops_schedule` (auto_key 'task:<id>', `assignee`, auto_generated=false so the posting sync never deletes them);
   stale untouched ones are deleted client-side. `daily_ops_schedule.assignee`: null/posting rows = Anaz (trigger).
-  Today has a person switcher (Everyone + each person, defaults to the signed-in user; `hq-today-who`); nav badge and
+  Today has a "Team today" switcher in the side rail (below the hero on narrow screens; never above the hero, the % ring stays the hero; `hq-today-who`); nav badge and
   whip count only your own tasks. Chase has a daily "Reply in X's inbox" task per account except Anaz.
   Note: the Supabase connector cancels migrations containing DROP/DELETE/UPDATE; ask the user to run those in the SQL editor.
 - `daily_ops_posts`: scraped LinkedIn posts. `post_key` comes from a trigger. `is_repost` is set by trigger; reshares

@@ -821,3 +821,23 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .checklist li:hover .tEdit,.tEdit:focus-visible{opacity:1}
 @media(hover:none){.tEdit{opacity:1}}
 .checklist .what{min-width:0}.checklist .what small{overflow-wrap:anywhere}.tLinks{flex-wrap:wrap;min-width:0}.tLink{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+
+/* Today v3: big ring, team switcher in the side rail (below the hero on narrow screens) */
+.tRing{gap:24px;margin-top:22px}
+.tRing svg{width:150px;height:150px}
+.tRing circle{stroke-width:10}
+.tRing b{font-size:64px;letter-spacing:-.04em}
+.tRing span{font-size:var(--fs);margin-top:8px}
+.tWhoLbl{color:var(--brass);font-weight:600}
+.tTeam ul{list-style:none;margin:0;padding:6px 8px 10px}
+.tTeam button{appearance:none;display:grid;grid-template-columns:28px minmax(0,1fr) 72px 40px;align-items:center;gap:10px;width:100%;padding:8px 10px;border:0;border-left:3px solid transparent;border-radius:8px;background:none;color:var(--ink-2);font:inherit;font-size:var(--fs-s);text-align:left;cursor:pointer}
+.tTeam button:hover{background:var(--hover)}
+.tTeam button.on{background:var(--sunk);border-left-color:var(--ac,var(--ink));color:var(--ink);font-weight:600}
+.tTeam .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tTeam .bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.tTeam .bar i{display:block;height:100%;background:var(--ac,var(--brass))}
+.tTeam em{font-style:normal;font-size:var(--fs-xs);font-weight:700;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.tTeam em.late{color:var(--bad)}.tTeam em.ok{color:var(--good)}
+.tTeam.narrow{display:none;margin-bottom:20px}
+@media(max-width:1179px){.tTeam.wide{display:none}.tTeam.narrow{display:block}}
+@media(max-width:600px){.tRing svg{width:120px;height:120px}.tRing b{font-size:52px}}

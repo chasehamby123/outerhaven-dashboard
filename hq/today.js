@@ -111,8 +111,8 @@ function draw() {
   const pending = vr.filter(r => r.status !== 'done'), next = current || pending.find(r => opMin(r.start_time) >= now) || pending[0];
   const late = new Set(lateToday(vr).map(r => r.id));
   const dayName = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-  const whose = W === 'Everyone' ? 'The team has' : W === me() ? '' : `${W} has`;
-  const headline = !total ? (W === 'Everyone' || W === me() ? 'Nothing scheduled yet' : `Nothing for ${W} today`) : !left ? (whose ? `${W === 'Everyone' ? 'Everyone' : W} is done for today` : 'All done for today') : `${whose ? whose + ' ' : ''}${left} task${left === 1 ? '' : 's'} left today`;
+  const headline = !total ? 'Nothing scheduled yet' : !left ? 'All done for today' : `${left} task${left === 1 ? '' : 's'} left today`;
+  const whoLabel = W === 'Everyone' ? 'Whole team' : W === me() ? 'Your day' : `${W}'s day`;
   let whenTxt = '';
   if (next && !next.start_time) whenTxt = 'Any time today';
   else if (next) {
@@ -124,16 +124,17 @@ function draw() {
   const upcoming = vr.filter(r => r.status !== 'done' && !late.has(r.id) && !(current && current.id === r.id) && !(next && !current && next.id === r.id)).slice(0, 5);
   const comingHtml = upcoming.length ? `<section class="card comingUp"><header><div><h2>Coming up</h2><p>${upcoming.length === 5 ? 'Next 5 tasks' : `${upcoming.length} more after this`}</p></div></header>
     <ul>${upcoming.map(r => { const acct = acctOf(r); return `<li ${acct ? `data-ac="${acIdx(acct)}"` : ''}>${acct ? avatar(acct) : ''}<span class="t">${esc(r.task)}</span><time>${fmtTime(r.start_time) || 'Any time'}</time></li>`; }).join('')}</ul></section>` : '';
-  const asideHtml = comingHtml + dmCardHtml();
+
   const people = [...new Set([...TEAM, ...rows.map(assigneeOf)])];
   const stat = p => { const l = p === 'Everyone' ? rows : rows.filter(r => assigneeOf(r) === p); return { n: l.length, d: l.filter(r => r.status === 'done').length, late: lateToday(l).length }; };
-  const peopleBar = `<div class="tWho" role="tablist">${['Everyone', ...people].map(p => { const x = stat(p); return `<button type="button" role="tab" class="${p === W ? 'on' : ''}" data-who="${esc(p)}">${p === 'Everyone' ? '<span class="tWhoAll">All</span>' : avatar(p)}<span class="nm">${esc(p === me() ? p + ' (you)' : p)}</span><em class="${x.late ? 'late' : x.n && x.d === x.n ? 'ok' : ''}">${x.n ? `${x.d}/${x.n}` : '—'}</em></button>`; }).join('')}</div>`;
+  const teamCard = cls => `<section class="card tTeam ${cls}"><header><div><h2>Team today</h2><p>Tap a person to see their tasks</p></div></header><ul>${['Everyone', ...people].map(p => { const x = stat(p), pc = x.n ? Math.round(x.d / x.n * 100) : 0;
+    return `<li><button type="button" class="${p === W ? 'on' : ''}" data-who="${esc(p)}" ${p !== 'Everyone' ? `data-ac="${acIdx(p)}"` : ''}>${p === 'Everyone' ? '<span class="tWhoAll">All</span>' : avatar(p)}<span class="nm">${esc(p === 'Everyone' ? 'Everyone' : p === me() ? p + ' (you)' : p)}</span><span class="bar"><i style="width:${pc}%"></i></span><em class="${x.late ? 'late' : x.n && x.d === x.n ? 'ok' : ''}">${x.n ? `${x.d}/${x.n}` : '—'}</em></button></li>`; }).join('')}</ul></section>`;
+  const asideHtml = teamCard('wide') + comingHtml + dmCardHtml();
   root.innerHTML = `
-  ${peopleBar}
   <div class="tPage${asideHtml ? ' hasAside' : ''}"><div class="tMain">
   <section class="tHero">
     <div>
-      <span class="date">${esc(dayName)} · Malaysia time</span>
+      <span class="date"><b class="tWhoLbl">${esc(whoLabel)}</b> · ${esc(dayName)} · Malaysia time</span>
       <h1>${esc(headline)}</h1>
       <div class="tRing"><svg viewBox="0 0 100 100"><circle class="trk" cx="50" cy="50" r="42"/><circle class="val" cx="50" cy="50" r="42" stroke-dasharray="263.9" stroke-dashoffset="${263.9 * (1 - (total ? done / total : 0))}"/></svg>
         <div><b>${total ? Math.round(done / total * 100) : 0}%</b><span>${done} of ${total} tasks done${late.size ? ` · <em>${late.size} late</em>` : ''}</span></div></div>
@@ -144,6 +145,7 @@ function draw() {
       <div class="row"><button class="btn brass sm" id="tMtg">Meeting booked</button><button class="btn sm" id="tAdd">Add task</button></div>
     </div>
   </section>
+  ${teamCard('narrow')}
   ${unfinishedHtml()}
   <div class="today">
     <div>${total ? `<ul class="checklist">${W === 'Everyone' ? people.filter(p => vr.some(r => assigneeOf(r) === p)).map(p => { const l = vr.filter(r => assigneeOf(r) === p); return `<li class="grpHead">${avatar(p)}<b>${esc(p)}</b><span>${l.filter(r => r.status === 'done').length} of ${l.length} done</span></li>` + l.map(itemHtml).join(''); }).join('') : vr.map(itemHtml).join('')}</ul>` : `<div class="card"><div class="empty">${W === 'Everyone' || W === me() ? 'No tasks for today yet.' : `No tasks for ${esc(W)} today.`} <button class="link" id="tAdd2">Add one</button></div></div>`}
