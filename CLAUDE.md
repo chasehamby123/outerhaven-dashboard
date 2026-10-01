@@ -47,6 +47,12 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Google Sheet "OuterHaven LinkedIn Accounts KPI" (id `1RGhFmIzQDCulzW6EVlFpVl8mmWEn_QU7rbSnzq1I01g`): HQ reads it via
   gviz CSV; `sheets/outerhaven-kpi-autofill.gs` (Apps Script) fills scraped columns from RPC `sheet_post_stats`.
 
+## Overview: "Did the posts go out?" (`hq/postcheck.js`)
+- Top card on Overview. Scheduled post tasks for the ops day (last night's until tonight's first slot starts) checked two
+  ways: ticked on Today vs found by the scraper (`daily_ops_posts`, own post, same `work_date`). If finished slots can't be
+  verified (scraper off / no posts run since), a popup shows once per ops day per browser (localStorage `hq-postcheck-<day>`)
+  with "Check LinkedIn now" = one manual posts run (~$0.18). It never turns the scraper on.
+
 ## Pipeline (HQ → Pipeline, `hq/pipeline.js`, admin only)
 - Reads `opportunities`, `people`, `tasks`, `lead_intake` (same tables as the old `shared.html` board; both stay in sync).
   Item = live deal (`pipeline_active`), or a live person with no live deal. Ball = `waiting_on` ('us'/'them'/null), clock = `waiting_on_since`.

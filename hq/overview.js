@@ -5,6 +5,7 @@ import { SHEET_URL } from './sheet.js';
 import { commentsNoMeetings } from './insights.js';
 import { scraperStatus } from './scraper.js';
 import { renderWeekHistory } from './today.js';
+import { renderPostCheck } from './postcheck.js';
 
 export const SOURCES = {
   inbound_post: ['Inbound · from a post', 'in'], inbound_dm: ['Inbound · DM', 'in'], comment_to_dm: ['Comment → DM', 'in'],
@@ -105,6 +106,7 @@ export function renderOverview(root) {
     <div class="row">${s ? `<select class="select sm" id="ovWeek" style="width:auto">${s.weeks.slice().reverse().map(w => `<option value="${w}" ${w === week ? 'selected' : ''}>Week of ${fmtDate(w)}${s.filledWeeks.includes(w) ? '' : ' (empty)'}</option>`).join('')}</select>` : ''}
     <button class="btn sm" id="ovRefresh">Refresh sheet</button><a class="btn sm ghost" href="${SHEET_URL}" target="_blank" rel="noopener">Open sheet ↗</a></div></div>
   <div class="stack">
+    <div id="ovPosts"></div>
     <div class="kpis">
       ${kpi('Meetings booked', fmt(booked), 'meetingsBooked', '', true)}
       ${kpi('Impressions', fmt(imp), 'impressions')}
@@ -139,6 +141,7 @@ export function renderOverview(root) {
 
   root.querySelectorAll('[data-sort]').forEach(th => th.onclick = () => { const k = th.dataset.sort; if (k === sortKey) sortAsc = !sortAsc; else { sortKey = k; sortAsc = k === 'account'; } renderOverview(root); });
   root.querySelector('#ovWeek')?.addEventListener('change', e => { week = e.target.value; renderOverview(root); });
+  const ovPosts = root.querySelector('#ovPosts'); if (ovPosts) renderPostCheck(ovPosts);
   const ovTasks = root.querySelector('#ovTasks'); if (ovTasks) renderWeekHistory(ovTasks);
   root.querySelector('#ovRefresh')?.addEventListener('click', async e => { e.target.disabled = true; e.target.textContent = 'Refreshing…'; await loadSheet(); });
 }
