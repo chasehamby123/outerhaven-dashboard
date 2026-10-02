@@ -26,6 +26,7 @@ FN = os.environ.get("FUND_SIGNALS_URL", "https://nfcysxqdwpdhrdpgxrlo.supabase.c
 KEY = os.environ.get("FUND_INGEST_KEY", "")
 LIVE_RE = re.compile(r"\b(II|III)(-[A-Z0-9]+)?\b")
 FUND1_RE = re.compile(r"\bI(-[A-Z0-9]+)?\b")
+LATER_RE = re.compile(r"\b(II|III|IV|V|VI|VII|VIII|IX|X)(-[A-Z0-9]+)?\b|\bFund\s+[2-9]\b", re.I)
 POOLED = "Pooled Investment Fund"
 
 
@@ -155,7 +156,18 @@ def check():
                     continue
                 seen.add(r.accession_number)
                 name = re.sub(r"\s*\((?:[A-Z.\-]+\)\s*\()?CIK \d+\)\s*$", "", r.company or "").strip()
-                items.append({"companyName": name, "cik": r.cik, "filingDate": r.filed, "formType": r.form, "accessionNumber": r.accession_number})
+                light = {"companyName": name, "cik": r.cik, "filingDate": r.filed, "formType": r.form, "accessionNumber": r.accession_number}
+                # A possible later fund: open the filing so the server can compare the named people with Fund I's.
+                if LATER_RE.search(name):
+                    try:
+                        f = r.get_filing()
+                        full = item_from(f, f.obj())
+                        full["companyName"] = name or full["companyName"]
+                        items.append(full)
+                        continue
+                    except Exception as e:  # noqa: BLE001
+                        log(f"    could not open {name}: {e}")
+                items.append(light)
             post({"action": "ingest", "kind": "check", "signal_ids": [x["id"] for x in group], "items": items})
             log(f"  {s['check_keyword']}: {len(items)} later filings")
         except Exception as e:  # noqa: BLE001

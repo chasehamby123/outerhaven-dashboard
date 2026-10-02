@@ -116,6 +116,7 @@ export function classify(s, now = Date.now()) {
     if (s.check_status === 'clear' && !(s.sold > 0)) add('maybe', 'No money reported raised, even in later filings: Fund I may never have closed');
     else if (s.check_status === 'clear') add('good', `No Fund II filed yet (checked ${String(s.checked_at || '').slice(0, 10)})`, 25);
     else if (s.check_status === 'next') add('cut', s.check_note || 'Already filed a later fund');
+    else if (s.check_status === 'unsure') add('maybe', s.check_note || 'Possible Fund II, not confirmed: check by hand');
     else if (s.check_status === 'error') add('maybe', 'Fund II check failed: run it again');
     else if (s.check_status === 'checking') add('info', 'Checking EDGAR for a Fund II…');
     else if (s.check_status === 'queued') add('info', 'Queued for a Fund II check (runs hourly on GitHub)');
@@ -129,23 +130,38 @@ export function classify(s, now = Date.now()) {
   return { verdict, score: verdict === 'cut' ? Math.min(score, 20) : score, reasons: R.map(({ tone, text }) => ({ tone, text })) };
 }
 
+// People on a filing, as comparable keys: "aman brar" → "a brar". Entities are already dropped by people().
+const personKeys = list => new Set((list || []).map(p => String(p.name || `${p.firstName || ''} ${p.lastName || ''}`).toLowerCase().replace(/[^a-z\s]/g, ' ').trim().split(/\s+/)).filter(w => w.length >= 2).map(w => `${w[0][0]} ${w[w.length - 1]}`));
+
 // Read a check run: later filings (D or D/A) whose name matches this manager.
-// A higher fund number = they already started the next fund. Same number, later date = an amendment with fresh numbers.
+// A higher fund number by the same manager = they already started the next fund. "Same manager" needs the name match AND
+// at least one person (partner/director) on both filings; without people to compare it's only "unsure".
+// Same fund number under the same SEC company number (CIK), later date = an amendment with fresh numbers.
 export function readCheck(s, items) {
-  const mine = Math.max(1, s.fund_no || 0), later = [], amends = [];
+  const mine = Math.max(1, s.fund_no || 0), later = [], amends = [], strangers = [], unsure = [];
+  const ours = personKeys(s.executives);
   for (const it of items || []) {
     const p = parseName(it.companyName);
     if (p.manager_key !== s.manager_key || VEHICLE.test(it.companyName || '')) continue;
     const row = { name: it.companyName, date: isoDate(it.filingDate), form: it.formType, offering: num(it.totalOfferingAmount), sold: num(it.totalAmountSold), fund_no: p.fund_no, cik: it.cik || null };
     // Same fund = same SEC company id (CIK); fall back to the exact name when a CIK is missing.
     const same = s.cik && row.cik ? Number(s.cik) === Number(row.cik) : String(it.companyName || '').toLowerCase() === String(s.company_name || '').toLowerCase();
-    if (same) { if (row.date && (!s.filing_date || row.date > s.filing_date)) amends.push(row); }
-    else if (p.fund_no > mine) later.push(row);
+    if (same) { if (row.date && (!s.filing_date || row.date > s.filing_date)) amends.push(row); continue; }
+    if (!(p.fund_no > mine)) continue;
+    const theirs = personKeys(people(it));
+    row.shared = [...theirs].filter(k => ours.has(k));
+    if (!ours.size || !theirs.size) unsure.push(row);
+    else if (row.shared.length) later.push(row);
+    else strangers.push(row);
   }
-  later.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const byDate = (a, b) => String(a.date).localeCompare(String(b.date));
+  later.sort(byDate); unsure.sort(byDate);
   amends.sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  const out = { later, latest: amends.find(a => a.sold != null) || amends[0] || null };
-  if (later.length) { const f = later[0]; out.status = 'next'; out.note = `Already filed ${f.name} (${f.date}${f.offering ? `, ${money(f.offering)} target` : ''})`; }
-  else { out.status = 'clear'; out.note = out.latest ? `No later fund. Latest Fund ${romanOf(mine)} filing ${out.latest.date}${out.latest.sold != null ? `: ${money(out.latest.sold)} raised${out.latest.offering ? ` of ${money(out.latest.offering)}` : ''}` : ''}` : `No later fund filed since ${s.filing_date || 'the original filing'}`; }
+  const out = { later: [...later, ...unsure.map(r => ({ ...r, unconfirmed: true })), ...strangers.map(r => ({ ...r, other_manager: true }))], latest: amends.find(a => a.sold != null) || amends[0] || null };
+  const fresh = out.latest ? `Latest Fund ${romanOf(mine)} filing ${out.latest.date}${out.latest.sold != null ? `: ${money(out.latest.sold)} raised${out.latest.offering ? ` of ${money(out.latest.offering)}` : ''}` : ''}` : '';
+  const ignored = strangers.length ? ` Ignored ${strangers.length} same-name filing${strangers.length > 1 ? 's' : ''} by different people (${strangers[0].name}).` : '';
+  if (later.length) { const f = later[0]; out.status = 'next'; out.note = `Already filed ${f.name} (${f.date}${f.offering ? `, ${money(f.offering)} target` : ''}); same people on both filings`; }
+  else if (unsure.length) { const f = unsure[0]; out.status = 'unsure'; out.note = `Possible Fund II: ${f.name} (${f.date}), but no named people to confirm it's the same manager. Check by hand.${ignored}`; }
+  else { out.status = 'clear'; out.note = (fresh ? `No later fund. ${fresh}.` : `No later fund filed since ${s.filing_date || 'the original filing'}.`) + ignored; }
   return out;
 }
