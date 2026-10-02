@@ -143,11 +143,11 @@ async function ingest(body: any) {
     sb.from("fund_signal_runs").insert({ kind, status: error ? "failed" : "done", items, added, cost_usd: 0, cap_usd: 0, params: { source: "github", ...params }, error, finished_at: now });
   if (body.kind === "todo") {
     const cols = "id,manager_key,check_keyword,cik,filing_date,fund_no,company_name";
-    const queued = (await sb.from("fund_signals").select(cols).eq("check_status", "queued").limit(60)).data || [];
-    const fresh = (await sb.from("fund_signals").select(cols).eq("list", "fund1").eq("verdict", "target").is("check_status", null).limit(60)).data || [];
+    const queued = (await sb.from("fund_signals").select(cols).eq("check_status", "queued").limit(300)).data || [];
+    const fresh = (await sb.from("fund_signals").select(cols).eq("list", "fund1").eq("verdict", "target").is("check_status", null).limit(300)).data || [];
     const stale = (await sb.from("fund_signals").select(cols).eq("list", "fund1").eq("verdict", "target").eq("check_status", "clear").lt("checked_at", new Date(Date.now() - 30 * DAY).toISOString()).limit(30)).data || [];
     const stuck = (await sb.from("fund_signals").select(cols).eq("check_status", "checking").lt("updated_at", new Date(Date.now() - 6 * 3600e3).toISOString()).limit(30)).data || [];
-    const all = [...queued, ...stuck, ...fresh, ...stale].filter((x, i, a) => a.findIndex(y => y.id === x.id) === i).slice(0, 80);
+    const all = [...queued, ...stuck, ...fresh, ...stale].filter((x, i, a) => a.findIndex(y => y.id === x.id) === i).slice(0, 300);
     if (all.length) await sb.from("fund_signals").update({ check_status: "checking", updated_at: now }).in("id", all.map(x => x.id));
     return { signals: all };
   }

@@ -78,7 +78,7 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Finds US funds raising now (Form D, II/III in the name, pooled fund, $50–250M, <60% sold, no sales commissions) and Fund I
   managers 3–4 years in who haven't filed a Fund II.
 - **Source: GitHub Actions** `.github/workflows/fund-signals.yml` runs `scripts/fund_signals.py` (edgartools, SEC direct, free):
-  daily 01:40 UTC (new II/III filings, the Fund I window turning 3.5 years, checks) and hourly :10 (queued checks). Backfills:
+  daily 01:40 UTC (new II/III filings, the Fund I window turning 3.5 years, checks) and hourly :10 (checks: queued + unchecked Fund I targets, up to 300 per run). Check confirms "same manager" by a shared named person; name-only = "unsure" (Maybe). Backfills:
   Actions → Fund signals → Run workflow (mode live/fund1 + dates). Repo secrets: `FUND_INGEST_KEY` (= `FUND_INGEST_SECRET`, admins copy it
   in the tab's Setup via RPC `fund_ingest_key()`) and `SEC_IDENTITY` (name + email). The user sets both; never set them yourself.
   The sandbox and the DB can't reach sec.gov (blocked), so test the parser offline (`edgar.offerings.exempt.formd.FormD.from_xml`).
