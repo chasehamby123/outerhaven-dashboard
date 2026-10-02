@@ -174,7 +174,7 @@ async function ingest(body: any) {
   }
   if (body.kind === "credit") {
     const items = Array.isArray(body.items) ? body.items.slice(0, 500) : [];
-    return { added: await ingestCredit(items, { period: body.period || null, source: "github" }) };
+    return { added: await ingestCredit(items, { period: body.period || null, source: "github", stats: body.stats || null }) };
   }
   if (body.kind === "scan") {
     const list = body.list === "live" ? "live" : "fund1", items = Array.isArray(body.items) ? body.items.slice(0, 500) : [];

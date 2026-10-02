@@ -46,3 +46,6 @@ create table if not exists public.credit_signal_runs (
 alter table public.credit_signal_runs enable row level security;
 create policy credit_signal_runs_read on public.credit_signal_runs for select to authenticated using (public.can_access_dashboard());
 grant select on public.credit_signal_runs to authenticated;
+
+-- Revolving credit lines classed as current (they usually roll over), kept apart from term debt coming due.
+alter table public.credit_signals add column if not exists revolver_current numeric;

@@ -24,8 +24,11 @@ from edgar.httprequests import download_json
 FN = os.environ.get("FUND_SIGNALS_URL", "https://nfcysxqdwpdhrdpgxrlo.supabase.co/functions/v1/fund-signals")
 KEY = os.environ.get("FUND_INGEST_KEY", "")
 FRAMES = "https://data.sec.gov/api/xbrl/frames/{tax}/{tag}/USD/{period}.json"
-DEBT_CURRENT = ["LongTermDebtCurrent", "DebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent", "NotesPayableCurrent",
-                "ConvertibleNotesPayableCurrent", "LinesOfCreditCurrent", "ShortTermBorrowings"]
+# Term debt coming due (a real refinancing deadline). Revolvers are kept apart: lenders classify ABL / revolving lines as
+# current even though they usually roll over, which made every retailer look like it had a maturity wall.
+DEBT_CURRENT = ["LongTermDebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent", "NotesPayableCurrent",
+                "ConvertibleNotesPayableCurrent", "SecuredDebtCurrent"]
+REVOLVER = ["LinesOfCreditCurrent", "ShortTermBorrowings"]
 DEBT_NONCURRENT = ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations", "LongTermLineOfCredit",
                    "ConvertibleNotesPayableNoncurrent", "LongTermNotesPayable"]
 CASH = ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", "Cash"]
@@ -89,17 +92,24 @@ def quarter_periods(today):
     return [p for _, p in q_ends[:2]]
 
 
+STATS = {"errors": []}
+
+
 def text_hits(query, forms, since, cap=600):
-    """{cik: {form, date, url}} newest hit per company from EDGAR full-text search."""
+    """{cik: {form, date, url}} newest hit per company from EDGAR full-text search (dates re-checked here too)."""
     out = {}
     try:
-        res = search_filings(query, forms=forms, start_date=since, limit=100)
+        res = search_filings(query, forms=forms, start_date=since, end_date=dt.date.today().isoformat(), limit=100)
         if res.total > len(res.results):
             res = res.fetch_more(min(cap, res.total) - len(res.results))
     except Exception as e:  # noqa: BLE001
         log(f"  search {query}: failed {e}")
+        STATS["errors"].append(f"search {query}: {type(e).__name__}: {str(e)[:200]}")
         return out
+    STATS[f"search {query}"] = {"total": res.total, "fetched": len(res.results)}
     for r in res.results:
+        if r.filed and str(r.filed) < since:
+            continue
         try:
             cik = int(r.cik)
         except (TypeError, ValueError):
@@ -140,7 +150,7 @@ def credit():
         period = periods[-1]
         cash = best(CASH, period)
     log(f"credit: balance sheet period {period}")
-    dcur, dnon = best(DEBT_CURRENT, period), best(DEBT_NONCURRENT, period)
+    dcur, dnon, rvl = best(DEBT_CURRENT, period), best(DEBT_NONCURRENT, period), best(REVOLVER, period)
     rev = best(REVENUE, f"CY{today.year - 1}")
     if len(rev) < 2000:
         rev.update({k: v for k, v in best(REVENUE, f"CY{today.year - 2}").items() if k not in rev})
@@ -161,6 +171,8 @@ def credit():
         r = val(rev, c)
         if r is None or r >= 20e6:
             cands.add(c)
+    STATS.update({"period": period, "frames": {"cash": len(cash), "debt_current": len(dcur), "revolver": len(rvl), "revenue": len(rev), "float": len(flt)},
+                  "forbearance_companies": len(forb), "going_concern_companies": len(gc), "candidates": len(cands)})
     log(f"credit: {len(cands)} candidates ({sum(1 for c in cands if c in forb)} forbearance, {sum(1 for c in cands if c in gc)} going concern)")
 
     batch, sent = [], 0
@@ -169,6 +181,8 @@ def credit():
             p = profile(c)
         except Exception as e:  # noqa: BLE001
             log(f"  profile {c}: {e}")
+            if len(STATS["errors"]) < 20:
+                STATS["errors"].append(f"profile {c}: {str(e)[:120]}")
             p = {"name": (dcur.get(c) or cash.get(c) or rev.get(c) or (None, None, None, f"CIK {c}"))[3]}
         flags = {}
         if c in forb:
@@ -176,14 +190,14 @@ def credit():
         if c in gc:
             flags["going_concern"] = gc[c]
         batch.append({"cik": c, **p, "periodEnd": (dcur.get(c) or cash.get(c) or (None, None))[1], "debtCurrent": val(dcur, c),
-                      "debtNoncurrent": val(dnon, c), "cash": val(cash, c), "revenue": val(rev, c), "publicFloat": val(flt, c), "flags": flags})
+                      "debtNoncurrent": val(dnon, c), "revolverCurrent": val(rvl, c), "cash": val(cash, c), "revenue": val(rev, c), "publicFloat": val(flt, c), "flags": flags})
         if len(batch) >= 100:
-            r = post({"action": "ingest", "kind": "credit", "items": batch, "period": period})
+            r = post({"action": "ingest", "kind": "credit", "items": batch, "period": period, "stats": STATS})
             sent += len(batch)
             log(f"  sent {sent} (new {r.get('added')})")
             batch = []
-    if batch:
-        r = post({"action": "ingest", "kind": "credit", "items": batch, "period": period})
+    if batch or sent == 0:
+        r = post({"action": "ingest", "kind": "credit", "items": batch, "period": period, "stats": STATS})
         sent += len(batch)
         log(f"  sent {sent} (new {r.get('added')})")
     log(f"credit: done, {sent} companies sent")

@@ -3,12 +3,12 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 3;
+export const RULES_VERSION = 4;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
 // Managers with their own fundraising teams, and wealth platforms whose feeders just repackage someone else's fund.
-const BRANDS = /\b(apollo|blackstone|kkr|carlyle|ares|cerberus|adams street|investcorp|canyon capital|h\.?i\.?g\.?|bain capital|andreessen|lightspeed|neuberger|icapital|cais|brown advisory|ashwood|nuveen|crestline|lindsay goldberg|hines|greystar|goldman|morgan stanley|j\.?p\.? ?morgan|blackrock|tpg|warburg|general atlantic|sequoia|accel|insight partners|thoma bravo|brookfield|oaktree|hamilton lane|stepstone|pantheon|harbourvest|partners group|ardian|eqt|cvc|permira|silver lake|fortress|starwood|pimco|invesco|fidelity|ubs|wells fargo|meridiam|cresset|moonfare|yieldstreet|novacap|columbia capital|patient square|grey rock|cvp nolimit)\b/i;
+const BRANDS = /\b(apollo|blackstone|kkr|carlyle|ares|cerberus|adams street|investcorp|canyon capital|h\.?i\.?g\.?|bain capital|andreessen|lightspeed|neuberger|icapital|cais|brown advisory|ashwood|nuveen|crestline|lindsay goldberg|hines|greystar|goldman|morgan stanley|j\.?p\.? ?morgan|blackrock|tpg|warburg|general atlantic|sequoia|accel|insight partners|thoma bravo|brookfield|oaktree|hamilton lane|stepstone|pantheon|harbourvest|partners group|ardian|eqt|cvc|permira|silver lake|fortress|starwood|pimco|invesco|fidelity|ubs|wells fargo|meridiam|cresset|moonfare|yieldstreet|novacap|columbia capital|patient square|grey rock|cvp nolimit|blue owl|dfj)\b/i;
 // Single-deal or pass-through vehicles: not a fund raising from LPs.
 const VEHICLE = /\b(spv|co-?invest\w*|series of|splitter|blocker|continuation|sidecar|aggregator|access fund|annex)\b/i;
 const STOP = new Set('fund funds lp llc llp ltd inc l p gp partners partnership capital ventures venture vc equity growth opportunity opportunities holdings investors investment investments management private credit global strategic select co company the a limited sicav scsp master offshore onshore feeder parallel us international series of and & fof'.split(' '));
@@ -147,7 +147,7 @@ export function readCheck(s, items) {
     // Same fund = same SEC company id (CIK); fall back to the exact name when a CIK is missing.
     const same = s.cik && row.cik ? Number(s.cik) === Number(row.cik) : String(it.companyName || '').toLowerCase() === String(s.company_name || '').toLowerCase();
     if (same) { if (row.date && (!s.filing_date || row.date > s.filing_date)) amends.push(row); continue; }
-    if (!(p.fund_no > mine)) continue;
+    if (!(p.fund_no > mine) || (s.filing_date && row.date && row.date <= s.filing_date)) continue;
     const theirs = personKeys(people(it));
     row.shared = [...theirs].filter(k => ours.has(k));
     if (!ours.size || !theirs.size) unsure.push(row);
@@ -169,12 +169,12 @@ export function readCheck(s, items) {
 // ---- Credit signals: small US public companies that need private credit (Peter's lane) ----
 // Item from scripts/credit_signals.py: { cik, name, tickers, exchange, sic, sicDesc, state, periodEnd, debtCurrent,
 // debtNoncurrent, cash, revenue, publicFloat, flags: { going_concern?, forbearance? }, filingUrl }
-export const CREDIT_RULES_VERSION = 1;
+export const CREDIT_RULES_VERSION = 2;
 export function normalizeCredit(it) {
   return {
     cik: String(Number(it.cik)), company_name: it.name || 'Unknown', tickers: (it.tickers || []).join ? (it.tickers || []).join(', ') : it.tickers || null,
     exchange: (it.exchanges || []).join ? (it.exchanges || []).join(', ') : it.exchange || null, sic: it.sic ? String(it.sic) : null, sic_desc: it.sicDesc || null,
-    state: it.state || null, period_end: isoDate(it.periodEnd), debt_current: num(it.debtCurrent), debt_noncurrent: num(it.debtNoncurrent),
+    state: it.state || null, period_end: isoDate(it.periodEnd), debt_current: num(it.debtCurrent), debt_noncurrent: num(it.debtNoncurrent), revolver_current: num(it.revolverCurrent),
     cash: num(it.cash), revenue: num(it.revenue), public_float: num(it.publicFloat), flags: it.flags || {}, filing_url: it.filingUrl || null,
   };
 }
@@ -190,10 +190,12 @@ export function classifyCredit(s) {
   if (s.public_float != null && s.public_float > 2e9) add('cut', `Public float ${money(s.public_float)}: too large, has bank coverage`);
   if (s.state && !US.has(s.state)) add('maybe', `Non-US company (${s.state})`);
   let trigger = false;
-  if (dc >= 10e6 && cash != null && dc > cash) { trigger = true; add('good', `${money(dc)} of debt due within 12 months vs ${money(cash)} cash${when}: must refinance`, 40); }
+  // Bigger gap = more urgent: +40, up to +10 more when term debt due is 3x+ the cash.
+  if (dc >= 10e6 && cash != null && dc > cash) { trigger = true; add('good', `${money(dc)} of term debt due within 12 months vs ${money(cash)} cash${when}: must refinance`, 40 + Math.min(10, Math.round((dc / Math.max(cash, 1e6) - 1) * 5))); }
   else if (dc >= 10e6 && cash != null && dc > 0.5 * cash) add('good', `${money(dc)} due within 12 months, ${Math.round(dc / cash * 100)}% of its cash${when}`, 15);
   if (f.forbearance) { trigger = true; add('good', `Lender forbearance agreement (${f.forbearance.form} ${f.forbearance.date}): current lender is losing patience`, 35); }
   if (f.going_concern) { trigger = true; add('good', `Going-concern doubt disclosed (${f.going_concern.form} ${f.going_concern.date}): needs rescue or bridge financing`, 20); }
+  if (s.revolver_current >= 5e6) add('info', `Plus ${money(s.revolver_current)} on a revolving line (classed as current but usually rolls over)`);
   if (s.public_float != null && s.public_float <= 300e6) add('good', `Small cap (public float ${money(s.public_float)}): too small for the bond market`, 10);
   if (total >= 20e6 && total <= 300e6) add('good', `${money(total)} total debt: the size Peter's private credit lenders write`, 8);
   if (!trigger) add('maybe', 'No refinancing deadline, forbearance or going-concern warning found');
