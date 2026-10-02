@@ -931,3 +931,26 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
   .fsAct .btn{flex:1 1 auto}
   .fsBulk{margin:10px 16px 0}
 }
+
+/* Pipeline board v5: compact cards + capped columns (the board used to run ~2,000px down) */
+.pCard.pk{display:grid;gap:3px;padding:9px 11px 8px 14px;box-shadow:none}
+.pCard.pk::before{width:3px}
+.pk .pcName{font-size:var(--fs-s);font-weight:650;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.pk .pcSize{font-size:var(--fs-xs)}
+.pkMeta{display:flex;align-items:center;gap:8px;min-width:0;font-size:var(--fs-xs);font-weight:600}
+.pkBall{white-space:nowrap;color:var(--muted)}
+.pkBall[data-tone="bad"]{color:var(--bad)}.pkBall[data-tone="warn"]{color:var(--warn)}
+.pkExtra{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.pkExtra.bad{color:var(--bad)}.pkExtra.warn{color:var(--warn)}
+.pkMeta .pcAct{margin-left:auto;gap:8px;flex:none}
+.pkAdv{appearance:none;display:inline-grid;place-items:center;width:24px;height:22px;padding:0;font:inherit;font-size:14px;line-height:1;color:var(--ink-2);background:none;border:1px solid var(--line);border-radius:6px;cursor:pointer}
+.pkAdv:hover{color:var(--ink);border-color:var(--brass)}
+.pkNext{margin:0;font-size:var(--fs-xs);line-height:1.4;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pkNext.none{color:var(--bad);font-weight:600}
+.pkOwn{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs);color:var(--muted)}
+.pGrid{align-items:start;gap:14px}
+.pColMore{appearance:none;width:100%;padding:8px;font:inherit;font-size:var(--fs-xs);font-weight:600;color:var(--ink-2);background:none;border:1px dashed var(--line-2);border-radius:8px;cursor:pointer}
+.pColMore:hover{color:var(--ink);border-color:var(--brass)}
+.pkRow{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.pkRow .pkNext{flex:1;min-width:0}
+.pkOwn{flex:none}

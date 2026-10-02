@@ -31,6 +31,7 @@ export function leadHeat(l) {
 }
 
 let root, D = null, loadedAt = 0, side = 'Sell Side', flt = null, showAllLeads = false, tab = 'need';
+const COL_CAP = 4, openCols = new Set(); // board columns show the 4 most urgent cards; "Show N more" expands one column
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const daysSince = ts => ts ? Math.max(0, Math.floor((Date.now() - Date.parse(ts)) / DAY)) : null;
@@ -201,20 +202,29 @@ function boardHtml(live, inFlt = new Set()) {
     const hot = c.items.filter(i => i.sev >= 3).length, total = c.items.reduce((n, i) => n + i.raise, 0);
     return `<div class="pCol ${c.items.length ? '' : 'none'}"><h3><span class="n">${idx + 1}</span>${esc(c.name)}</h3>
       <div class="pColSum"><b>${c.items.length}</b>${hot ? `<span class="pFlag bad">${hot} red</span>` : ''}${total ? `<span class="s muted">${money(total)}</span>` : ''}</div>
-      ${c.items.map(i => cardHtml(i, inFlt.has(i.kind + ':' + i.id))).join('') || '<div class="pEmpty">Empty</div>'}</div>`;
+      ${boardCards(c, idx, inFlt)}</div>`;
   }).join('')}</div>`;
+}
+// Cap each column so one busy stage can't make the page endless. A filter that matches hidden cards opens the column.
+function boardCards(c, idx, inFlt) {
+  if (!c.items.length) return '<div class="pEmpty">Empty</div>';
+  const key = side + ':' + idx, hiddenHit = c.items.slice(COL_CAP).some(i => inFlt.has(i.kind + ':' + i.id));
+  const open = openCols.has(key) || hiddenHit || c.items.length <= COL_CAP + 1; // never hide just one card
+  const shown = open ? c.items : c.items.slice(0, COL_CAP);
+  return shown.map(i => cardHtml(i, inFlt.has(i.kind + ':' + i.id))).join('')
+    + (c.items.length > COL_CAP + 1 ? `<button type="button" class="pColMore" data-col="${key}">${open ? 'Show fewer' : `Show ${c.items.length - COL_CAP} more`}</button>` : '');
 }
 function cardHtml(i, hit) {
   const tone = i.ball === 'us' ? (i.days >= 7 ? 'bad' : i.days >= 3 ? 'warn' : '') : i.ball === 'them' ? (i.days >= 14 ? 'bad' : i.days >= 7 ? 'warn' : '') : 'warn';
   const extra = i.flags.filter(f => f.sev !== 'info' && !['us', 'them', 'noball', 'nonext'].includes(f.code));
   const nx = nextStage(i), key = `${i.kind}:${i.id}`, size = i.raise ? money(i.raise) : i.size || '';
-  return `<div role="button" tabindex="0" class="pCard ${hit ? 'hit' : ''}" data-sev="${i.sev}" data-upd="${key}">
+  const ballTxt = i.ball === 'us' ? 'Our move' : i.ball === 'them' ? 'Their move' : 'Nobody owns it';
+  const tip = [i.sub, ...extra.map(f => f.text)].filter(Boolean).join(' · '); // detail lives in the tooltip and the click-through modal
+  return `<div role="button" tabindex="0" class="pCard pk ${hit ? 'hit' : ''}" data-sev="${i.sev}" data-upd="${key}"${tip ? ` title="${esc(tip)}"` : ''}>
     <div class="pcHead"><b class="pcName">${esc(i.name)}</b>${size ? `<span class="pcSize">${esc(size)}</span>` : ''}</div>
-    ${i.sub ? `<div class="pcSub">${esc(i.sub)}</div>` : ''}
-    <p class="pcNext ${i.nextText ? '' : 'none'}">${i.nextText ? `<span>Next</span>${esc(i.nextText)}` : 'No next step set'}</p>
-    <div class="pcStatus" data-tone="${tone}"><b>${i.ball === 'us' ? 'Our move' : i.ball === 'them' ? 'Their move' : 'Nobody owns it'}<em>${i.days}d</em></b>${extra.map(f => `<span class="${f.sev}">${esc(f.text)}</span>`).join('')}</div>
-    <div class="pcFoot"><span class="pcOwner">${i.owner ? avatar(i.owner, 'xs') + esc(firstName(i.owner)) : '<span class="muted">No owner</span>'}</span>
-      <span class="pcAct">${hasDms(i) ? `<button type="button" class="pcLink" data-dm="${key}">DMs</button>` : ''}${nx ? `<button type="button" class="btn sm pcNextBtn" data-adv="${key}" title="Move to ${esc(nx)}">Next stage →</button>` : ''}</span></div></div>`;
+    <div class="pkMeta"><span class="pkBall" data-tone="${tone}">${ballTxt} · ${i.days}d</span>${extra.length ? `<span class="pkExtra ${extra[0].sev}">${extra.length > 1 ? `${extra.length} flags` : esc(extra[0].text)}</span>` : ''}<span class="pcAct">${hasDms(i) ? `<button type="button" class="pcLink" data-dm="${key}">DMs</button>` : ''}${nx ? `<button type="button" class="pkAdv" data-adv="${key}" title="Move to ${esc(nx)}" aria-label="Move to ${esc(nx)}">→</button>` : ''}</span></div>
+    <div class="pkRow"><p class="pkNext ${i.nextText ? '' : 'none'}">${i.nextText ? esc(i.nextText) : 'No next step set'}</p>
+    <span class="pkOwn" title="${i.owner ? esc(i.owner) : 'No owner'}">${i.owner ? avatar(i.owner, 'xs') + esc(firstName(i.owner)) : '<span class="muted">No owner</span>'}</span></div></div>`;
 }
 function leadHtml(l) {
   const q = l.decision.startsWith('qualified'), sd = l.decision === 'qualified_buy_side' ? 'Buy Side' : l.decision === 'qualified_sell_side' ? 'Sell Side' : '';
@@ -240,6 +250,7 @@ function bind(all) {
   $('[data-clear]', root)?.addEventListener('click', () => { flt = null; draw(); });
   $$('[data-side]', root).forEach(b => b.onclick = () => { side = b.dataset.side; draw(); });
   $('[data-more]', root)?.addEventListener('click', () => { showAllLeads = !showAllLeads; draw(); });
+  $$('[data-col]', root).forEach(b => b.onclick = () => { const k = b.dataset.col; openCols.has(k) ? openCols.delete(k) : openCols.add(k); draw(); });
   $$('[data-upd]', root).forEach(b => { const open = () => { const i = find(b.dataset.upd); if (i) updateModal(i); }; b.onclick = open; b.onkeydown = e => { if (e.target === b && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(); } }; });
   $$('[data-adv]', root).forEach(b => b.onclick = async e => { e.stopPropagation(); const i = find(b.dataset.adv); if (!i) return; b.disabled = true; if (await advance(i)) await reload(); else b.disabled = false; });
   $$('[data-dm]', root).forEach(b => b.onclick = e => { e.stopPropagation(); const i = find(b.dataset.dm); if (i) dmModal({ name: i.person?.name || i.name, url: i.person?.linkedin_url, personId: i.person?.id, fallback: i.person?.last_inbound_message }); });
