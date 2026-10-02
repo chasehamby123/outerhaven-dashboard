@@ -165,3 +165,39 @@ export function readCheck(s, items) {
   else { out.status = 'clear'; out.note = (fresh ? `No later fund. ${fresh}.` : `No later fund filed since ${s.filing_date || 'the original filing'}.`) + ignored; }
   return out;
 }
+
+// ---- Credit signals: small US public companies that need private credit (Peter's lane) ----
+// Item from scripts/credit_signals.py: { cik, name, tickers, exchange, sic, sicDesc, state, periodEnd, debtCurrent,
+// debtNoncurrent, cash, revenue, publicFloat, flags: { going_concern?, forbearance? }, filingUrl }
+export const CREDIT_RULES_VERSION = 1;
+export function normalizeCredit(it) {
+  return {
+    cik: String(Number(it.cik)), company_name: it.name || 'Unknown', tickers: (it.tickers || []).join ? (it.tickers || []).join(', ') : it.tickers || null,
+    exchange: (it.exchanges || []).join ? (it.exchanges || []).join(', ') : it.exchange || null, sic: it.sic ? String(it.sic) : null, sic_desc: it.sicDesc || null,
+    state: it.state || null, period_end: isoDate(it.periodEnd), debt_current: num(it.debtCurrent), debt_noncurrent: num(it.debtNoncurrent),
+    cash: num(it.cash), revenue: num(it.revenue), public_float: num(it.publicFloat), flags: it.flags || {}, filing_url: it.filingUrl || null,
+  };
+}
+export function classifyCredit(s) {
+  const R = [], add = (tone, text, pts = 0) => R.push({ tone, text, pts });
+  const sic = Number(s.sic) || 0, f = s.flags || {};
+  const dc = s.debt_current, cash = s.cash, total = (s.debt_current || 0) + (s.debt_noncurrent || 0);
+  const when = s.period_end ? ` (balance sheet ${s.period_end})` : '';
+  if (sic >= 6000 && sic <= 6799 && sic !== 6798) add('cut', `Bank, insurer or fund (${s.sic_desc || 'SIC ' + sic}): not a borrower for us`);
+  if (s.revenue == null) add('maybe', 'Revenue not in its XBRL data');
+  else if (s.revenue < 20e6) add('cut', `Revenue only ${money(s.revenue)}: no cash flow for a lender to lend against`);
+  if (total > 750e6) add('cut', `${money(total)} of debt: big enough for banks and the bond market`);
+  if (s.public_float != null && s.public_float > 2e9) add('cut', `Public float ${money(s.public_float)}: too large, has bank coverage`);
+  if (s.state && !US.has(s.state)) add('maybe', `Non-US company (${s.state})`);
+  let trigger = false;
+  if (dc >= 10e6 && cash != null && dc > cash) { trigger = true; add('good', `${money(dc)} of debt due within 12 months vs ${money(cash)} cash${when}: must refinance`, 40); }
+  else if (dc >= 10e6 && cash != null && dc > 0.5 * cash) add('good', `${money(dc)} due within 12 months, ${Math.round(dc / cash * 100)}% of its cash${when}`, 15);
+  if (f.forbearance) { trigger = true; add('good', `Lender forbearance agreement (${f.forbearance.form} ${f.forbearance.date}): current lender is losing patience`, 35); }
+  if (f.going_concern) { trigger = true; add('good', `Going-concern doubt disclosed (${f.going_concern.form} ${f.going_concern.date}): needs rescue or bridge financing`, 20); }
+  if (s.public_float != null && s.public_float <= 300e6) add('good', `Small cap (public float ${money(s.public_float)}): too small for the bond market`, 10);
+  if (total >= 20e6 && total <= 300e6) add('good', `${money(total)} total debt: the size Peter's private credit lenders write`, 8);
+  if (!trigger) add('maybe', 'No refinancing deadline, forbearance or going-concern warning found');
+  const verdict = R.some(r => r.tone === 'cut') ? 'cut' : R.some(r => r.tone === 'maybe') ? 'maybe' : 'target';
+  const score = Math.max(0, Math.min(100, 30 + R.reduce((n, r) => n + r.pts, 0)));
+  return { verdict, score: verdict === 'cut' ? Math.min(score, 20) : score, reasons: R.map(({ tone, text }) => ({ tone, text })) };
+}

@@ -4,7 +4,7 @@
 // Cron (x-outerhaven-cron): poll + re-judge on rules change (+ Apify weekly scan only if fund_scan_enabled).
 // Rules live in rules.js; every verdict stores its reasons.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { normalize, classify, readCheck, money, RULES_VERSION } from "./rules.js";
+import { normalize, classify, readCheck, money, RULES_VERSION, normalizeCredit, classifyCredit, CREDIT_RULES_VERSION } from "./rules.js";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -136,6 +136,27 @@ async function ingestCheck(ids: string[], items: any[], error: string | null, at
   await judge((await sb.from("fund_signals").select("*").in("id", ids)).data || []);
 }
 
+// ---- Credit signals (scripts/credit_signals.py): one row per company (CIK); numbers refresh, status/notes stay ----
+async function judgeCredit(rows: any[]) {
+  for (let i = 0; i < rows.length; i += 20) await Promise.all(rows.slice(i, i + 20).map(s => {
+    const c = classifyCredit(s);
+    return sb.from("credit_signals").update({ verdict: c.verdict, score: c.score, reasons: c.reasons, rules_version: CREDIT_RULES_VERSION }).eq("id", s.id);
+  }));
+}
+async function ingestCredit(items: any[], params: any) {
+  const seen = new Set<string>();
+  const rows = items.filter(it => it && it.cik && it.name).map(normalizeCredit).filter(r => !seen.has(r.cik) && seen.add(r.cik));
+  if (!rows.length) return 0;
+  const ciks = rows.map(r => r.cik);
+  const existing = new Set(((await sb.from("credit_signals").select("cik").in("cik", ciks)).data || []).map((x: any) => x.cik));
+  const fresh = rows.filter(r => !existing.has(r.cik)), known = rows.filter(r => existing.has(r.cik));
+  if (fresh.length) { const ins = await sb.from("credit_signals").insert(fresh); if (ins.error) throw new Error(ins.error.message); }
+  await Promise.all(known.map(r => sb.from("credit_signals").update({ ...r, updated_at: new Date().toISOString() }).eq("cik", r.cik)));
+  await judgeCredit((await sb.from("credit_signals").select("*").in("cik", ciks)).data || []);
+  await sb.from("credit_signal_runs").insert({ items: rows.length, added: fresh.length, params });
+  return fresh.length;
+}
+
 // GitHub job (x-fund-ingest = FUND_INGEST_SECRET). Each call is logged as a run with cost 0.
 async function ingest(body: any) {
   const now = new Date().toISOString();
@@ -150,6 +171,10 @@ async function ingest(body: any) {
     const all = [...queued, ...stuck, ...fresh, ...stale].filter((x, i, a) => a.findIndex(y => y.id === x.id) === i).slice(0, 300);
     if (all.length) await sb.from("fund_signals").update({ check_status: "checking", updated_at: now }).in("id", all.map(x => x.id));
     return { signals: all };
+  }
+  if (body.kind === "credit") {
+    const items = Array.isArray(body.items) ? body.items.slice(0, 500) : [];
+    return { added: await ingestCredit(items, { period: body.period || null, source: "github" }) };
   }
   if (body.kind === "scan") {
     const list = body.list === "live" ? "live" : "fund1", items = Array.isArray(body.items) ? body.items.slice(0, 500) : [];
@@ -221,7 +246,9 @@ Deno.serve(async req => {
       const p = await poll();
       const stale = (await sb.from("fund_signals").select("*").lt("rules_version", RULES_VERSION).limit(500)).data || [];
       if (stale.length) await judge(stale);
-      return json({ ok: true, poll: p, rejudged: stale.length, weekly: await weekly() });
+      const staleCredit = (await sb.from("credit_signals").select("*").lt("rules_version", CREDIT_RULES_VERSION).limit(500)).data || [];
+      if (staleCredit.length) await judgeCredit(staleCredit);
+      return json({ ok: true, poll: p, rejudged: stale.length + staleCredit.length, weekly: await weekly() });
     }
     const user = await admin(req);
     if (!user) return json({ ok: false, error: "Admins only." }, 403);

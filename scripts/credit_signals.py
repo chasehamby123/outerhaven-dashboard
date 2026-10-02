@@ -1,0 +1,196 @@
+"""Credit signals: small US public companies that need private credit (Peter's lane), straight from SEC data.
+
+Runs on GitHub Actions (.github/workflows/fund-signals.yml, mode `credit`, and inside the daily run) and posts companies to
+the `fund-signals` edge function (action ingest, kind `credit`). Judging is server-side (classifyCredit in rules.js).
+
+How a company gets on the list
+  1. XBRL frames (one SEC call per accounting tag, covering every filer): debt due within 12 months, long-term debt, cash
+     (latest quarter-end balance sheet), revenue (latest calendar year), public float.
+     Kept if: debt due within 12 months >= $10M and more than its cash, revenue >= $20M, float <= $2B, total debt <= $750M.
+  2. Full-text search (last 180 days): "forbearance agreement" (8-K / 10-Q / 10-K) and "substantial doubt" + "going concern"
+     (10-K / 10-Q). Any company with a hit and revenue >= $20M (or unknown) is added, with the filing as evidence.
+  3. Company profile (one call each): industry code, tickers, exchange, state, latest 10-K / 10-Q link.
+Needs env: SEC_IDENTITY, FUND_INGEST_KEY (same as fund signals).
+"""
+import datetime as dt
+import os
+import sys
+import time
+
+import httpx
+from edgar import search_filings, set_identity
+from edgar.httprequests import download_json
+
+FN = os.environ.get("FUND_SIGNALS_URL", "https://nfcysxqdwpdhrdpgxrlo.supabase.co/functions/v1/fund-signals")
+KEY = os.environ.get("FUND_INGEST_KEY", "")
+FRAMES = "https://data.sec.gov/api/xbrl/frames/{tax}/{tag}/USD/{period}.json"
+DEBT_CURRENT = ["LongTermDebtCurrent", "DebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent", "NotesPayableCurrent",
+                "ConvertibleNotesPayableCurrent", "LinesOfCreditCurrent", "ShortTermBorrowings"]
+DEBT_NONCURRENT = ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations", "LongTermLineOfCredit",
+                   "ConvertibleNotesPayableNoncurrent", "LongTermNotesPayable"]
+CASH = ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", "Cash"]
+REVENUE = ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet",
+           "RevenueFromContractWithCustomerIncludingAssessedTax"]
+
+
+def log(*a):
+    print(*a, flush=True)
+
+
+def post(body):
+    for attempt in range(3):
+        try:
+            r = httpx.post(FN, json=body, headers={"x-fund-ingest": KEY}, timeout=150)
+            j = r.json()
+            if r.is_success and j.get("ok"):
+                return j
+            raise RuntimeError(j.get("error") or f"HTTP {r.status_code}")
+        except Exception as e:  # noqa: BLE001
+            if attempt == 2:
+                raise
+            log("  retry ingest:", e)
+            time.sleep(5 * (attempt + 1))
+
+
+def frame(tag, period, tax="us-gaap"):
+    """{cik: (value, end_date, loc)} for one tag, every filer, one period. Missing frames return {}."""
+    try:
+        data = download_json(FRAMES.format(tax=tax, tag=tag, period=period))
+    except Exception as e:  # noqa: BLE001
+        log(f"  frame {tag} {period}: none ({str(e)[:80]})")
+        return {}
+    out = {}
+    for d in data.get("data", []):
+        out[int(d["cik"])] = (float(d["val"]), d.get("end"), d.get("loc"), d.get("entityName"))
+    log(f"  frame {tag} {period}: {len(out)} companies")
+    return out
+
+
+def best(tags, period, tax="us-gaap"):
+    """Largest reported value per company across alternative tags (companies tag the same thing differently)."""
+    merged = {}
+    for t in tags:
+        for cik, v in frame(t, period, tax).items():
+            if cik not in merged or v[0] > merged[cik][0]:
+                merged[cik] = v
+    return merged
+
+
+def quarter_periods(today):
+    """Latest quarter-end at least ~75 days old (filers have had time to file), then the one before."""
+    q_ends = []
+    y = today.year
+    for yy in (y, y - 1):
+        for m, d, q in ((12, 31, 4), (9, 30, 3), (6, 30, 2), (3, 31, 1)):
+            end = dt.date(yy, m, d)
+            if (today - end).days >= 75:
+                q_ends.append((end, f"CY{yy}Q{q}I"))
+    q_ends.sort(reverse=True)
+    return [p for _, p in q_ends[:2]]
+
+
+def text_hits(query, forms, since, cap=600):
+    """{cik: {form, date, url}} newest hit per company from EDGAR full-text search."""
+    out = {}
+    try:
+        res = search_filings(query, forms=forms, start_date=since, limit=100)
+        if res.total > len(res.results):
+            res = res.fetch_more(min(cap, res.total) - len(res.results))
+    except Exception as e:  # noqa: BLE001
+        log(f"  search {query}: failed {e}")
+        return out
+    for r in res.results:
+        try:
+            cik = int(r.cik)
+        except (TypeError, ValueError):
+            continue
+        acc = (r.accession_number or "").replace("-", "")
+        url = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/{r.document_id}" if r.document_id else f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}"
+        hit = {"form": r.form, "date": r.filed, "url": url}
+        if cik not in out or str(r.filed) > str(out[cik]["date"]):
+            out[cik] = hit
+    log(f"  search {query} {forms}: {res.total} filings, {len(out)} companies")
+    return out
+
+
+def profile(cik):
+    """Industry code, tickers, exchange, state and the latest 10-K/10-Q link from the SEC company submissions file."""
+    j = download_json(f"https://data.sec.gov/submissions/CIK{cik:010d}.json")
+    addr = (j.get("addresses") or {}).get("business") or {}
+    recent = (j.get("filings") or {}).get("recent") or {}
+    url = None
+    for form, acc, doc in zip(recent.get("form", []), recent.get("accessionNumber", []), recent.get("primaryDocument", [])):
+        if form in ("10-K", "10-Q"):
+            url = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc.replace('-', '')}/{doc}"
+            break
+    return {"name": j.get("name"), "sic": j.get("sic"), "sicDesc": j.get("sicDescription"), "tickers": j.get("tickers") or [],
+            "exchanges": [e for e in (j.get("exchanges") or []) if e], "state": addr.get("stateOrCountry"), "filingUrl": url}
+
+
+def credit():
+    today = dt.date.today()
+    periods = quarter_periods(today)
+    period, cash = None, {}
+    for p in periods:  # use the newest quarter with real coverage
+        cash = best(CASH, p)
+        if len(cash) >= 2500:
+            period = p
+            break
+    if not period:
+        period = periods[-1]
+        cash = best(CASH, period)
+    log(f"credit: balance sheet period {period}")
+    dcur, dnon = best(DEBT_CURRENT, period), best(DEBT_NONCURRENT, period)
+    rev = best(REVENUE, f"CY{today.year - 1}")
+    if len(rev) < 2000:
+        rev.update({k: v for k, v in best(REVENUE, f"CY{today.year - 2}").items() if k not in rev})
+    flt = frame("EntityPublicFloat", f"CY{today.year - 1}Q2I", tax="dei")
+
+    since = (today - dt.timedelta(days=180)).isoformat()
+    forb = text_hits('"forbearance agreement"', ["8-K", "10-Q", "10-K"], since)
+    gc = text_hits('"substantial doubt" "going concern"', ["10-K", "10-Q"], since, cap=1500)
+
+    val = lambda m, c: m[c][0] if c in m else None
+    cands = set()
+    for c, (dc, *_rest) in dcur.items():
+        ch, r, fl = val(cash, c), val(rev, c), val(flt, c)
+        total = dc + (val(dnon, c) or 0)
+        if dc >= 10e6 and ch is not None and dc > ch and (r or 0) >= 20e6 and (fl is None or fl <= 2e9) and total <= 750e6:
+            cands.add(c)
+    for c in set(forb) | set(gc):
+        r = val(rev, c)
+        if r is None or r >= 20e6:
+            cands.add(c)
+    log(f"credit: {len(cands)} candidates ({sum(1 for c in cands if c in forb)} forbearance, {sum(1 for c in cands if c in gc)} going concern)")
+
+    batch, sent = [], 0
+    for i, c in enumerate(sorted(cands)):
+        try:
+            p = profile(c)
+        except Exception as e:  # noqa: BLE001
+            log(f"  profile {c}: {e}")
+            p = {"name": (dcur.get(c) or cash.get(c) or rev.get(c) or (None, None, None, f"CIK {c}"))[3]}
+        flags = {}
+        if c in forb:
+            flags["forbearance"] = forb[c]
+        if c in gc:
+            flags["going_concern"] = gc[c]
+        batch.append({"cik": c, **p, "periodEnd": (dcur.get(c) or cash.get(c) or (None, None))[1], "debtCurrent": val(dcur, c),
+                      "debtNoncurrent": val(dnon, c), "cash": val(cash, c), "revenue": val(rev, c), "publicFloat": val(flt, c), "flags": flags})
+        if len(batch) >= 100:
+            r = post({"action": "ingest", "kind": "credit", "items": batch, "period": period})
+            sent += len(batch)
+            log(f"  sent {sent} (new {r.get('added')})")
+            batch = []
+    if batch:
+        r = post({"action": "ingest", "kind": "credit", "items": batch, "period": period})
+        sent += len(batch)
+        log(f"  sent {sent} (new {r.get('added')})")
+    log(f"credit: done, {sent} companies sent")
+
+
+if __name__ == "__main__":
+    if not KEY or not os.environ.get("SEC_IDENTITY"):
+        sys.exit("Set the FUND_INGEST_KEY and SEC_IDENTITY secrets in GitHub.")
+    set_identity(os.environ["SEC_IDENTITY"])
+    credit()

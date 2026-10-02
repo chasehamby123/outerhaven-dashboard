@@ -1,0 +1,143 @@
+// Pipeline → Credit signals: small US public companies that need private credit (Peter's lane).
+// Filled daily by the GitHub edgartools job (scripts/credit_signals.py) from SEC data; judged on the server
+// (classifyCredit in supabase/functions/fund-signals/rules.js). Every verdict shows its reasons.
+import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
+import { me } from './tasks.js';
+
+let el = null, rows = [], runs = [], view = 'target', onCount = () => {};
+const money = n => n == null ? '—' : Math.abs(n) >= 1e9 ? '$' + +(n / 1e9).toFixed(1) + 'B' : Math.abs(n) >= 1e6 ? '$' + +(n / 1e6).toFixed(1) + 'M' : Math.abs(n) >= 1e3 ? '$' + Math.round(n / 1e3) + 'K' : '$' + Math.round(n);
+const day = v => v ? new Date(String(v).slice(0, 10) + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+const toneOf = t => t === 'good' ? 'good' : t === 'cut' ? 'bad' : t === 'maybe' ? 'warn' : '';
+const bucket = s => s.status === 'added' ? 'added' : s.status === 'dismissed' ? 'dismissed' : s.verdict;
+const GH_RUN = 'https://github.com/chasehamby123/outerhaven-dashboard/actions/workflows/fund-signals.yml';
+const cfoSearch = s => `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent('CFO ' + s.company_name.replace(/,?\s+(inc|corp|corporation|co|ltd|llc|plc|holdings)\.?$/i, ''))}`;
+
+async function load() {
+  const [c, r] = await Promise.all([
+    sb.from('credit_signals').select('*').order('score', { ascending: false }).limit(2000),
+    sb.from('credit_signal_runs').select('*').order('created_at', { ascending: false }).limit(5),
+  ]);
+  if (c.error) { rows = null; return; }
+  rows = c.data || []; runs = r.data || [];
+}
+export function creditTargetCount() { return rows ? rows.filter(s => bucket(s) === 'target').length : 0; }
+
+export async function renderCredit(target, countCb) {
+  el = target; onCount = countCb || onCount;
+  if (!rows?.length) el.innerHTML = '<div class="empty">Loading credit signals…</div>';
+  await load();
+  if (el.isConnected) draw();
+}
+
+function draw() {
+  if (rows === null) { el.innerHTML = '<div class="empty">The credit signals table isn\'t set up yet.</div>'; return; }
+  const counts = { target: 0, maybe: 0, cut: 0, added: 0, dismissed: 0 };
+  rows.forEach(s => counts[bucket(s)]++);
+  const shown = rows.filter(s => bucket(s) === view).sort((a, b) => b.score - a.score);
+  const last = runs[0];
+  onCount(counts.target);
+  el.innerHTML = `<div class="fs">
+    <div class="fsTop"><p class="pHint" style="padding:0;margin:0;max-width:640px">Small US public companies with debt they must refinance, a lender losing patience, or a going-concern warning. For Peter: private credit is their natural next lender.</p>
+      <div class="row fsBtns"><a class="btn sm primary" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a><button class="btn sm ghost" id="crHow">How it works</button></div></div>
+    <p class="pHint">Source: SEC XBRL financials and full-text search (edgartools), refreshed daily on GitHub, free.${last ? ` Last run <b>${new Date(last.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>${last.params?.period ? ` · balance sheets ${esc(last.params.period)}` : ''}.` : ' Not run yet: on GitHub choose Run workflow, mode <b>credit</b>.'}</p>
+    <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed']].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
+    <div class="fsList">${shown.length ? shown.slice(0, 200).map(rowHtml).join('') : `<div class="empty">${rows.length ? 'Nothing here.' : 'No companies yet. Run the credit scan on GitHub (mode credit); it takes about 5–10 minutes.'}</div>`}</div>
+    ${shown.length > 200 ? `<p class="pHint">Showing the top 200 of ${shown.length}.</p>` : ''}
+  </div>`;
+  bind(shown);
+}
+
+function rowHtml(s) {
+  const f = s.flags || {}, total = (s.debt_current || 0) + (s.debt_noncurrent || 0);
+  const facts = [
+    s.debt_current != null ? `Due in 12 months <b>${money(s.debt_current)}</b>` : '',
+    s.cash != null ? `Cash <b>${money(s.cash)}</b>` : '',
+    total ? `Total debt <b>${money(total)}</b>` : '',
+    s.revenue != null ? `Revenue <b>${money(s.revenue)}</b>` : '',
+    s.public_float != null ? `Float <b>${money(s.public_float)}</b>` : '',
+    [s.sic_desc, s.state].filter(Boolean).map(esc).join(' · '),
+  ].filter(Boolean);
+  const ev = [f.forbearance && `<a href="${esc(f.forbearance.url)}" target="_blank" rel="noopener">Forbearance (${esc(f.forbearance.form)}) ↗</a>`,
+    f.going_concern && `<a href="${esc(f.going_concern.url)}" target="_blank" rel="noopener">Going concern (${esc(f.going_concern.form)}) ↗</a>`,
+    s.filing_url && `<a href="${esc(s.filing_url)}" target="_blank" rel="noopener">Latest 10-K/10-Q ↗</a>`].filter(Boolean);
+  return `<article class="fsRow" data-tone="${toneOf(s.verdict === 'target' ? 'good' : s.verdict)}">
+    <div class="fsScore"><b>${s.score}</b><span>score</span></div>
+    <div class="fsMain">
+      <h4>${esc(s.company_name)}${s.tickers ? ` <span class="fsVeh">${esc(s.tickers)}${s.exchange ? ' · ' + esc(s.exchange) : ''}</span>` : ''}</h4>
+      <div class="fsFacts">${facts.map(x => `<span>${x}</span>`).join('')}</div>
+      <ul class="fsWhy">${(s.reasons || []).map(r => `<li data-tone="${toneOf(r.tone)}">${esc(r.text)}</li>`).join('')}</ul>
+      <div class="fsPeople"><a href="${cfoSearch(s)}" target="_blank" rel="noopener">Find the CFO on LinkedIn ↗</a>${ev.join('')}</div>
+    </div>
+    <div class="fsAct">
+      ${s.status !== 'added' ? `<button class="btn sm ${s.verdict === 'target' ? 'primary' : ''}" data-add="${s.id}">Add to pipeline</button>` : '<span class="pFlag good">In pipeline</span>'}
+      <button class="btn sm" data-copy="${s.id}">Copy opener</button>
+      ${s.status === 'dismissed' ? `<button class="btn sm ghost" data-undo="${s.id}">Restore</button>` : s.status !== 'added' ? `<button class="btn sm ghost" data-dismiss="${s.id}">Dismiss</button>` : ''}
+    </div></article>`;
+}
+
+// First message from Peter's side, using the numbers from their own filing. Personalise before sending.
+function opener(s, name = '') {
+  const who = firstName(name) || 'there', f = s.flags || {}, co = s.company_name.replace(/,?\s+(inc|corp|corporation|co|ltd|llc|plc|holdings)\.?$/i, '');
+  const hook = s.debt_current != null && s.cash != null && s.debt_current > s.cash
+    ? `with ${money(s.debt_current)} coming due inside 12 months against ${money(s.cash)} of cash, the refinancing clock is running`
+    : f.forbearance ? 'with a forbearance in place, the clock on a new lender is running'
+      : f.going_concern ? 'with the going-concern language in the last filing, a bridge or rescue facility is probably on the table'
+        : 'you may be looking at the next facility';
+  return `Hi ${who}, I read ${co}'s latest filing: ${hook}. My partner Peter Plaut has spent 35 years in private credit and knows which lenders are writing facilities your size right now, and on what terms. Worth 20 minutes before you're negotiating against the deadline?`;
+}
+
+function bind(shown) {
+  const find = id => shown.find(s => s.id === id) || rows.find(s => s.id === id);
+  $$('[data-view]', el).forEach(b => b.onclick = () => { view = b.dataset.view; draw(); });
+  $('#crHow', el).onclick = howModal;
+  $$('[data-copy]', el).forEach(b => b.onclick = async () => {
+    const t = opener(find(b.dataset.copy));
+    try { await navigator.clipboard.writeText(t); toast('Opener copied. Put the CFO\'s name in before sending.'); } catch { modal({ title: 'Opener', submit: '', body: `<textarea class="input" rows="6" style="width:100%">${esc(t)}</textarea>` }); }
+  });
+  $$('[data-dismiss],[data-undo]', el).forEach(b => b.onclick = async () => {
+    const id = b.dataset.dismiss || b.dataset.undo, st = b.dataset.dismiss ? 'dismissed' : 'new';
+    if (fail(await sb.from('credit_signals').update({ status: st, updated_at: new Date().toISOString() }).eq('id', id), 'Update')) return;
+    const r = rows.find(x => x.id === id); if (r) r.status = st; draw();
+  });
+  $$('[data-add]', el).forEach(b => b.onclick = () => addModal(find(b.dataset.add)));
+}
+
+// The company becomes a sell-side relationship (a borrower is a client with something to place with lenders).
+function addModal(s) {
+  modal({
+    title: 'Add to pipeline', submit: 'Add',
+    body: `<div class="form pForm"><p class="s muted" style="grid-column:1/-1;margin:0"><b>${esc(s.company_name)}</b>. Find the CFO first: <a href="${cfoSearch(s)}" target="_blank" rel="noopener">LinkedIn search ↗</a></p>
+      <label class="field">CFO name<input class="input" name="name" required placeholder="Jane Smith"></label>
+      <label class="field">LinkedIn URL (optional)<input class="input" name="li"></label>
+      <label class="field" style="grid-column:1/-1">First step<input class="input" name="next" value="Connect with the CFO and send the opener (Peter's private credit angle)"></label>
+      <label class="field">Owner<select class="select" name="owner">${opts(['Peter', 'Tengku', 'Chase', 'Anaz', 'Razeen'], 'Peter')}</select></label></div>`,
+    async onSubmit(fd) {
+      const now = new Date().toISOString(), name = String(fd.get('name')).trim(), li = String(fd.get('li') || '').trim() || null;
+      const facts = `${s.company_name}${s.tickers ? ` (${s.tickers})` : ''}: ${(s.reasons || []).filter(x => x.tone === 'good').map(x => x.text).join('. ')}`;
+      const r = await sb.from('people').insert({ name, primary_side: 'Sell Side', relationship_type: 'Sell-side Relationship', pipeline_stage: 'New Relationship', pipeline_active: true, waiting_on: 'us', waiting_on_since: now, company_name: s.company_name, headline: 'CFO', linkedin_url: li, has_linkedin: !!li, source: 'SEC credit signal', last_inbound_message: facts, created_by: state.user?.id }).select().single();
+      if (fail(r, 'Add')) return false;
+      await sb.from('tasks').insert({ person_id: r.data.id, action: String(fd.get('next') || '').trim() || 'Connect with the CFO', owner_name: fd.get('owner'), due_date: now.slice(0, 10), created_by: state.user?.id });
+      await sb.from('credit_signals').update({ status: 'added', person_id: r.data.id, updated_at: now }).eq('id', s.id);
+      s.status = 'added'; s.person_id = r.data.id;
+      try { await navigator.clipboard.writeText(opener(s, name)); toast(`${name} added. Opener copied with their name.`); } catch { toast(`${name} added to Pipeline → Sell side`); }
+      draw();
+    },
+  });
+}
+
+function howModal() {
+  modal({
+    title: 'How credit signals work', submit: '', wide: true,
+    body: `<div class="fsHow">
+      <h4>1. Who this finds</h4><p>US public companies that are too small for the bond market and need a new lender soon: Peter's private credit lane.</p>
+      <h4>2. Where the data comes from</h4>
+      <ul><li><b>Balance sheets for every public company</b> (SEC XBRL data, one pull per line item): debt due within 12 months, long-term debt, cash, last year's revenue, public float.</li>
+      <li><b>Full-text search of filings from the last 180 days</b>: "forbearance agreement" (8-K, 10-Q, 10-K) and "substantial doubt … going concern" (10-K, 10-Q).</li>
+      <li><b>Company profile</b>: industry, ticker, exchange, state, latest 10-K/10-Q link.</li></ul>
+      <h4>3. Cuts</h4><ul><li>Banks, insurers and funds.</li><li>Revenue under $20M: no cash flow to lend against (most pre-revenue biotech).</li><li>Over $750M of debt, or public float over $2B: banks and bonds cover them.</li></ul>
+      <h4>4. Score (higher = call first)</h4><ul><li><b>+40</b> debt due within 12 months is more than its cash: must refinance.</li><li><b>+35</b> lender forbearance agreement.</li><li><b>+20</b> going-concern warning.</li><li><b>+15</b> debt due within 12 months over half its cash.</li><li><b>+10</b> public float under $300M.</li><li><b>+8</b> total debt $20–300M.</li></ul>
+      <p>A company needs at least one trigger (refinancing deadline, forbearance or going-concern) to be a Target; otherwise it's a Maybe.</p>
+      <h4>5. What it can't see</h4><ul><li>Debt terms (rate, covenants, exact maturity date): read the debt note in the 10-K before calling.</li><li>Whether they already have a refinancing lined up: check the latest 8-K.</li><li>Companies that tag debt with their own custom XBRL names.</li></ul>
+      <p class="s muted">Arranging a loan is usually not a securities transaction, but placing notes or bonds can be. Check with counsel before charging a success fee on a public company's financing.</p></div>`,
+  });
+}

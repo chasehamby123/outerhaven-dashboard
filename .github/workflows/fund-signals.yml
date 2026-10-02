@@ -1,4 +1,4 @@
-# Fund signals: reads SEC Form D filings with edgartools and sends them to HQ (Pipeline → Fund signals).
+# Fund signals + credit signals: reads SEC data with edgartools and sends it to HQ (Pipeline → Fund signals / Credit signals).
 # Free (public repo). Needs two repository secrets (Settings → Secrets and variables → Actions → New repository secret):
 #   FUND_INGEST_KEY  copy it from HQ → Pipeline → Fund signals → Settings
 #   SEC_IDENTITY     your name and email, e.g. "OuterHaven Advisory ops@yourdomain.com" (the SEC asks every tool to identify itself)
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "daily | live | fund1 | check"
+        description: "daily | live | fund1 | check | credit"
         default: daily
         required: true
       from:
@@ -52,8 +52,11 @@ jobs:
           else
             MODE="$IN_MODE"
           fi
-          case "$MODE" in daily|live|fund1|check) ;; *) echo "mode must be daily, live, fund1 or check"; exit 1;; esac
+          case "$MODE" in daily|live|fund1|check|credit) ;; *) echo "mode must be daily, live, fund1, check or credit"; exit 1;; esac
+          if [ "$MODE" = "credit" ]; then python scripts/credit_signals.py; exit $?; fi
           set -- --mode "$MODE"
           if [[ "$IN_FROM" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then set -- "$@" --from "$IN_FROM"; fi
           if [[ "$IN_TO" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then set -- "$@" --to "$IN_TO"; fi
           python scripts/fund_signals.py "$@"
+          # The daily run also refreshes credit signals (public companies that need private credit).
+          if [ "$MODE" = "daily" ]; then python scripts/credit_signals.py; fi

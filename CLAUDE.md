@@ -92,6 +92,18 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   for GitHub calls). Migrations: `supabase/2026-10-02-fund-signals.sql`, `supabase/2026-10-02-fund-signals-github.sql`.
 - "Add to pipeline" creates Sell Side `people` (source 'Form D') + a task. Fund placement for a success fee needs a US broker-dealer.
 
+## Credit signals (Pipeline → Credit signals tab, `hq/credit.js`, admin only)
+- Small US public companies that need private credit (Peter's 35-year lane). `scripts/credit_signals.py` (GitHub workflow mode `credit`,
+  also run by the daily job): XBRL frames for every filer (debt due within 12 months, long-term debt, cash at the latest quarter-end with
+  ≥2,500 filers, last calendar year revenue, dei EntityPublicFloat), EFTS full text last 180 days ("forbearance agreement" 8-K/10-Q/10-K,
+  "substantial doubt" "going concern" 10-K/10-Q), then the submissions JSON per candidate (SIC, tickers, state, latest 10-K/10-Q).
+- Posts to `fund-signals` ingest kind `credit` → table `credit_signals` (one row per CIK; numbers refresh, status/notes kept; runs logged in
+  `credit_signal_runs`). Judged by `classifyCredit()` in rules.js (`CREDIT_RULES_VERSION`; the 15-min cron re-judges old versions).
+  Target = a trigger (debt due within 12 months > cash, forbearance, or going concern) and no cut (bank/insurer/fund SIC 6000–6799
+  except REIT 6798, revenue < $20M, debt > $750M, float > $2B). Contact = CFO via LinkedIn search link; "Add to pipeline" asks for the
+  CFO's name, creates a Sell Side person (source 'SEC credit signal') + task owned by Peter, copies the opener. Migration:
+  `supabase/2026-10-02-credit-signals.sql`.
+
 ## Resources (lead magnets)
 - HQ → Resources: queue of posts needing a resource, library (generated + manual links), Generate form.
 - Generate → edge function `resource-request` (daily cap, fires the routine) → Claude Code routine
