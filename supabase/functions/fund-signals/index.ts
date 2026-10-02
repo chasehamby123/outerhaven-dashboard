@@ -3,7 +3,7 @@
 // Actions (admin JWT): scan {list}, check {ids}, poll, reclassify. Cron (x-outerhaven-cron): poll + the weekly scan
 // when growth_settings.fund_scan_enabled is on. Rules live in rules.js; every verdict stores its reasons.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { normalize, classify, readCheck, money } from "./rules.js";
+import { normalize, classify, readCheck, money, RULES_VERSION } from "./rules.js";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -98,7 +98,7 @@ async function check(ids: string[], by: string | null) {
 async function judge(rows: any[]) {
   for (let i = 0; i < rows.length; i += 20) await Promise.all(rows.slice(i, i + 20).map(s => {
     const c = classify(s);
-    return sb.from("fund_signals").update({ verdict: c.verdict, score: c.score, reasons: c.reasons, updated_at: new Date().toISOString() }).eq("id", s.id);
+    return sb.from("fund_signals").update({ verdict: c.verdict, score: c.score, reasons: c.reasons, rules_version: RULES_VERSION, updated_at: new Date().toISOString() }).eq("id", s.id);
   }));
 }
 
@@ -178,7 +178,9 @@ Deno.serve(async req => {
     if (cron) {
       if (cron !== await secret("FUND_CRON_SECRET")) return json({ ok: false, error: "bad cron secret" }, 401);
       const p = await poll();
-      return json({ ok: true, poll: p, weekly: await weekly() });
+      const stale = (await sb.from("fund_signals").select("*").lt("rules_version", RULES_VERSION).limit(500)).data || [];
+      if (stale.length) await judge(stale);
+      return json({ ok: true, poll: p, rejudged: stale.length, weekly: await weekly() });
     }
     const user = await admin(req);
     if (!user) return json({ ok: false, error: "Admins only." }, 403);

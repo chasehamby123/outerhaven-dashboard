@@ -2,6 +2,8 @@
 // and reads a "did they file again?" check. Plain JS so it runs in the edge function and in Node tests.
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
+// Bump when the rules change: the cron re-judges every stored signal on the old version.
+export const RULES_VERSION = 2;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -98,9 +100,10 @@ export function classify(s, now = Date.now()) {
     else if (months != null && months >= 12 && pctSold == null && s.first_sale) add('good', `Still raising ${Math.round(months)} months after the first sale`, 20);
   } else {
     if (s.fund_no >= 2) add('cut', 'Not a Fund I');
-    const size = s.offering || s.sold || null;
+    // Size = money actually raised when there is any (a $50M target with $375K raised never really happened).
+    const size = s.sold > 0 ? s.sold : s.offering || null;
     if (!size) add('maybe', 'Fund I size unknown');
-    else if (size < 10e6) add('cut', `Fund I under $10M (${money(size)}): too small to pay for help on Fund II`);
+    else if (size < 10e6) add('cut', `Fund I ${s.sold > 0 ? 'raised' : 'targeted'} only ${money(size)}: too small to pay for help on Fund II`);
     else if (size > 75e6) add('cut', `Fund I over $75M (${money(size)}): likely already has a fundraising process`);
     if (months != null) {
       if (months < 30) add('maybe', `Fund I is only ${(months / 12).toFixed(1)} years old: too early for Fund II`);

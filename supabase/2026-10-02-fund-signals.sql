@@ -98,3 +98,6 @@ revoke all on function public.invoke_fund_signals() from public, anon, authentic
 
 -- Every 15 min: collect finished Apify runs. The weekly scan only runs when HQ's switch is on (off by default).
 select cron.schedule('fund-signals', '*/15 * * * *', 'select public.invoke_fund_signals();');
+
+-- Re-judging after a rules change: rows whose rules_version is behind rules.js RULES_VERSION are re-judged by the cron.
+alter table public.fund_signals add column if not exists rules_version smallint not null default 0;
