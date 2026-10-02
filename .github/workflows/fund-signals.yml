@@ -21,9 +21,8 @@ on:
         description: "End date YYYY-MM-DD"
         required: false
 
-concurrency:
-  group: fund-signals
-  cancel-in-progress: false
+# No concurrency group: GitHub keeps only ONE pending run per group and cancels the rest, which silently dropped
+# queued backfills (2 Oct 2026). Runs may now overlap, so each is capped at 4 SEC requests/s (SEC allows 10/s in total).
 
 jobs:
   run:
@@ -40,6 +39,7 @@ jobs:
       - name: Run
         env:
           FUND_INGEST_KEY: ${{ secrets.FUND_INGEST_KEY }}
+          EDGAR_RATE_LIMIT_PER_SEC: "4"
           SEC_IDENTITY: ${{ secrets.SEC_IDENTITY }}
           EVENT: ${{ github.event_name }}
           SCHEDULE: ${{ github.event.schedule }}
