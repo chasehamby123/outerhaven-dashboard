@@ -87,6 +87,14 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   Mondays 02:05 UTC, or Growth → Insights → Run analysis now). Instructions: `routines/weekly-analysis.md`. It writes
   `daily_ops_posts.ai_tags` (creative + caption factors; hand tags in `tags` win) and a row in `growth_reports`.
 
+## Deal teasers (Resources → Deal teasers, `hq/teasers.js`)
+- One-page anonymised teaser from what a lead told us. Start from Resources → Deal teasers, Pipeline → LinkedIn leads
+  ("Make teaser") or a lead's DMs window. `resource-request` action `teaser` inserts a `resource_jobs` row (kind 'resource',
+  format 'pdf', `payload.type = 'teaser'`, caption = the lead's messages) and fires the same routine. The routine reaches
+  `routines/teaser-builder.md` via a redirect at the top of the repo skill (the saved routine prompt didn't change).
+  Output: `payload.teaser` JSON (+ Drive PDF in "OuterHaven Teasers" when possible). HQ renders it as an editable A4 page
+  and downloads a PDF client-side (html2pdf.js from cdnjs). Teasers count toward the daily Claude job cap.
+
 ## DM tests and meetings
 - `dm_tests` → `dm_variants` (A/B/…) → `dm_events` (one row per tap: sent / replied). Meetings live in
   `growth_meetings` (with `dm_variant_id` / `post_id`). `dm_variant_stats` view gives per-version totals.

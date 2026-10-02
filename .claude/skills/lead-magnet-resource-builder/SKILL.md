@@ -6,6 +6,9 @@ description: Build the free resource behind a lead magnet post (Notion doc, PDF,
 <!-- Copy of Tengku's account skill, committed so the "OuterHaven resource builder" routine can use it.
      When the account skill changes, update this file too. -->
 
+> **Deal teaser jobs:** if the job row's `payload->>'type'` is `'teaser'`, this is not a lead magnet.
+> Ignore the rest of this skill and follow `routines/teaser-builder.md` in this repo for the whole job.
+
 # Lead Magnet Resource Builder
 
 **Workflow: Claude builds → user checks → user publishes immediately.** There is no editing step in between. The output must be publish-ready the moment it's handed over. If the user would need to fix anything before publishing, the job isn't done.

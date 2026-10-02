@@ -25,6 +25,8 @@ where id = '<uuid>' and status in ('queued', 'failed') returning *;
 
 If no row comes back (wrong id, already building, finished or cancelled), stop without doing anything.
 
+**Deal teasers** (`payload->>'type' = 'teaser'`) are routed by the repo skill to `routines/teaser-builder.md`.
+
 **If the row's `kind` is `analysis`, this is the weekly growth analysis, not a resource: follow
 `routines/weekly-analysis.md` for this job instead of sections 2–4 below.**
 Also read `select notion_parent_url, drive_folder_url from public.growth_settings where id = 1;`.

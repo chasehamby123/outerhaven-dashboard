@@ -2,18 +2,19 @@
 // Generate → resource-request edge function → "OuterHaven resource builder" Claude Code routine → result written back.
 // Resources made outside HQ can be logged by link. Posts link to resources automatically (caption match) or by hand.
 import { sb, state, esc, $, $$, toast, fail, opts, modal } from './core.js';
+import { renderTeasers } from './teasers.js';
 
 const FORMATS = [['notion', 'Notion doc', 'Hub page with subpages, AI CIO style'], ['pdf', 'PDF', 'Branded PDF in Google Drive'], ['list', 'List', 'Scraped with Apify into a Google Sheet']];
 const POSTERS = ['Peter Plaut', 'Tengku Harris', 'Chase Hamby', 'Anaz Azlan'];
 const FORMAT_LABEL = { ...Object.fromEntries(FORMATS.map(([k, l]) => [k, l])), other: 'Other' };
 const STATUS = { queued: ['Starting', ''], building: ['Building', 'warn'], ready: ['Ready', 'good'], failed: ['Failed', 'bad'], cancelled: ['Cancelled', ''] };
-const TABS = [['queue', 'Needs a resource'], ['library', 'Library'], ['new', 'Generate']];
+const TABS = [['queue', 'Needs a resource'], ['library', 'Library'], ['new', 'Generate'], ['teasers', 'Deal teasers']];
 const STALE_MIN = 60, QUEUE_DAYS = 45;
 const LEAD_MAGNET = /\b(comment|steal|free|dm me|template|blueprint|playbook|guide|checklist|prompts?|resource|swipe|cheat ?sheet|framework)\b/i;
 
 const S = { jobs: [], posts: [], accounts: {}, cfg: null, loaded: false, channel: null, format: 'notion', draft: {}, q: '' };
 const isAdmin = () => state.role === 'admin';
-const isResource = j => (j.kind || 'resource') === 'resource'; // weekly analysis jobs share the table
+const isResource = j => (j.kind || 'resource') === 'resource' && j.payload?.type !== 'teaser'; // analysis + teaser jobs share the table
 const minutes = t => Math.max(0, Math.round((Date.now() - new Date(t)) / 60000));
 const ago = t => { if (!t) return ''; const m = minutes(t); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
 const day = d => d ? new Date(d + (d.length === 10 ? 'T12:00:00' : '')).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—';
@@ -61,7 +62,7 @@ function subscribe() {
   setInterval(() => { if (root?.dataset.page === 'resources' && S.jobs.some(j => ['queued', 'building'].includes(j.status))) redrawLive(); }, 30000);
 }
 // Live updates must not wipe a half-typed Generate form.
-const redrawLive = () => { if (root?.dataset.page !== 'resources') return; if (tab === 'new') { drawMeter(); drawRecent(); } else draw(); };
+const redrawLive = () => { if (root?.dataset.page !== 'resources') return; if (tab === 'new') { drawMeter(); drawRecent(); } else if (tab === 'teasers') drawMeter(); else draw(); };
 
 export async function renderResources(r, sub) {
   root = r; const next = TABS.some(t => t[0] === sub) ? sub : 'queue';
@@ -90,7 +91,7 @@ function draw() {
   $$('[data-tab]', root).forEach(b => b.onclick = () => { location.hash = `#/resources/${b.dataset.tab}`; });
   drawMeter();
   const body = $('#rBody', root);
-  ({ queue: queueView, library: libraryView, new: newView })[tab](body);
+  ({ queue: queueView, library: libraryView, new: newView, teasers: renderTeasers })[tab](body);
 }
 
 function drawMeter() {

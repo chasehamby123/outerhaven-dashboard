@@ -1,6 +1,7 @@
 // Pipeline: every live opportunity and relationship on one screen, who holds the ball, and what has gone quiet.
 // Reads opportunities / people / tasks / lead_intake (the same tables the old board uses), so both stay in step.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, avatar, firstName, fmtDate, num } from './core.js';
+import { teaserModal } from './teasers.js';
 
 const BUY = ['New Relationship', 'Diligence Call Complete', 'NDA Signed + Thesis Captured', 'Relevant Deal Identified', 'Interest Meeting Held', 'Buyer Interest Confirmed', 'Engagement Active', 'Closed'];
 const SELL = ['New Relationship', 'Diligence Call Complete', 'NDA Signed + Buy-Side Thesis Shared', 'Opportunity Received', 'Initial Interest Identified', 'Buy-Side Interest Confirmed', 'Engagement Active', 'Closed'];
@@ -222,7 +223,7 @@ function leadHtml(l) {
       <div class="pSub">${esc([l.headline, l.company_name].filter(Boolean).join(' · '))}</div>
       ${l.reply_text ? `<div class="pNext"><b>Said:</b> “${esc(String(l.reply_text).slice(0, 160))}${l.reply_text.length > 160 ? '…' : ''}” <button class="link s" data-ldm="${l.id}">Open full DMs</button></div>` : ''}
       ${l.suggested_next_step ? `<div class="pNext muted">Suggested: ${esc(l.suggested_next_step)}</div>` : ''}</div>
-    <div class="pAct"><button class="btn sm ${sd === 'Sell Side' ? 'primary' : ''}" data-lead="sell:${l.id}">Add as sell side</button><button class="btn sm ${sd === 'Buy Side' ? 'primary' : ''}" data-lead="buy:${l.id}">Add as buy side</button><button class="btn sm" data-lead="both:${l.id}">Both</button><button class="btn sm ghost" data-lead="no:${l.id}">Not a fit</button></div></div>`;
+    <div class="pAct"><button class="btn sm ${sd === 'Sell Side' ? 'primary' : ''}" data-lead="sell:${l.id}">Add as sell side</button><button class="btn sm ${sd === 'Buy Side' ? 'primary' : ''}" data-lead="buy:${l.id}">Add as buy side</button><button class="btn sm" data-lead="both:${l.id}">Both</button><button class="btn sm ghost" data-teaser="${l.id}">Make teaser</button><button class="btn sm ghost" data-lead="no:${l.id}">Not a fit</button></div></div>`;
 }
 
 function bind(all) {
@@ -240,6 +241,7 @@ function bind(all) {
   $$('[data-upd]', root).forEach(b => { const open = () => { const i = find(b.dataset.upd); if (i) updateModal(i); }; b.onclick = open; b.onkeydown = e => { if (e.target === b && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(); } }; });
   $$('[data-adv]', root).forEach(b => b.onclick = async e => { e.stopPropagation(); const i = find(b.dataset.adv); if (!i) return; b.disabled = true; if (await advance(i)) await reload(); else b.disabled = false; });
   $$('[data-dm]', root).forEach(b => b.onclick = e => { e.stopPropagation(); const i = find(b.dataset.dm); if (i) dmModal({ name: i.person?.name || i.name, url: i.person?.linkedin_url, personId: i.person?.id, fallback: i.person?.last_inbound_message }); });
+  $$('[data-teaser]', root).forEach(b => b.onclick = () => { const l = D.leads.find(x => x.id === b.dataset.teaser); if (l) teaserModal({ lead_intake_id: l.id, lead_name: l.name, lead_company: l.company_name, linkedin_url: l.linkedin_url }); });
   $$('[data-ldm]', root).forEach(b => b.onclick = () => { const l = D.leads.find(x => x.id === b.dataset.ldm); if (l) dmModal({ name: l.name, url: l.linkedin_url, leadId: l.id, fallback: l.reply_text }); });
   $$('[data-q]', root).forEach(b => b.onclick = async () => {
     const i = find(b.dataset.k); if (!i) return; b.disabled = true;
@@ -331,9 +333,16 @@ async function dmModal({ name, url, personId, leadId, fallback }) {
     : fallback ? `<div class="dmBlock"><h4>Last message</h4><div class="dmThread">${bubble(name || 'Them', '', fallback, false)}</div></div>` : '';
   const about = [prof.jobTitle && prof.company ? `${prof.jobTitle}, ${prof.company}` : prof.headline, prof.email, prof.websiteUrl].filter(Boolean);
   $('.body', el).innerHTML = `<div class="dmHead">${about.length ? `<div class="s muted">${about.map(esc).join(' · ')}</div>` : ''}
-      <div class="row">${url ? `<a class="btn sm primary" href="${esc(url)}" target="_blank" rel="noopener">Open their LinkedIn ↗</a>` : ''}</div></div>
+      <div class="row">${url ? `<a class="btn sm primary" href="${esc(url)}" target="_blank" rel="noopener">Open their LinkedIn ↗</a>` : ''}<button type="button" class="btn sm" id="dmTeaser">Make a teaser from this</button></div></div>
     ${threads}${replies || '<div class="empty">No messages logged for this person yet.</div>'}
     ${threads ? '' : '<p class="s muted" style="margin:12px 0 0">Our side of the conversation is not logged by the outreach tool. Save the chat with the HQ button in LinkedIn (browser extension) to see the full two-way thread here.</p>'}`;
+  $('#dmTeaser', el).onclick = () => {
+    const conv = (cv.data || [])[0];
+    const text = conv?.messages?.length ? conv.messages.map(m => `${m.from === 'us' ? (conv.account_name || 'Us') : (m.name || name || 'Them')}: ${m.text}`).join('\n\n')
+      : rows.length ? rows.map(r => `${name || 'Them'}: ${String(r.reply_text || '').replace(/^A lead has replied\s*(Re:)?\s*/i, '')}`).join('\n\n') : (fallback || '');
+    $('[data-x]', el).click();
+    setTimeout(() => teaserModal({ lead_intake_id: leadId || '', person_id: personId || '', lead_name: name, lead_company: rows.at(-1)?.company_name || '', linkedin_url: url || '', text }), 50);
+  };
 }
 
 // ---- Modals ----

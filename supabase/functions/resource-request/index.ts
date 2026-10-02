@@ -124,6 +124,29 @@ Deno.serve(async (req) => {
     return json(await fireAndRecord(text(body.id, 64)));
   }
 
+  // Deal teaser from what a lead told us (their replies / DMs). Same routine; the skill hands it to routines/teaser-builder.md.
+  if (body.action === "teaser") {
+    const t = body.teaser || {};
+    const source = text(t.source_text, 20000);
+    if (source.length < 40) return json({ ok: false, error: "Paste or pick the lead's messages first (at least a couple of sentences)." }, 400);
+    const contact = POSTERS.find(n => n === text(t.contact, 40)) || "Chase Hamby";
+    if (!(await underCap())) return json({ ok: false, error: `Today's limit of ${cap} Claude jobs is reached. An admin can raise it in Resources → Settings.` }, 429);
+    const codename = text(t.codename, 80);
+    const row = {
+      created_by: who.id, requested_by: who.email, kind: "resource", format: "pdf", poster: contact, brand: "OuterHaven Advisory",
+      topic: `Teaser: ${codename || text(t.lead_name, 80) || "new opportunity"}`, caption: source, notes: text(t.notes, 6000) || null,
+      fired_at: new Date().toISOString(),
+      payload: {
+        type: "teaser", codename: codename || null, anonymise: t.anonymise !== false, side: text(t.side, 20) || "sell",
+        lead_name: text(t.lead_name, 120) || null, lead_company: text(t.lead_company, 160) || null, linkedin_url: text(t.linkedin_url, 300) || null,
+        lead_intake_id: text(t.lead_intake_id, 64) || null, person_id: text(t.person_id, 64) || null, opportunity_id: text(t.opportunity_id, 64) || null,
+      },
+    };
+    const { data: ins, error: e2 } = await sb.from("resource_jobs").insert(row).select("id").single();
+    if (e2) return json({ ok: false, error: e2.message }, 500);
+    return json(await fireAndRecord(ins.id));
+  }
+
   if (body.action !== "create") return json({ ok: false, error: "unknown action" }, 400);
   const j = body.job || {};
   const job: Record<string, unknown> = {

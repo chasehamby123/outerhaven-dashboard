@@ -858,3 +858,28 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .rqMore{padding:10px 20px 14px;border-top:1px solid var(--line);font-size:var(--fs-s)}
 @media(max-width:700px){.rqList li{grid-template-columns:1fr;gap:4px;padding:12px 16px}.rqMeta{justify-items:start;grid-auto-flow:column;gap:8px}.rqWhy span{white-space:normal}}
 .hqUpdate{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:70;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 16px;border-radius:10px;background:var(--inv);color:var(--inv-ink);box-shadow:var(--shadow-lg);font-size:var(--fs-s)}
+
+/* Deal teasers: the page is a printed document, so it keeps its own fixed palette in every theme */
+:root{--tz-navy:#0d1b2a;--tz-brass:#b08d57;--tz-ink:#1b2430;--tz-muted:#5d6878;--tz-line:#e3e1dc;--tz-paper:#ffffff;--tz-soft:#f6f4ef}
+.tzJob .tzHead{margin:8px 0 0;font-size:var(--fs-s);color:var(--ink-2)}
+.tzMissing{margin-bottom:12px;padding:10px 12px;border-left:3px solid var(--warn);background:var(--warn-bg);border-radius:6px;font-size:var(--fs-s);color:var(--ink)}
+.tzWrap{overflow:auto;padding:16px;border-radius:10px;background:var(--sunk)}
+.tz{width:794px;min-height:1100px;margin:0 auto;background:var(--tz-paper);color:var(--tz-ink);font:13px/1.5 var(--sans);box-shadow:0 2px 14px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.tz.printing{box-shadow:none}
+.tzTop{padding:40px 48px 30px;background:var(--tz-navy);color:#fff;border-bottom:4px solid var(--tz-brass)}
+.tzBrand{font-size:11px;font-weight:700;letter-spacing:.18em;color:var(--tz-brass)}.tzBrand span{color:#c9cfd8;font-weight:500;letter-spacing:.08em}
+.tzTop h1{margin:14px 0 6px;font:600 34px/1.15 var(--serif);color:#fff}
+.tzTop p{margin:0;font-size:15px;color:#dfe4ea;max-width:620px}
+.tzFacts{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--tz-line);background:var(--tz-soft)}
+.tzFacts div{padding:16px 20px 14px 48px;border-right:1px solid var(--tz-line)}.tzFacts div+div{padding-left:20px}.tzFacts div:last-child{border-right:0}
+.tzFacts label{display:block;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--tz-muted)}
+.tzFacts b{display:block;margin-top:4px;font-size:14px;color:var(--tz-ink)}
+.tzBody{flex:1;padding:26px 48px 10px;outline:0}
+.tzBody section{margin-bottom:18px;break-inside:avoid}
+.tzBody h3{margin:0 0 8px;padding-bottom:6px;border-bottom:1px solid var(--tz-brass);font:600 15px/1.2 var(--serif);color:var(--tz-navy);letter-spacing:.01em}
+.tzBody p{margin:0}.tzBody ul{margin:0;padding-left:18px}.tzBody li{margin:3px 0}
+.tzBody table{width:100%;border-collapse:collapse}.tzBody td{padding:6px 0;border-bottom:1px solid var(--tz-line);vertical-align:top}.tzBody td:first-child{width:34%;color:var(--tz-muted);font-weight:600}
+.tzFoot{padding:18px 48px 30px;border-top:1px solid var(--tz-line)}
+.tzContact{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--tz-muted);outline:0}.tzContact b{color:var(--tz-navy);font-size:13px}
+.tzFoot p{margin:10px 0 0;font-size:9.5px;line-height:1.4;color:var(--tz-muted)}
+.tz [contenteditable]:hover{outline:1px dashed var(--tz-brass);outline-offset:2px}.tz.printing [contenteditable]:hover{outline:0}
