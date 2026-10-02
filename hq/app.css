@@ -883,3 +883,51 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .tzContact{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--tz-muted);outline:0}.tzContact b{color:var(--tz-navy);font-size:13px}
 .tzFoot p{margin:10px 0 0;font-size:9.5px;line-height:1.4;color:var(--tz-muted)}
 .tz [contenteditable]:hover{outline:1px dashed var(--tz-brass);outline-offset:2px}.tz.printing [contenteditable]:hover{outline:0}
+
+/* ---- Pipeline → Fund signals (hq/funds.js) ---- */
+.fs{padding-bottom:6px}
+.fsTop{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:14px 20px 0}
+.fsBtns{flex-wrap:wrap;gap:6px}
+.fsViews{display:flex;flex-wrap:wrap;gap:4px;padding:10px 20px 8px;border-bottom:1px solid var(--line)}
+.fsViews button{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--muted);font:inherit;font-size:var(--fs-xs);cursor:pointer}
+.fsViews button b{color:var(--ink);margin-left:4px}
+.fsViews button.on{border-color:var(--ink);color:var(--ink);font-weight:600}
+.fsViews button.on[data-tone=good]{border-color:var(--good);background:var(--good-bg);color:var(--good)}
+.fsViews button.on[data-tone=bad]{border-color:var(--bad);background:var(--bad-bg);color:var(--bad)}
+.fsBulk{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 20px 0;padding:10px 12px;border-radius:var(--r);background:var(--warn-bg);color:var(--warn);font-size:var(--fs-xs);font-weight:600}
+.fsList{display:grid}
+.fsRow{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:16px;align-items:start;padding:16px 20px;border-top:1px solid var(--line);border-left:3px solid transparent}
+.fsList .fsRow:first-child{border-top:0}
+.fsRow[data-tone=good]{border-left-color:var(--good)}.fsRow[data-tone=warn]{border-left-color:var(--warn)}.fsRow[data-tone=bad]{border-left-color:var(--line-2)}
+.fsScore{display:grid;justify-items:center;padding:8px 0;border-radius:var(--r);background:var(--sunk)}
+.fsScore b{font:600 22px/1 var(--serif);color:var(--ink)}
+.fsScore span{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-top:3px}
+.fsRow[data-tone=good] .fsScore{background:var(--good-bg)}.fsRow[data-tone=good] .fsScore b{color:var(--good)}
+.fsMain h4{margin:0 0 4px;font:600 16px/1.3 var(--serif);color:var(--ink)}
+.fsVeh{font:500 var(--fs-xs)/1 var(--sans);color:var(--faint);cursor:help}
+.fsFacts{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:var(--fs-s);color:var(--ink-2)}
+.fsFacts b{color:var(--ink)}
+.fsWhy{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:3px}
+.fsWhy li{position:relative;padding-left:16px;font-size:var(--fs-xs);font-weight:600;color:var(--muted)}
+.fsWhy li::before{content:"";position:absolute;left:2px;top:6px;width:7px;height:7px;border-radius:2px;background:var(--line-2)}
+.fsWhy li[data-tone=good]{color:var(--good)}.fsWhy li[data-tone=good]::before{background:var(--good)}
+.fsWhy li[data-tone=warn]{color:var(--warn)}.fsWhy li[data-tone=warn]::before{background:var(--warn)}
+.fsWhy li[data-tone=bad]{color:var(--bad)}.fsWhy li[data-tone=bad]::before{background:var(--bad)}
+.fsCheck{margin-top:8px}
+.fsCheck .pFlag{white-space:normal}
+.fsPeople{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:var(--fs-s);font-weight:600}
+.fsPeople a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--brass)}
+.fsPeople a:hover{color:var(--brass-2)}
+.fsAct{display:grid;gap:6px;justify-items:stretch;min-width:150px}
+.fsAct .btn{justify-content:center}
+.fsHow h4{margin:16px 0 6px;font:600 15px/1.3 var(--serif)}
+.fsHow h4:first-child{margin-top:0}
+.fsHow p,.fsHow li{font-size:var(--fs-s);color:var(--ink-2);line-height:1.5}
+.fsHow ul{margin:0;padding-left:18px}
+@media(max-width:700px){
+  .fsTop,.fsViews{padding-left:16px;padding-right:16px}
+  .fsRow{grid-template-columns:44px minmax(0,1fr);padding:14px 16px;gap:12px}
+  .fsAct{grid-column:1/-1;display:flex;flex-wrap:wrap;min-width:0}
+  .fsAct .btn{flex:1 1 auto}
+  .fsBulk{margin:10px 16px 0}
+}

@@ -74,6 +74,18 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Leads are ranked by `leadHeat()` (pipeline.js): asks for a call / gives contact = "Wants to talk", deal words = "Has a deal", polite no = "Looks like a no". Chase's inbox tasks on Today show unanswered outreach replies per account (by `source_account` slug).
 - Outbound reality (Oct 2026): Peter, Tengku, Chase run campaigns in Prosp (replies arrive in `lead_intake` via webhook; sends are not tracked); the other 6 accounts are manual in AdsPower.
 
+## Fund signals (Pipeline → Fund signals tab, `hq/funds.js`, admin only)
+- Finds US funds raising now (Form D with II/III in the name, $50–250M, <60% sold, no sales commissions) and Fund I managers
+  3–4 years in who haven't filed a Fund II. Source: EDGAR via Apify actor `logiover/sec-edgar-form-d-scraper` (~$0.0035/filing).
+  The sandbox and the DB can't call sec.gov directly (blocked); edgartools is Python + sec.gov, so not used.
+- Edge function `fund-signals` (verify_jwt=false; admin JWT or `x-outerhaven-cron` = `FUND_CRON_SECRET`): actions scan {list:'live'|'fund1'},
+  check {ids} (later D/D/A filings under the manager name; same CIK = amendment, higher fund number = cut), poll, reclassify, status.
+  Rules: `supabase/functions/fund-signals/rules.js` (pure JS; every verdict stores `reasons`). Deploy index.ts + rules.js together.
+- Tables `fund_signals` (one row per filing, `fund_key` groups feeder/parallel vehicles) and `fund_signal_runs` (Apify runs, cap + real cost).
+  pg_cron `fund-signals` every 15 min = poll; weekly scan only when `growth_settings.fund_scan_enabled` (off by default),
+  spend capped by `fund_monthly_budget` (default $10). Uses slot-1 `APIFY_TOKEN`. Migration: `supabase/2026-10-02-fund-signals.sql`.
+- "Add to pipeline" creates Sell Side `people` (source 'Form D') + a task. Fund placement for a success fee needs a US broker-dealer.
+
 ## Resources (lead magnets)
 - HQ → Resources: queue of posts needing a resource, library (generated + manual links), Generate form.
 - Generate → edge function `resource-request` (daily cap, fires the routine) → Claude Code routine
