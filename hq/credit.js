@@ -78,12 +78,13 @@ function rowHtml(s) {
 // First message from Peter's side, using the numbers from their own filing. Personalise before sending.
 function opener(s, name = '') {
   const who = firstName(name) || 'there', f = s.flags || {}, co = s.company_name.replace(/,?\s+(inc|corp|corporation|co|ltd|llc|plc|holdings)\.?$/i, '');
-  const hook = s.debt_current != null && s.cash != null && s.debt_current > s.cash
-    ? `with ${money(s.debt_current)} coming due inside 12 months against ${money(s.cash)} of cash, the refinancing clock is running`
-    : f.forbearance ? 'with a forbearance in place, the clock on a new lender is running'
-      : f.going_concern ? 'with the going-concern language in the last filing, a bridge or rescue facility is probably on the table'
-        : 'you may be looking at the next facility';
-  return `Hi ${who}, I read ${co}'s latest filing: ${hook}. My partner Peter Plaut has spent 35 years in private credit and knows which lenders are writing facilities your size right now, and on what terms. Worth 20 minutes before you're negotiating against the deadline?`;
+  // Lead with the date, never the distress: no "going concern" / "forbearance" in a first message (the CFO knows; naming it
+  // reads as an accusation). Sent from Peter's account, CFO to a credit peer.
+  const by = s.period_end ? new Date(Date.parse(s.period_end) + 365 * 864e5).toLocaleString('en-US', { month: 'long', year: 'numeric' }) : '';
+  const due = s.debt_current != null && s.debt_current >= 10e6 && (s.cash == null || s.debt_current > s.cash)
+    ? `${money(s.debt_current)} of ${co}'s debt comes due${by ? ` before ${by}` : ' in the next 12 months'}`
+    : f.forbearance || f.going_concern ? `${co} will likely be lining up its next facility in the coming months` : `${co} may be looking at its next facility`;
+  return `Hi ${who}, I've spent 35 years in private credit. Saw that ${due}. Banks have pulled back from deals your size, but private lenders haven't, and the terms are sharper than most CFOs expect. Happy to tell you who's actively writing for a company like yours, no pitch. Worth 15 minutes before the process starts?`;
 }
 
 function bind(shown) {
