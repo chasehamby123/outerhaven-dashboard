@@ -101,7 +101,9 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   `credit_signal_runs`). Judged by `classifyCredit()` in rules.js (`CREDIT_RULES_VERSION`; the 15-min cron re-judges old versions).
   Target = a trigger (debt due within 12 months > cash, forbearance, or going concern) and no cut (bank/insurer/fund SIC 6000–6799
   except REIT 6798, revenue < $20M, debt > $750M, float > $2B). Contact = CFO via LinkedIn search link; "Add to pipeline" asks for the
-  CFO's name, creates a Sell Side person (source 'SEC credit signal') + task owned by Peter, copies the opener. Migration:
+  CFO's name, creates a Sell Side person (source 'SEC credit signal') + task owned by Peter, copies the opener. Revenue the frames miss is read from
+  companyfacts (0 = pre-revenue = cut); revolvers (`revolver_current`) are never a trigger; each run ends with ingest kind
+  `credit_done`, which sets `on_latest=false` (cut) on rows that run didn't send; tickers ending in Q (Chapter 11) are cut. Migration:
   `supabase/2026-10-02-credit-signals.sql`.
 
 ## Resources (lead magnets)

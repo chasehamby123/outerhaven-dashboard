@@ -7,6 +7,7 @@ How a company gets on the list
   1. XBRL frames (one SEC call per accounting tag, covering every filer): debt due within 12 months, long-term debt, cash
      (latest quarter-end balance sheet), revenue (latest calendar year), public float.
      Kept if: debt due within 12 months >= $10M and more than its cash, revenue >= $20M, float <= $2B, total debt <= $750M.
+     Revenue missing from the frames is read from the company's own XBRL facts (0 = pre-revenue).
   2. Full-text search (last 180 days): "forbearance agreement" (8-K / 10-Q / 10-K) and "substantial doubt" + "going concern"
      (10-K / 10-Q). Any company with a hit and revenue >= $20M (or unknown) is added, with the filing as evidence.
   3. Company profile (one call each): industry code, tickers, exchange, state, latest 10-K / 10-Q link.
@@ -33,7 +34,7 @@ DEBT_NONCURRENT = ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligat
                    "ConvertibleNotesPayableNoncurrent", "LongTermNotesPayable"]
 CASH = ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", "Cash"]
 REVENUE = ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet",
-           "RevenueFromContractWithCustomerIncludingAssessedTax"]
+           "RevenueFromContractWithCustomerIncludingAssessedTax", "SalesRevenueGoodsNet", "RegulatedAndUnregulatedOperatingRevenue"]
 
 
 def log(*a):
@@ -137,8 +138,27 @@ def profile(cik):
             "exchanges": [e for e in (j.get("exchanges") or []) if e], "state": addr.get("stateOrCountry"), "filingUrl": url}
 
 
+def annual_revenue(cik):
+    """Latest full-year revenue from the company's own XBRL facts (for companies the calendar-year frame missed, e.g. odd
+    fiscal years). 0 = the company reports no revenue at all (pre-revenue); None = could not read it."""
+    try:
+        facts = (download_json(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json").get("facts") or {}).get("us-gaap") or {}
+    except Exception:  # noqa: BLE001
+        return None
+    best_row = None
+    for tag in REVENUE:
+        for r in ((facts.get(tag) or {}).get("units") or {}).get("USD", []):
+            if r.get("form") not in ("10-K", "10-K/A") or not r.get("start"):
+                continue
+            days = (dt.date.fromisoformat(r["end"]) - dt.date.fromisoformat(r["start"])).days
+            if 330 <= days <= 400 and (best_row is None or r["end"] > best_row["end"]):
+                best_row = r
+    return float(best_row["val"]) if best_row else 0.0
+
+
 def credit():
     today = dt.date.today()
+    run = dt.datetime.utcnow().isoformat(timespec="seconds")
     periods = quarter_periods(today)
     period, cash = None, {}
     for p in periods:  # use the newest quarter with real coverage
@@ -152,8 +172,7 @@ def credit():
     log(f"credit: balance sheet period {period}")
     dcur, dnon, rvl = best(DEBT_CURRENT, period), best(DEBT_NONCURRENT, period), best(REVOLVER, period)
     rev = best(REVENUE, f"CY{today.year - 1}")
-    if len(rev) < 2000:
-        rev.update({k: v for k, v in best(REVENUE, f"CY{today.year - 2}").items() if k not in rev})
+    rev.update({k: v for k, v in best(REVENUE, f"CY{today.year - 2}").items() if k not in rev})
     flt = frame("EntityPublicFloat", f"CY{today.year - 1}Q2I", tax="dei")
 
     since = (today - dt.timedelta(days=180)).isoformat()
@@ -175,6 +194,16 @@ def credit():
                   "forbearance_companies": len(forb), "going_concern_companies": len(gc), "candidates": len(cands)})
     log(f"credit: {len(cands)} candidates ({sum(1 for c in cands if c in forb)} forbearance, {sum(1 for c in cands if c in gc)} going concern)")
 
+    looked_up = 0
+    for c in cands:  # text-search hits often have no calendar-year revenue frame: read their own filings
+        if c not in rev:
+            r = annual_revenue(c)
+            looked_up += 1
+            if r is not None:
+                rev[c] = (r, None, None, None)
+    STATS["revenue_looked_up"] = looked_up
+    STATS["run"] = run
+
     batch, sent = [], 0
     for i, c in enumerate(sorted(cands)):
         try:
@@ -183,7 +212,7 @@ def credit():
             log(f"  profile {c}: {e}")
             if len(STATS["errors"]) < 20:
                 STATS["errors"].append(f"profile {c}: {str(e)[:120]}")
-            p = {"name": (dcur.get(c) or cash.get(c) or rev.get(c) or (None, None, None, f"CIK {c}"))[3]}
+            p = {"name": (dcur.get(c) or cash.get(c) or rev.get(c) or (None,) * 4)[3] or f"CIK {c}"}
         flags = {}
         if c in forb:
             flags["forbearance"] = forb[c]
@@ -192,14 +221,17 @@ def credit():
         batch.append({"cik": c, **p, "periodEnd": (dcur.get(c) or cash.get(c) or (None, None))[1], "debtCurrent": val(dcur, c),
                       "debtNoncurrent": val(dnon, c), "revolverCurrent": val(rvl, c), "cash": val(cash, c), "revenue": val(rev, c), "publicFloat": val(flt, c), "flags": flags})
         if len(batch) >= 100:
-            r = post({"action": "ingest", "kind": "credit", "items": batch, "period": period, "stats": STATS})
+            r = post({"action": "ingest", "kind": "credit", "items": batch, "period": period, "run": run, "stats": STATS})
             sent += len(batch)
             log(f"  sent {sent} (new {r.get('added')})")
             batch = []
     if batch or sent == 0:
-        r = post({"action": "ingest", "kind": "credit", "items": batch, "period": period, "stats": STATS})
+        r = post({"action": "ingest", "kind": "credit", "items": batch, "period": period, "run": run, "stats": STATS})
         sent += len(batch)
         log(f"  sent {sent} (new {r.get('added')})")
+    # Companies from earlier runs that no longer show a trigger get cut (kept for history, status untouched).
+    r = post({"action": "ingest", "kind": "credit_done", "run": run})
+    log(f"  dropped off this run: {r.get('dropped')}")
     log(f"credit: done, {sent} companies sent")
 
 

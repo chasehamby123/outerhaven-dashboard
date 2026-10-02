@@ -145,7 +145,8 @@ async function judgeCredit(rows: any[]) {
 }
 async function ingestCredit(items: any[], params: any) {
   const seen = new Set<string>();
-  const rows = items.filter(it => it && it.cik && it.name).map(normalizeCredit).filter(r => !seen.has(r.cik) && seen.add(r.cik));
+  const rows = items.filter(it => it && it.cik && it.name).map(normalizeCredit).filter(r => !seen.has(r.cik) && seen.add(r.cik))
+    .map(r => ({ ...r, last_run: params.run || null, on_latest: true }));
   if (!rows.length) return 0;
   const ciks = rows.map(r => r.cik);
   const existing = new Set(((await sb.from("credit_signals").select("cik").in("cik", ciks)).data || []).map((x: any) => x.cik));
@@ -174,7 +175,17 @@ async function ingest(body: any) {
   }
   if (body.kind === "credit") {
     const items = Array.isArray(body.items) ? body.items.slice(0, 500) : [];
-    return { added: await ingestCredit(items, { period: body.period || null, source: "github", stats: body.stats || null }) };
+    return { added: await ingestCredit(items, { period: body.period || null, run: body.run || null, source: "github", stats: body.stats || null }) };
+  }
+  if (body.kind === "credit_done") {
+    // End of a full run: rows this run didn't send no longer show a trigger. Cut them (kept, status untouched).
+    if (!body.run) throw new Error("run missing");
+    const gone = (await sb.from("credit_signals").select("*").or(`last_run.is.null,last_run.neq."${body.run}"`).eq("on_latest", true)).data || [];
+    if (gone.length) {
+      await sb.from("credit_signals").update({ on_latest: false }).in("id", gone.map((g: any) => g.id));
+      await judgeCredit(gone.map((g: any) => ({ ...g, on_latest: false })));
+    }
+    return { dropped: gone.length };
   }
   if (body.kind === "scan") {
     const list = body.list === "live" ? "live" : "fund1", items = Array.isArray(body.items) ? body.items.slice(0, 500) : [];
