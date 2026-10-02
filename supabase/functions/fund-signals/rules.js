@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 2;
+export const RULES_VERSION = 3;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -77,6 +77,8 @@ export function classify(s, now = Date.now()) {
   else if (s.finders > 0) add('cut', `Already pays a finder (${money(s.finders)})`);
   if (s.state && !US.has(s.state)) add('maybe', `Non-US manager (state code ${s.state})`);
   if (!(s.executives || []).length) add('maybe', 'No named people in the filing, only entities');
+  // A fund's legal name nearly always says what it is; "MCF SpaceX-I LLC" or "TS Rover I, LLC" is usually a one-deal vehicle.
+  if (!/\b(fund|funds|partners|capital|ventures?|vc|equity|investors|investments?|opportunit\w*|growth|credit|holdings|lp|l\.?p\.?|scsp)\b/i.test(name)) add('maybe', "Name doesn't read like a fund: could be a single-deal vehicle");
 
   const sold = s.sold || 0, pctSold = s.offering ? sold / s.offering : null;
   const start = s.first_sale ? Date.parse(s.first_sale) : s.filing_date ? Date.parse(s.filing_date) : null;
@@ -111,7 +113,8 @@ export function classify(s, now = Date.now()) {
       else add('good', `Fund I is ${(months / 12).toFixed(1)} years old: inside the Fund II window (years 3–5)`, 20);
     }
     if (pctSold != null && sold > 0 && pctSold < 0.6) add('good', `Fund I reached only ${pctTxt(pctSold)} of its target: Fund II will be harder`, 10);
-    if (s.check_status === 'clear') add('good', `No Fund II filed yet (checked ${String(s.checked_at || '').slice(0, 10)})`, 25);
+    if (s.check_status === 'clear' && !(s.sold > 0)) add('maybe', 'No money reported raised, even in later filings: Fund I may never have closed');
+    else if (s.check_status === 'clear') add('good', `No Fund II filed yet (checked ${String(s.checked_at || '').slice(0, 10)})`, 25);
     else if (s.check_status === 'next') add('cut', s.check_note || 'Already filed a later fund');
     else if (s.check_status === 'error') add('maybe', 'Fund II check failed: run it again');
     else if (s.check_status === 'checking') add('info', 'Checking EDGAR for a Fund II…');
