@@ -6,6 +6,8 @@ import { me } from './tasks.js';
 
 let el = null, rows = [], runs = [], cfg = null, list = 'live', view = 'target', timer = null, onCount = () => {};
 const DAY = 864e5;
+const GH_RUN = 'https://github.com/chasehamby123/outerhaven-dashboard/actions/workflows/fund-signals.yml';
+const GH_SECRETS = 'https://github.com/chasehamby123/outerhaven-dashboard/settings/secrets/actions';
 const money = n => n == null ? '—' : n >= 1e9 ? '$' + +(n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? '$' + +(n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? '$' + Math.round(n / 1e3) + 'K' : '$' + Math.round(n);
 const day = v => v ? new Date(v + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
@@ -68,20 +70,21 @@ function draw() {
   const running = runs.filter(r => r.status === 'running');
   const month = new Date(); month.setUTCDate(1); month.setUTCHours(0, 0, 0, 0);
   const spent = runs.filter(r => Date.parse(r.created_at) >= month).reduce((n, r) => n + (r.status === 'running' ? +r.cap_usd || 0 : +r.cost_usd || 0), 0);
-  const lastScan = runs.find(r => r.kind === (list === 'live' ? 'scan_live' : 'scan_fund1') && r.status === 'done');
+  const gh = runs.find(r => r.params?.source === 'github');
   onCount(grouped('live').concat(grouped('fund1')).filter(s => bucket(s) === 'target').length);
 
   el.innerHTML = `<div class="fs">
     <div class="fsTop">
       <div class="pSeg" role="group">${[['live', 'Raising now'], ['fund1', 'Fund I, due for Fund II']].map(([k, l]) => `<button type="button" data-list="${k}" class="${list === k ? 'on' : ''}">${l}<em>${grouped(k).filter(s => bucket(s) === 'target').length}</em></button>`).join('')}</div>
-      <div class="row fsBtns">${list === 'live' ? '<button class="btn sm primary" data-scan="live">Scan last 30 days</button>' : '<button class="btn sm primary" data-scan="fund1">Scan Fund Is from 3–4 years ago</button>'}
-        <button class="btn sm" id="fsCollect">${running.length ? `Collect results (${running.length} running)` : 'Collect results'}</button>
-        <button class="btn sm ghost" id="fsHow">How it works</button><button class="btn sm ghost" id="fsSet">Settings</button></div>
+      <div class="row fsBtns"><a class="btn sm primary" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a>
+        <button class="btn sm" id="fsCollect">${running.length ? `Collect results (${running.length} running)` : 'Refresh'}</button>
+        <button class="btn sm ghost" id="fsHow">How it works</button><button class="btn sm ghost" id="fsSet">Setup</button></div>
     </div>
     <p class="pHint">${list === 'live' ? 'Fund IIs and IIIs that filed a Form D: they started taking investor money in the last few weeks.' : 'Fund Is that started 3–4 years ago. If no Fund II has been filed, they are about to raise one.'}
-      <b>$${spent.toFixed(2)}</b> of $${(+cfg.fund_monthly_budget || 10).toFixed(0)} used this month${lastScan ? ` · last scan ${new Date(lastScan.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''} · weekly scan <b>${cfg.fund_scan_enabled ? 'on' : 'off'}</b></p>
+      Source: SEC EDGAR (edgartools), scanned daily on GitHub, free. ${gh ? `Last run <b>${new Date(gh.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>.` : ''}${spent ? ` Apify fallback: $${spent.toFixed(2)} this month.` : ''}</p>
+    ${gh ? '' : `<div class="fsBulk fsSetup"><span>Finish setup: add two secrets to GitHub so the daily scan can run.</span><button class="btn sm primary" id="fsSetup">Show me how</button></div>`}
     <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed']].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
-    ${list === 'fund1' && view === 'target' && shown.some(s => !s.check_status) ? `<div class="fsBulk"><span>${shown.filter(s => !s.check_status).length} not yet checked for a Fund II.</span><button class="btn sm" id="fsCheckAll">Check them all (≈$${(Math.min(40, new Set(shown.filter(s => !s.check_status).map(s => s.manager_key)).size) * 0.3).toFixed(2)} max)</button></div>` : ''}
+    ${list === 'fund1' && view === 'target' && shown.some(s => !s.check_status) ? `<div class="fsBulk"><span>${shown.filter(s => !s.check_status).length} not yet checked for a Fund II.</span><button class="btn sm" id="fsCheckAll">Queue them all (free, runs within the hour)</button></div>` : ''}
     <div class="fsList">${shown.length ? shown.map(rowHtml).join('') : `<div class="empty">${view === 'target' ? (all.length ? 'No targets in this list right now.' : 'Nothing scanned yet. Run a scan above; results arrive in a few minutes.') : 'Nothing here.'}</div>`}</div>
   </div>`;
   bind(shown);
@@ -97,7 +100,7 @@ function rowHtml(s) {
     [s.city, s.state].filter(Boolean).join(', '),
   ].filter(Boolean);
   const ppl = (s.executives || []).slice(0, 4);
-  const chk = s.check_status === 'checking' && s.list === 'fund1' ? '' : s.check_status === 'checking' ? '<span class="pFlag">Checking EDGAR for newer filings…</span>'
+  const chk = ['checking', 'queued'].includes(s.check_status) && s.list === 'fund1' ? '' : s.check_status === 'checking' ? '<span class="pFlag">Checking EDGAR for newer filings…</span>' : s.check_status === 'queued' ? '<span class="pFlag">Queued: GitHub checks EDGAR hourly</span>'
     : s.check_status ? `<span class="pFlag ${s.check_status === 'next' ? 'bad' : s.check_status === 'clear' ? 'good' : 'warn'}">${esc(s.check_note || '')}</span>` : '';
   return `<article class="fsRow" data-tone="${toneOf(s.verdict === 'target' ? 'good' : s.verdict)}">
     <div class="fsScore"><b>${s.score}</b><span>score</span></div>
@@ -111,7 +114,7 @@ function rowHtml(s) {
     <div class="fsAct">
       ${s.status !== 'added' ? `<button class="btn sm ${s.verdict === 'target' ? 'primary' : ''}" data-add="${s.id}">Add to pipeline</button>` : '<span class="pFlag good">In pipeline</span>'}
       <button class="btn sm" data-copy="${s.id}">Copy opener</button>
-      ${s.check_status !== 'checking' ? `<button class="btn sm" data-check="${s.id}">${s.check_status ? 'Re-check' : s.list === 'live' ? 'Check newer filings' : 'Check for Fund II'}</button>` : ''}
+      ${!['checking', 'queued'].includes(s.check_status) ? `<button class="btn sm" data-check="${s.id}">${s.check_status ? 'Re-check' : s.list === 'live' ? 'Check newer filings' : 'Check for Fund II'}</button>` : ''}
       ${s.filing_url ? `<a class="btn sm ghost" href="${esc(s.filing_url)}" target="_blank" rel="noopener">Filing ↗</a>` : ''}
       ${s.status === 'dismissed' ? `<button class="btn sm ghost" data-undo="${s.id}">Restore</button>` : s.status !== 'added' ? `<button class="btn sm ghost" data-dismiss="${s.id}">Dismiss</button>` : ''}
     </div></article>`;
@@ -135,20 +138,10 @@ function bind(shown) {
   $('#fsCollect', el).onclick = () => collect(false);
   $('#fsHow', el).onclick = howModal;
   $('#fsSet', el).onclick = settingsModal;
-  $$('[data-scan]', el).forEach(b => b.onclick = () => {
-    const l = b.dataset.scan, cost = l === 'live' ? 2.4 : 4;
-    modal({
-      title: l === 'live' ? 'Scan funds raising now' : 'Scan the Fund I cohort', submit: 'Start scan',
-      body: `<p style="margin:0">${l === 'live' ? 'Every Fund II and III Form D filed in the last 30 days (2 runs).' : 'Every Fund I Form D filed 3–4 years ago, one quarter per run (4 runs).'} Costs up to <b>$${cost.toFixed(2)}</b> of Apify credit, usually much less. Results arrive in 5–15 minutes; you can leave this page.</p>`,
-      async onSubmit() {
-        try { const r = await call({ action: 'scan', list: l }); toast(`Started ${r.started} run${r.started === 1 ? '' : 's'}. Results in 5–15 min.`); await load(); if (el.isConnected) draw(); collect(true); }
-        catch (e) { toast(e.message); return false; }
-      },
-    });
-  });
+  $('#fsSetup', el)?.addEventListener('click', settingsModal);
   const runCheck = async (ids, btn) => {
     if (btn) btn.disabled = true;
-    try { const r = await call({ action: 'check', ids }); toast(`Checking ${r.started} manager${r.started === 1 ? '' : 's'} on EDGAR. A few minutes.`); await load(); draw(); collect(true); }
+    try { const r = await call({ action: 'queue', ids }); toast(`${r.queued} queued. GitHub checks EDGAR hourly (at :10).`); await load(); draw(); }
     catch (e) { toast(e.message); if (btn) btn.disabled = false; }
   };
   $$('[data-check]', el).forEach(b => b.onclick = () => runCheck([b.dataset.check], b));
@@ -196,18 +189,25 @@ function addModal(s) {
 }
 
 function settingsModal() {
-  modal({
-    title: 'Fund signals settings', submit: 'Save',
-    body: `<div class="form pForm">
-      <label class="row s" style="grid-column:1/-1"><input type="checkbox" name="on" ${cfg.fund_scan_enabled ? 'checked' : ''}> Weekly scan (Mondays): last week's Fund II/III filings, the Fund I week that just turned 3.5 years old, and a Fund II check on new Fund I targets. About $0.30–1 a week.</label>
-      <label class="field">Monthly budget (USD)<input class="input" type="number" min="1" max="200" step="1" name="budget" value="${+cfg.fund_monthly_budget || 10}"></label>
-      <p class="s muted" style="grid-column:1/-1;margin:0">Uses the main Apify account (same one as the LinkedIn scraper). Every run is capped; a scan stops before it would pass this budget.</p></div>`,
-    async onSubmit(fd) {
-      const patch = { fund_scan_enabled: fd.get('on') === 'on', fund_monthly_budget: Math.max(1, +fd.get('budget') || 10), updated_at: new Date().toISOString(), updated_by: state.user?.id || null };
-      if (fail(await sb.from('growth_settings').update(patch).eq('id', 1), 'Save')) return false;
-      Object.assign(cfg, patch); toast('Saved'); draw();
-    },
+  const { el: m } = modal({
+    title: 'Fund signals setup', submit: '', wide: true,
+    body: `<div class="fsHow">
+      <p>The scan runs on GitHub (free) with edgartools, reading Form D filings straight from the SEC. It needs two secrets in the repo. Do this once:</p>
+      <ol>
+        <li>Open <a href="${GH_SECRETS}" target="_blank" rel="noopener">GitHub → repo Settings → Secrets → Actions ↗</a> and click <b>New repository secret</b>.</li>
+        <li>Name <b>FUND_INGEST_KEY</b>, value: <button type="button" class="btn sm" id="fsKey">Copy the key</button> then paste it.</li>
+        <li>New secret again. Name <b>SEC_IDENTITY</b>, value: a name and email, e.g. <code>OuterHaven Advisory you@yourdomain.com</code>. The SEC asks every tool to identify itself; it's never shown publicly.</li>
+        <li>Open <a href="${GH_RUN}" target="_blank" rel="noopener">Actions → Fund signals ↗</a>, click <b>Run workflow</b>. Mode <b>daily</b> for a quick test, or <b>fund1</b> / <b>live</b> with dates for a backfill.</li>
+      </ol>
+      <h4>Schedule</h4>
+      <p>Daily at 09:40 MYT: new Fund II/III filings, the Fund I filings turning 3.5 years old, and Fund II checks. Hourly at :10: checks you queued here. Results show up in this tab as they land.</p>
+      <p class="s muted">The key only lets GitHub add filings and check results to this tab. If it leaks, tell Claude to rotate FUND_INGEST_SECRET and paste the new one.</p></div>`,
   });
+  $('#fsKey', m).onclick = async () => {
+    const { data, error } = await sb.rpc('fund_ingest_key');
+    if (error || !data) { toast('Could not get the key: ' + (error?.message || 'not set up')); return; }
+    try { await navigator.clipboard.writeText(data); toast('Key copied. Paste it into GitHub.'); } catch { toast('Copy failed. Allow clipboard access and try again.'); }
+  };
 }
 
 function howModal() {
@@ -215,7 +215,7 @@ function howModal() {
     title: 'How fund signals work', submit: '', wide: true,
     body: `<div class="fsHow">
       <h4>1. Where the data comes from</h4>
-      <p>Every US private fund must file a <b>Form D</b> with the SEC within 15 days of taking its first investor's money, and amend it each year while it keeps raising. HQ pulls these filings from EDGAR through an Apify scraper (about $0.0035 per filing).</p>
+      <p>Every US private fund must file a <b>Form D</b> with the SEC within 15 days of taking its first investor's money, and amend it each year while it keeps raising. HQ reads them straight from the SEC with edgartools (open source), on a free daily GitHub job. Only pooled investment funds are kept.</p>
       <h4>2. The two lists</h4>
       <p><b>Raising now:</b> filings with "II" or "III" in the fund name, financial services only. <b>Fund I, due for Fund II:</b> Fund I filings from 3–4 years ago, scanned one quarter at a time.</p>
       <h4>3. Automatic cuts (a fund is cut if any one applies)</h4>
@@ -229,7 +229,7 @@ function howModal() {
       <h4>5. Score (higher = call first)</h4>
       <ul><li><b>+40</b> stuck: under 30% raised 6+ months after the first sale.</li><li><b>+30</b> Fund I still raising years later.</li><li><b>+25</b> checked: no Fund II filed yet.</li><li><b>+20</b> Fund II (the hardest raise), or Fund I inside the year 3–5 window.</li><li><b>+15</b> filed before taking money, or under 30% raised.</li><li><b>+8</b> Rule 506(c): allowed to market publicly.</li></ul>
       <h4>6. The Fund II check</h4>
-      <p>Searches every Form D and amendment filed since, under the manager's name (e.g. "Ground Game"). A later fund with a higher number = cut ("already filed Fund II"). A newer amendment of the same fund (same SEC company number) updates how much it has raised. Different firms that share a word are ignored unless the name matches.</p>
+      <p>Pulls every later filing by the same fund (by its SEC company number), and runs an SEC full-text search for later Form Ds under the manager's name (e.g. "Ground Game"). A later fund with a higher number = cut ("already filed Fund II"). A newer amendment of the same fund (same SEC company number) updates how much it has raised. Different firms that share a word are ignored unless the name matches.</p>
       <h4>7. What it can't see</h4>
       <ul><li>Funds that raise without filing, or file under a different name.</li><li>Whether the people are still active or reachable: check LinkedIn before messaging.</li><li>Funds whose target is "Indefinite" can't be ranked on % raised.</li></ul>
       <p class="s muted">Placement for a success fee on fund capital needs a US broker-dealer (or a partner who is one). Sort that before signing a mandate.</p></div>`,

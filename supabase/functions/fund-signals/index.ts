@@ -1,7 +1,8 @@
 // Fund signals: finds US funds raising money right now (Form D filings) and Fund I managers due to raise Fund II.
-// Data comes from EDGAR through the Apify actor logiover/sec-edgar-form-d-scraper (pay per result, each run capped).
-// Actions (admin JWT): scan {list}, check {ids}, poll, reclassify. Cron (x-outerhaven-cron): poll + the weekly scan
-// when growth_settings.fund_scan_enabled is on. Rules live in rules.js; every verdict stores its reasons.
+// Main source since Oct 2026: the GitHub Actions job scripts/fund_signals.py (edgartools, SEC direct) posting to
+// action ingest (x-fund-ingest). Apify (logiover/sec-edgar-form-d-scraper) remains as a fallback: scan {list}, check {ids}, poll, reclassify.
+// Cron (x-outerhaven-cron): poll + re-judge on rules change (+ Apify weekly scan only if fund_scan_enabled).
+// Rules live in rules.js; every verdict stores its reasons.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { normalize, classify, readCheck, money, RULES_VERSION } from "./rules.js";
 
@@ -102,6 +103,69 @@ async function judge(rows: any[]) {
   }));
 }
 
+// ---- Storing results (shared by Apify runs and the GitHub edgartools job) ----
+async function ingestScan(list: string, items: any[]) {
+  const seen = new Set<string>();
+  const rows = items.filter(it => it.companyName).map(it => normalize(it, list)).filter(r => !seen.has(r.accession) && seen.add(r.accession));
+  if (!rows.length) return 0;
+  const accs = rows.map(r => r.accession);
+  const existing = new Set(((await sb.from("fund_signals").select("accession").in("accession", accs)).data || []).map((x: any) => x.accession));
+  // New filings are inserted; known ones get fresh numbers but keep their status, check and notes.
+  for (let i = 0; i < rows.length; i += 200) {
+    const chunk = rows.slice(i, i + 200);
+    const fresh = chunk.filter(r => !existing.has(r.accession)), known = chunk.filter(r => existing.has(r.accession));
+    if (fresh.length) { const ins = await sb.from("fund_signals").insert(fresh); if (ins.error) throw new Error(ins.error.message); }
+    await Promise.all(known.map(r => { const { accession, list: _l, ...rest } = r; return sb.from("fund_signals").update({ ...rest, updated_at: new Date().toISOString() }).eq("accession", accession); }));
+  }
+  await judge((await sb.from("fund_signals").select("*").in("accession", accs)).data || []);
+  return rows.filter(r => !existing.has(r.accession)).length;
+}
+async function ingestCheck(ids: string[], items: any[], error: string | null, at = new Date().toISOString()) {
+  const sigs = (await sb.from("fund_signals").select("*").in("id", ids)).data || [];
+  for (const s of sigs) {
+    if (error) { await sb.from("fund_signals").update({ check_status: "error", check_note: error, checked_at: at }).eq("id", s.id); continue; }
+    const c = readCheck(s, items), patch: any = { check_status: c.status, check_note: c.note, later: c.later, checked_at: at };
+    if (c.latest) {
+      if (c.latest.sold != null) patch.sold = c.latest.sold;
+      if (c.latest.offering != null) patch.offering = c.latest.offering;
+      const off = patch.offering ?? s.offering, sold = patch.sold ?? s.sold;
+      if (Date.now() - Date.parse(c.latest.date) < 400 * DAY && (!off || sold / off < 0.6)) patch.still_raising = `${money(sold)}${off ? ` of ${money(off)}` : ''} as of ${c.latest.date}`;
+    }
+    await sb.from("fund_signals").update(patch).eq("id", s.id);
+  }
+  await judge((await sb.from("fund_signals").select("*").in("id", ids)).data || []);
+}
+
+// GitHub job (x-fund-ingest = FUND_INGEST_SECRET). Each call is logged as a run with cost 0.
+async function ingest(body: any) {
+  const now = new Date().toISOString();
+  const logRun = (kind: string, items: number, added: number, params: any, error: string | null = null) =>
+    sb.from("fund_signal_runs").insert({ kind, status: error ? "failed" : "done", items, added, cost_usd: 0, cap_usd: 0, params: { source: "github", ...params }, error, finished_at: now });
+  if (body.kind === "todo") {
+    const cols = "id,manager_key,check_keyword,cik,filing_date,fund_no,company_name";
+    const queued = (await sb.from("fund_signals").select(cols).eq("check_status", "queued").limit(60)).data || [];
+    const fresh = (await sb.from("fund_signals").select(cols).eq("list", "fund1").eq("verdict", "target").is("check_status", null).limit(60)).data || [];
+    const stale = (await sb.from("fund_signals").select(cols).eq("list", "fund1").eq("verdict", "target").eq("check_status", "clear").lt("checked_at", new Date(Date.now() - 30 * DAY).toISOString()).limit(30)).data || [];
+    const stuck = (await sb.from("fund_signals").select(cols).eq("check_status", "checking").lt("updated_at", new Date(Date.now() - 6 * 3600e3).toISOString()).limit(30)).data || [];
+    const all = [...queued, ...stuck, ...fresh, ...stale].filter((x, i, a) => a.findIndex(y => y.id === x.id) === i).slice(0, 80);
+    if (all.length) await sb.from("fund_signals").update({ check_status: "checking", updated_at: now }).in("id", all.map(x => x.id));
+    return { signals: all };
+  }
+  if (body.kind === "scan") {
+    const list = body.list === "live" ? "live" : "fund1", items = Array.isArray(body.items) ? body.items.slice(0, 500) : [];
+    const added = await ingestScan(list, items);
+    await logRun(list === "live" ? "scan_live" : "scan_fund1", items.length, added, { list, from: body.from, to: body.to });
+    return { added };
+  }
+  if (body.kind === "check" || body.kind === "check_error") {
+    const ids = (body.signal_ids || []).slice(0, 40), items = Array.isArray(body.items) ? body.items.slice(0, 500) : [];
+    await ingestCheck(ids, items, body.kind === "check_error" ? String(body.error || "Check failed").slice(0, 300) : null);
+    await logRun("check", items.length, 0, { signal_ids: ids }, body.kind === "check_error" ? String(body.error || "") : null);
+    return { checked: ids.length };
+  }
+  throw new Error("Unknown ingest kind");
+}
+
 // ---- Poll: collect finished runs, store, judge ----
 async function poll() {
   const runs = (await sb.from("fund_signal_runs").select("*").eq("status", "running").order("created_at").limit(20)).data || [];
@@ -118,37 +182,8 @@ async function poll() {
     try { items = await apify(`/datasets/${run.dataset_id}/items?clean=true&format=json&limit=1000`); } catch { }
     const ok = info.status === "SUCCEEDED" || items.length > 0;
     const out: any = { status: ok ? "done" : "failed", items: items.length, cost_usd: Number(info.usageTotalUsd) || 0, finished_at: new Date().toISOString(), error: ok ? (info.status === "SUCCEEDED" ? null : `Run ${info.status}; kept the ${items.length} results it found`) : `Run ${info.status}` };
-    if (run.kind === "check") {
-      const ids = run.params?.signal_ids || [];
-      const sigs = (await sb.from("fund_signals").select("*").in("id", ids)).data || [];
-      for (const s of sigs) {
-        if (!ok) { await sb.from("fund_signals").update({ check_status: "error", check_note: out.error, checked_at: out.finished_at }).eq("id", s.id); continue; }
-        const c = readCheck(s, items), patch: any = { check_status: c.status, check_note: c.note, later: c.later, checked_at: out.finished_at };
-        if (c.latest) {
-          if (c.latest.sold != null) patch.sold = c.latest.sold;
-          if (c.latest.offering != null) patch.offering = c.latest.offering;
-          const off = patch.offering ?? s.offering, sold = patch.sold ?? s.sold;
-          if (Date.now() - Date.parse(c.latest.date) < 400 * DAY && (!off || sold / off < 0.6)) patch.still_raising = `${money(sold)}${off ? ` of ${money(off)}` : ''} as of ${c.latest.date}`;
-        }
-        await sb.from("fund_signals").update(patch).eq("id", s.id);
-      }
-      await judge((await sb.from("fund_signals").select("*").in("id", ids)).data || []);
-    } else if (ok) {
-      const list = run.kind === "scan_live" ? "live" : "fund1";
-      const seen = new Set<string>();
-      const rows = items.filter(it => it.companyName).map(it => normalize(it, list)).filter(r => !seen.has(r.accession) && seen.add(r.accession));
-      const accs = rows.map(r => r.accession);
-      const existing = new Set(((await sb.from("fund_signals").select("accession").in("accession", accs)).data || []).map((x: any) => x.accession));
-      // New filings are inserted; known ones get fresh numbers but keep their status, check and notes.
-      for (let i = 0; i < rows.length; i += 200) {
-        const chunk = rows.slice(i, i + 200);
-        const fresh = chunk.filter(r => !existing.has(r.accession)), known = chunk.filter(r => existing.has(r.accession));
-        if (fresh.length) await sb.from("fund_signals").insert(fresh);
-        await Promise.all(known.map(r => { const { accession, list: _l, ...rest } = r; return sb.from("fund_signals").update({ ...rest, updated_at: new Date().toISOString() }).eq("accession", accession); }));
-      }
-      out.added = rows.filter(r => !existing.has(r.accession)).length;
-      await judge((await sb.from("fund_signals").select("*").in("accession", accs)).data || []);
-    }
+    if (run.kind === "check") await ingestCheck(run.params?.signal_ids || [], items, ok ? null : out.error, out.finished_at);
+    else if (ok) out.added = await ingestScan(run.kind === "scan_live" ? "live" : "fund1", items);
     await sb.from("fund_signal_runs").update(out).eq("id", run.id);
     finished++;
   }
@@ -174,6 +209,12 @@ Deno.serve(async req => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
     const body = await req.json().catch(() => ({}));
+    const ingestKey = req.headers.get("x-fund-ingest");
+    if (ingestKey) {
+      const want = await secret("FUND_INGEST_SECRET");
+      if (!want || ingestKey !== want) return json({ ok: false, error: "Bad ingest key. Copy it again from HQ → Pipeline → Fund signals → Setup." }, 401);
+      return json({ ok: true, ...(await ingest(body)) });
+    }
     const cron = req.headers.get("x-outerhaven-cron");
     if (cron) {
       if (cron !== await secret("FUND_CRON_SECRET")) return json({ ok: false, error: "bad cron secret" }, 401);
@@ -185,6 +226,13 @@ Deno.serve(async req => {
     const user = await admin(req);
     if (!user) return json({ ok: false, error: "Admins only." }, 403);
     if (body.action === "scan") return json({ ok: true, ...(await scan(body.list, body.from, body.to, user.id)) });
+    if (body.action === "queue") {
+      const ids = (body.ids || []).slice(0, 200);
+      const r = await sb.from("fund_signals").update({ check_status: "queued", updated_at: new Date().toISOString() }).in("id", ids).or("check_status.is.null,check_status.neq.checking").select("id");
+      if (r.error) throw new Error(r.error.message);
+      await judge((await sb.from("fund_signals").select("*").in("id", ids)).data || []);
+      return json({ ok: true, queued: (r.data || []).length });
+    }
     if (body.action === "check") return json({ ok: true, ...(await check(body.ids || [], user.id)) });
     if (body.action === "poll") return json({ ok: true, ...(await poll()) });
     if (body.action === "reclassify") {

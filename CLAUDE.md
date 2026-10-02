@@ -75,15 +75,21 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Outbound reality (Oct 2026): Peter, Tengku, Chase run campaigns in Prosp (replies arrive in `lead_intake` via webhook; sends are not tracked); the other 6 accounts are manual in AdsPower.
 
 ## Fund signals (Pipeline → Fund signals tab, `hq/funds.js`, admin only)
-- Finds US funds raising now (Form D with II/III in the name, $50–250M, <60% sold, no sales commissions) and Fund I managers
-  3–4 years in who haven't filed a Fund II. Source: EDGAR via Apify actor `logiover/sec-edgar-form-d-scraper` (~$0.0035/filing).
-  The sandbox and the DB can't call sec.gov directly (blocked); edgartools is Python + sec.gov, so not used.
-- Edge function `fund-signals` (verify_jwt=false; admin JWT or `x-outerhaven-cron` = `FUND_CRON_SECRET`): actions scan {list:'live'|'fund1'},
-  check {ids} (later D/D/A filings under the manager name; same CIK = amendment, higher fund number = cut), poll, reclassify, status.
-  Rules: `supabase/functions/fund-signals/rules.js` (pure JS; every verdict stores `reasons`). Deploy index.ts + rules.js together.
-- Tables `fund_signals` (one row per filing, `fund_key` groups feeder/parallel vehicles) and `fund_signal_runs` (Apify runs, cap + real cost).
-  pg_cron `fund-signals` every 15 min = poll; weekly scan only when `growth_settings.fund_scan_enabled` (off by default),
-  spend capped by `fund_monthly_budget` (default $10). Uses slot-1 `APIFY_TOKEN`. Migration: `supabase/2026-10-02-fund-signals.sql`.
+- Finds US funds raising now (Form D, II/III in the name, pooled fund, $50–250M, <60% sold, no sales commissions) and Fund I
+  managers 3–4 years in who haven't filed a Fund II.
+- **Source: GitHub Actions** `.github/workflows/fund-signals.yml` runs `scripts/fund_signals.py` (edgartools, SEC direct, free):
+  daily 01:40 UTC (new II/III filings, the Fund I window turning 3.5 years, checks) and hourly :10 (queued checks). Backfills:
+  Actions → Fund signals → Run workflow (mode live/fund1 + dates). Repo secrets: `FUND_INGEST_KEY` (= `FUND_INGEST_SECRET`, admins copy it
+  in the tab's Setup via RPC `fund_ingest_key()`) and `SEC_IDENTITY` (name + email). The user sets both; never set them yourself.
+  The sandbox and the DB can't reach sec.gov (blocked), so test the parser offline (`edgar.offerings.exempt.formd.FormD.from_xml`).
+- Python only fetches and maps to the item shape; edge function `fund-signals` (verify_jwt=false) action `ingest` (header `x-fund-ingest`)
+  stores and judges with `supabase/functions/fund-signals/rules.js` (pure JS; every verdict stores `reasons`; bump `RULES_VERSION` and the
+  15-min cron re-judges). Check = same CIK later filings (amendment numbers) + EFTS full-text search on the manager name (higher fund
+  number = cut). HQ "Check" queues (`action: queue`); the hourly job picks queued up. Deploy index.ts + rules.js together.
+- Apify actor `logiover/sec-edgar-form-d-scraper` is a fallback only (it silently returned a partial list on 2 Oct 2026); weekly Apify
+  scan stays off (`growth_settings.fund_scan_enabled`), budget `fund_monthly_budget`.
+- Tables `fund_signals` (one row per filing, `fund_key` groups feeder/parallel vehicles) and `fund_signal_runs` (`params.source='github'`
+  for GitHub calls). Migrations: `supabase/2026-10-02-fund-signals.sql`, `supabase/2026-10-02-fund-signals-github.sql`.
 - "Add to pipeline" creates Sell Side `people` (source 'Form D') + a task. Fund placement for a success fee needs a US broker-dealer.
 
 ## Resources (lead magnets)

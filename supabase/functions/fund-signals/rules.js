@@ -1,4 +1,4 @@
-// Fund signals rules. Turns a Form D filing (Apify actor logiover/sec-edgar-form-d-scraper) into a judged lead,
+// Fund signals rules. Turns a Form D filing (from the GitHub edgartools job, or the Apify fallback) into a judged lead,
 // and reads a "did they file again?" check. Plain JS so it runs in the edge function and in Node tests.
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
@@ -115,6 +115,7 @@ export function classify(s, now = Date.now()) {
     else if (s.check_status === 'next') add('cut', s.check_note || 'Already filed a later fund');
     else if (s.check_status === 'error') add('maybe', 'Fund II check failed: run it again');
     else if (s.check_status === 'checking') add('info', 'Checking EDGAR for a Fund II…');
+    else if (s.check_status === 'queued') add('info', 'Queued for a Fund II check (runs hourly on GitHub)');
     else add('info', 'Not checked for a Fund II yet');
     if (s.still_raising) add('good', `Still raising Fund I: ${s.still_raising}`, 30);
   }
@@ -134,14 +135,14 @@ export function readCheck(s, items) {
     if (p.manager_key !== s.manager_key || VEHICLE.test(it.companyName || '')) continue;
     const row = { name: it.companyName, date: isoDate(it.filingDate), form: it.formType, offering: num(it.totalOfferingAmount), sold: num(it.totalAmountSold), fund_no: p.fund_no, cik: it.cik || null };
     // Same fund = same SEC company id (CIK); fall back to the exact name when a CIK is missing.
-    const same = s.cik && row.cik ? String(s.cik) === String(row.cik) : String(it.companyName || '').toLowerCase() === String(s.company_name || '').toLowerCase();
+    const same = s.cik && row.cik ? Number(s.cik) === Number(row.cik) : String(it.companyName || '').toLowerCase() === String(s.company_name || '').toLowerCase();
     if (same) { if (row.date && (!s.filing_date || row.date > s.filing_date)) amends.push(row); }
     else if (p.fund_no > mine) later.push(row);
   }
   later.sort((a, b) => String(a.date).localeCompare(String(b.date)));
   amends.sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  const out = { later, latest: amends[0] || null };
+  const out = { later, latest: amends.find(a => a.sold != null) || amends[0] || null };
   if (later.length) { const f = later[0]; out.status = 'next'; out.note = `Already filed ${f.name} (${f.date}${f.offering ? `, ${money(f.offering)} target` : ''})`; }
-  else { out.status = 'clear'; out.note = amends[0] ? `No later fund. Latest Fund ${romanOf(mine)} filing ${amends[0].date}: ${money(amends[0].sold)} raised${amends[0].offering ? ` of ${money(amends[0].offering)}` : ''}` : `No later fund filed since ${s.filing_date || 'the original filing'}`; }
+  else { out.status = 'clear'; out.note = out.latest ? `No later fund. Latest Fund ${romanOf(mine)} filing ${out.latest.date}${out.latest.sold != null ? `: ${money(out.latest.sold)} raised${out.latest.offering ? ` of ${money(out.latest.offering)}` : ''}` : ''}` : `No later fund filed since ${s.filing_date || 'the original filing'}`; }
   return out;
 }
