@@ -87,6 +87,12 @@ def item_from(filing, fd):
     }
 
 
+def flush(batch, list_name, start, end, sent):
+    r = post({"action": "ingest", "kind": "scan", "list": list_name, "items": batch, "from": start, "to": end})
+    log(f"  sent {sent + len(batch)} (new {r.get('added')})")
+    return len(batch)
+
+
 def scan(list_name, start, end):
     """Form D filings (originals) in [start, end] whose name has the fund number we want; pooled funds only."""
     rx = LIVE_RE if list_name == "live" else FUND1_RE
@@ -97,7 +103,7 @@ def scan(list_name, start, end):
     cands = [f for f in fs if rx.search(f.company or "")]
     log(f"{list_name}: {len(fs)} Form D filings {start}..{end}, {len(cands)} with the right fund number")
     batch, sent, skipped = [], 0, 0
-    for i, f in enumerate(cands):
+    for f in cands:
         try:
             fd = f.obj()
             if fd is None or not hasattr(fd, "offering_data"):
@@ -111,11 +117,13 @@ def scan(list_name, start, end):
         except Exception as e:  # noqa: BLE001
             log(f"  skip {f.company}: {e}")
             skipped += 1
-        if len(batch) >= 100 or (i == len(cands) - 1 and batch):
-            r = post({"action": "ingest", "kind": "scan", "list": list_name, "items": batch, "from": start, "to": end})
-            sent += len(batch)
-            log(f"  sent {sent} (new {r.get('added')})")
+        if len(batch) >= 100:
+            sent += flush(batch, list_name, start, end, sent)
             batch = []
+    # Leftovers go after the loop: when the last candidates were skipped, an in-loop "last item" check never fired
+    # and up to 99 funds per window were silently dropped (fixed 2 Oct 2026).
+    if batch:
+        sent += flush(batch, list_name, start, end, sent)
     log(f"{list_name}: {sent} pooled funds sent, {skipped} skipped (not a pooled fund or unreadable)")
 
 
