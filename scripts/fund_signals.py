@@ -151,13 +151,23 @@ def person_filings(s, start, seen, cap=12):
         name = (p.get("name") or "").strip()
         if len(name.split()) < 2:
             continue
-        try:
-            total, results = efts(f'"{name}"', start, limit=60)
-        except Exception as e:  # noqa: BLE001
-            log(f"    person {name}: search failed {e}")
-            continue
-        if total > 60:
-            log(f"    person {name}: {total} filings, too common to use")
+        # Surname first: filings spell first names differently ("Mike" vs "Michael", middle initials), and an uncommon
+        # surname is the better key ("Abbaei" finds NTV Frontier Fund + NTV Prosperity Fund; "Mike Abbaei" finds nothing).
+        # Common surnames fall back to the full name. The server matches people by first initial + surname.
+        total, results = None, []
+        for q in (name.split()[-1], name):
+            if len(q) < 4:
+                continue
+            try:
+                total, results = efts(f'"{q}"', start, limit=60)
+            except Exception as e:  # noqa: BLE001
+                log(f"    person {q}: search failed {e}")
+                total = None
+                continue
+            if total <= 60:
+                break
+        if total is None or total > 60:
+            log(f"    person {name}: too common to use ({total} filings)")
             continue
         opened = 0
         for r in sorted(results, key=lambda r: str(r.filed)):
