@@ -164,7 +164,7 @@ async function ingest(body: any) {
   const logRun = (kind: string, items: number, added: number, params: any, error: string | null = null) =>
     sb.from("fund_signal_runs").insert({ kind, status: error ? "failed" : "done", items, added, cost_usd: 0, cap_usd: 0, params: { source: "github", ...params }, error, finished_at: now });
   if (body.kind === "todo") {
-    const cols = "id,manager_key,check_keyword,cik,filing_date,fund_no,company_name";
+    const cols = "id,manager_key,check_keyword,cik,filing_date,fund_no,company_name,executives";
     const queued = (await sb.from("fund_signals").select(cols).eq("check_status", "queued").limit(300)).data || [];
     const fresh = (await sb.from("fund_signals").select(cols).eq("list", "fund1").eq("verdict", "target").is("check_status", null).limit(300)).data || [];
     const stale = (await sb.from("fund_signals").select(cols).eq("list", "fund1").eq("verdict", "target").eq("check_status", "clear").lt("checked_at", new Date(Date.now() - 30 * DAY).toISOString()).limit(30)).data || [];
@@ -172,6 +172,12 @@ async function ingest(body: any) {
     const all = [...queued, ...stuck, ...fresh, ...stale].filter((x, i, a) => a.findIndex(y => y.id === x.id) === i).slice(0, 300);
     if (all.length) await sb.from("fund_signals").update({ check_status: "checking", updated_at: now }).in("id", all.map(x => x.id));
     return { signals: all };
+  }
+  if (body.kind === "requeue") {
+    // Re-check every Fund I target / maybe already checked (e.g. after the check learned to search people's names).
+    const r = await sb.from("fund_signals").update({ check_status: "queued", updated_at: now }).eq("list", "fund1").in("check_status", ["clear", "unsure", "error"]).neq("verdict", "cut").select("id");
+    if (r.error) throw new Error(r.error.message);
+    return { queued: (r.data || []).length };
   }
   if (body.kind === "credit") {
     const items = Array.isArray(body.items) ? body.items.slice(0, 500) : [];

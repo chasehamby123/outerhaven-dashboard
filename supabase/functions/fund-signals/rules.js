@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 4;
+export const RULES_VERSION = 5;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -133,6 +133,14 @@ export function classify(s, now = Date.now()) {
 // People on a filing, as comparable keys: "aman brar" → "a brar". Entities are already dropped by people().
 const personKeys = list => new Set((list || []).map(p => String(p.name || `${p.firstName || ''} ${p.lastName || ''}`).toLowerCase().replace(/[^a-z\s]/g, ' ').trim().split(/\s+/)).filter(w => w.length >= 2).map(w => `${w[0][0]} ${w[w.length - 1]}`));
 
+// People on both lists; sameCity = that person's address city matches too (a stronger sign it's the same person).
+function sharedPeople(ours, theirs) {
+  const key = p => { const w = String(p.name || '').toLowerCase().replace(/[^a-z\s]/g, ' ').trim().split(/\s+/).filter(x => x.length >= 2); return w.length >= 2 ? `${w[0][0]} ${w[w.length - 1]}` : ''; };
+  const city = p => String(p.location || '').split(',')[0].trim().toLowerCase();
+  const mine = new Map((ours || []).map(p => [key(p), p]));
+  return (theirs || []).filter(p => key(p) && mine.has(key(p))).map(p => ({ name: p.name, sameCity: !!city(p) && city(p) === city(mine.get(key(p))) }));
+}
+
 // Read a check run: later filings (D or D/A) whose name matches this manager.
 // A higher fund number by the same manager = they already started the next fund. "Same manager" needs the name match AND
 // at least one person (partner/director) on both filings; without people to compare it's only "unsure".
@@ -140,9 +148,26 @@ const personKeys = list => new Set((list || []).map(p => String(p.name || `${p.f
 export function readCheck(s, items) {
   const mine = Math.max(1, s.fund_no || 0), later = [], amends = [], strangers = [], unsure = [];
   const ours = personKeys(s.executives);
+  const byPerson = [];
   for (const it of items || []) {
     const p = parseName(it.companyName);
-    if (p.manager_key !== s.manager_key || VEHICLE.test(it.companyName || '')) continue;
+    if (VEHICLE.test(it.companyName || '')) continue;
+    // Found by searching a person's name: a fund under ANY name that the same people filed later (managers often drop the
+    // numbering: "Stratos Venture Partners Fund I", then "Frontier Fund"). Judged on the people, not the name.
+    if (it.via === 'person' && p.manager_key !== s.manager_key) {
+      const date = isoDate(it.filingDate);
+      if (s.cik && it.cik && Number(s.cik) === Number(it.cik)) continue;
+      if (!date || (s.filing_date && date <= s.filing_date)) continue;
+      if (it.industryGroup && it.industryGroup !== 'Pooled Investment Fund') continue;
+      const off = num(it.totalOfferingAmount);
+      if (off != null && off < 5e6) continue;
+      const theirs = people(it), shared = sharedPeople(s.executives, theirs);
+      if (!shared.length) continue;
+      byPerson.push({ name: it.companyName, date, form: it.formType, offering: off, sold: num(it.totalAmountSold), fund_no: p.fund_no, cik: it.cik || null,
+        shared: shared.map(x => x.name), strong: shared.length >= 2 || shared.some(x => x.sameCity) || theirs.length === 1 });
+      continue;
+    }
+    if (p.manager_key !== s.manager_key) continue;
     const row = { name: it.companyName, date: isoDate(it.filingDate), form: it.formType, offering: num(it.totalOfferingAmount), sold: num(it.totalAmountSold), fund_no: p.fund_no, cik: it.cik || null };
     // Same fund = same SEC company id (CIK); fall back to the exact name when a CIK is missing.
     const same = s.cik && row.cik ? Number(s.cik) === Number(row.cik) : String(it.companyName || '').toLowerCase() === String(s.company_name || '').toLowerCase();
@@ -155,13 +180,21 @@ export function readCheck(s, items) {
     else strangers.push(row);
   }
   const byDate = (a, b) => String(a.date).localeCompare(String(b.date));
+  // One fund files several Form Ds (amendments, feeders): keep the first filing per fund name.
+  const firstPer = rows => rows.sort(byDate).filter((r, i, a) => a.findIndex(x => String(x.name).toLowerCase() === String(r.name).toLowerCase()) === i);
+  const renamed = firstPer(byPerson.filter(r => r.strong)), renamedUnsure = firstPer(byPerson.filter(r => !r.strong));
+  later.push(...renamed.map(r => ({ ...r, renamed: true }))); unsure.push(...renamedUnsure.map(r => ({ ...r, renamed: true })));
   later.sort(byDate); unsure.sort(byDate);
   amends.sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const out = { later: [...later, ...unsure.map(r => ({ ...r, unconfirmed: true })), ...strangers.map(r => ({ ...r, other_manager: true }))], latest: amends.find(a => a.sold != null) || amends[0] || null };
   const fresh = out.latest ? `Latest Fund ${romanOf(mine)} filing ${out.latest.date}${out.latest.sold != null ? `: ${money(out.latest.sold)} raised${out.latest.offering ? ` of ${money(out.latest.offering)}` : ''}` : ''}` : '';
   const ignored = strangers.length ? ` Ignored ${strangers.length} same-name filing${strangers.length > 1 ? 's' : ''} by different people (${strangers[0].name}).` : '';
-  if (later.length) { const f = later[0]; out.status = 'next'; out.note = `Already filed ${f.name} (${f.date}${f.offering ? `, ${money(f.offering)} target` : ''}); same people on both filings`; }
-  else if (unsure.length) { const f = unsure[0]; out.status = 'unsure'; out.note = `Possible Fund II: ${f.name} (${f.date}), but no named people to confirm it's the same manager. Check by hand.${ignored}`; }
+  if (later.length) { const f = later[0]; out.status = 'next'; out.note = f.renamed
+    ? `Already raised a later fund under a new name: ${f.name} (${f.date}${f.offering ? `, ${money(f.offering)} target` : ''}), same people (${f.shared.join(', ')})${later.length > 1 ? `; ${later.length} later funds in all` : ''}`
+    : `Already filed ${f.name} (${f.date}${f.offering ? `, ${money(f.offering)} target` : ''}); same people on both filings`; }
+  else if (unsure.length) { const f = unsure[0]; out.status = 'unsure'; out.note = f.renamed
+    ? `Possible later fund under a new name: ${f.name} (${f.date}) names ${f.shared.join(', ')}, but nothing else matches (could be another firm with the same person). Check by hand.${ignored}`
+    : `Possible Fund II: ${f.name} (${f.date}), but no named people to confirm it's the same manager. Check by hand.${ignored}`; }
   else { out.status = 'clear'; out.note = (fresh ? `No later fund. ${fresh}.` : `No later fund filed since ${s.filing_date || 'the original filing'}.`) + ignored; }
   return out;
 }

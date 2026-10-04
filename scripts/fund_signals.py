@@ -168,9 +168,10 @@ def probe(names):
     """Debug: print every Form D naming these people (GitHub run, mode probe, from = names separated by ';')."""
     for name in names:
         res = search_filings(f'"{name}"', forms=["D", "D/A"], limit=100)
-        log(f"{name}: {res.total} filings")
-        for r in res.results:
-            log(f"  {r.filed}  {r.form:5} CIK {r.cik}  {r.company}")
+        lines = [f"{name}: {res.total} filings"] + [f"{r.filed} {r.form} CIK {r.cik} {r.company}" for r in res.results]
+        log("\n".join(lines))
+        # Also as a GitHub annotation, readable through the API when the raw log isn't reachable.
+        print(f"::notice title=probe {name}::" + "%0A".join(x.replace("%", "%25") for x in lines)[:3900], flush=True)
 
 
 def check():
