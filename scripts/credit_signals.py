@@ -98,36 +98,46 @@ STATS = {"errors": []}
 
 def text_hits(query, forms, since, cap=1500):
     """{cik: {form, date, url}} newest hit per company from EDGAR full-text search (dates re-checked here too).
-    One form per call (several forms in one call can match only one), and 30-day windows paged by hand with retries:
-    edgartools' fetch_more stops at the first empty page, which once cut 2,637 going-concern 10-Qs to 100 (5 Oct 2026)."""
+    One form per call (several forms in one call can match only one); paging retried, because edgartools' fetch_more stops at
+    the first empty page (once cut 2,637 going-concern 10-Qs to 100, 5 Oct 2026). A short run sets STATS["shortfall"]."""
     out, results, totals = {}, [], {}
     today = dt.date.today()
+    def paged(start, end):
+        res = search_filings(query, forms=[form], start_date=start, end_date=end, limit=100)
+        tries = 0
+        while len(res.results) < min(res.total, cap) and tries < 4:
+            more = res.fetch_more(min(res.total, cap) - len(res.results))
+            if len(more.results) == len(res.results):
+                tries += 1
+                time.sleep(2 * tries)
+            res = more
+        return res
+
     for form in forms:
-        got, total = 0, 0
-        w_end = today
-        while w_end > dt.date.fromisoformat(since) and got < cap:
-            w_start = max(dt.date.fromisoformat(since), w_end - dt.timedelta(days=30))
-            try:
-                res = search_filings(query, forms=[form], start_date=w_start.isoformat(), end_date=w_end.isoformat(), limit=100)
-                tries = 0
-                while len(res.results) < res.total and tries < 4:
-                    more = res.fetch_more(res.total - len(res.results))
-                    if len(more.results) == len(res.results):
-                        tries += 1
-                        time.sleep(2 * tries)
-                    res = more
-                total += res.total
-                got += len(res.results)
-                results += list(res.results)
-                if len(res.results) < res.total:
-                    STATS["shortfall"] = True
-                    STATS["errors"].append(f"search {query} {form} {w_start}: got {len(res.results)} of {res.total}")
-            except Exception as e:  # noqa: BLE001
+        # Full range first (complete when paging works); 30-day windows only if paging stopped early. Windows alone lost
+        # results (forbearance 8-K: 66 in windows vs 123 in one search), paging alone once stopped at 100 of 2,637.
+        try:
+            res = paged(since, today.isoformat())
+            seen = {(r.accession_number, r.document_id) for r in res.results}
+            found, total = list(res.results), res.total
+            if len(found) < min(total, cap):
+                w_end = today
+                while w_end > dt.date.fromisoformat(since):
+                    w_start = max(dt.date.fromisoformat(since), w_end - dt.timedelta(days=30))
+                    for r in paged(w_start.isoformat(), w_end.isoformat()).results:
+                        if (r.accession_number, r.document_id) not in seen:
+                            seen.add((r.accession_number, r.document_id))
+                            found.append(r)
+                    w_end = w_start - dt.timedelta(days=1)
+            if len(found) < min(total, cap) * 0.95:
                 STATS["shortfall"] = True
-                log(f"  search {query} {form} {w_start}: failed {e}")
-                STATS["errors"].append(f"search {query} {form} {w_start}: {type(e).__name__}: {str(e)[:200]}")
-            w_end = w_start - dt.timedelta(days=1)
-        totals[form] = {"total": total, "fetched": got}
+                STATS["errors"].append(f"search {query} {form}: got {len(found)} of {total}")
+            totals[form] = {"total": total, "fetched": len(found)}
+            results += found
+        except Exception as e:  # noqa: BLE001
+            STATS["shortfall"] = True
+            log(f"  search {query} {form}: failed {e}")
+            STATS["errors"].append(f"search {query} {form}: {type(e).__name__}: {str(e)[:200]}")
     STATS[f"search {query}"] = totals
     for r in results:
         if r.filed and str(r.filed) < since:
