@@ -96,22 +96,39 @@ def quarter_periods(today):
 STATS = {"errors": []}
 
 
-def text_hits(query, forms, since, cap=600):
-    """{cik: {form, date, url}} newest hit per company from EDGAR full-text search (dates re-checked here too)."""
-    # One search per form: several forms in one call only matches one of them (same EDGAR quirk as Form D / D/A).
+def text_hits(query, forms, since, cap=1500):
+    """{cik: {form, date, url}} newest hit per company from EDGAR full-text search (dates re-checked here too).
+    One form per call (several forms in one call can match only one), and 30-day windows paged by hand with retries:
+    edgartools' fetch_more stops at the first empty page, which once cut 2,637 going-concern 10-Qs to 100 (5 Oct 2026)."""
     out, results, totals = {}, [], {}
+    today = dt.date.today()
     for form in forms:
-        try:
-            res = search_filings(query, forms=[form], start_date=since, end_date=dt.date.today().isoformat(), limit=100)
-            if res.total > len(res.results):
-                res = res.fetch_more(min(cap, res.total) - len(res.results))
-        except Exception as e:  # noqa: BLE001
-            log(f"  search {query} {form}: failed {e}")
-            STATS["errors"].append(f"search {query} {form}: {type(e).__name__}: {str(e)[:200]}")
-            continue
-        totals[form] = res.total
-        results += list(res.results)
-    STATS[f"search {query}"] = {"total": totals, "fetched": len(results)}
+        got, total = 0, 0
+        w_end = today
+        while w_end > dt.date.fromisoformat(since) and got < cap:
+            w_start = max(dt.date.fromisoformat(since), w_end - dt.timedelta(days=30))
+            try:
+                res = search_filings(query, forms=[form], start_date=w_start.isoformat(), end_date=w_end.isoformat(), limit=100)
+                tries = 0
+                while len(res.results) < res.total and tries < 4:
+                    more = res.fetch_more(res.total - len(res.results))
+                    if len(more.results) == len(res.results):
+                        tries += 1
+                        time.sleep(2 * tries)
+                    res = more
+                total += res.total
+                got += len(res.results)
+                results += list(res.results)
+                if len(res.results) < res.total:
+                    STATS["shortfall"] = True
+                    STATS["errors"].append(f"search {query} {form} {w_start}: got {len(res.results)} of {res.total}")
+            except Exception as e:  # noqa: BLE001
+                STATS["shortfall"] = True
+                log(f"  search {query} {form} {w_start}: failed {e}")
+                STATS["errors"].append(f"search {query} {form} {w_start}: {type(e).__name__}: {str(e)[:200]}")
+            w_end = w_start - dt.timedelta(days=1)
+        totals[form] = {"total": total, "fetched": got}
+    STATS[f"search {query}"] = totals
     for r in results:
         if r.filed and str(r.filed) < since:
             continue
@@ -124,7 +141,7 @@ def text_hits(query, forms, since, cap=600):
         hit = {"form": r.form, "date": r.filed, "url": url}
         if cik not in out or str(r.filed) > str(out[cik]["date"]):
             out[cik] = hit
-    log(f"  search {query}: {totals} filings, {len(out)} companies")
+    log(f"  search {query}: {totals}, {len(out)} companies")
     return out
 
 
@@ -181,7 +198,7 @@ def credit():
 
     since = (today - dt.timedelta(days=180)).isoformat()
     forb = text_hits('"forbearance agreement"', ["8-K", "10-Q", "10-K"], since)
-    gc = text_hits('"substantial doubt" "going concern"', ["10-K", "10-Q"], since, cap=1500)
+    gc = text_hits('"substantial doubt" "going concern"', ["10-K", "10-Q"], since, cap=4000)
 
     val = lambda m, c: m[c][0] if c in m else None
     cands = set()
@@ -233,9 +250,13 @@ def credit():
         r = post({"action": "ingest", "kind": "credit", "items": batch, "period": period, "run": run, "stats": STATS})
         sent += len(batch)
         log(f"  sent {sent} (new {r.get('added')})")
-    # Companies from earlier runs that no longer show a trigger get cut (kept for history, status untouched).
-    r = post({"action": "ingest", "kind": "credit_done", "run": run})
-    log(f"  dropped off this run: {r.get('dropped')}")
+    # Companies from earlier runs that no longer show a trigger get cut (kept for history, status untouched). Skipped when
+    # a search came back short: missing hits would wrongly cut real targets.
+    if STATS.get("shortfall"):
+        log("  searches came back short: not dropping anyone this run")
+    else:
+        r = post({"action": "ingest", "kind": "credit_done", "run": run})
+        log(f"  dropped off this run: {r.get('dropped')}")
     log(f"credit: done, {sent} companies sent")
 
 
