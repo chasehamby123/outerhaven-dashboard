@@ -130,6 +130,18 @@ def scan(list_name, start, end):
     log(f"{list_name}: {sent} pooled funds sent, {skipped} skipped (not a pooled fund or unreadable)")
 
 
+def efts(query, start=None, limit=100):
+    """EDGAR full-text search over Form D and D/A. They must be searched SEPARATELY: asking for forms=["D", "D/A"] in one call
+    returns only the amendments (found 5 Oct 2026: "Electric Capital" gave 3 results combined vs 18 originals alone), which
+    silently hid most later funds from the Fund II check. Returns (total, results)."""
+    total, out = 0, []
+    for form in ("D", "D/A"):
+        res = search_filings(query, forms=[form], start_date=start, limit=limit)
+        total += res.total
+        out += list(res.results)
+    return total, out
+
+
 def person_filings(s, start, seen, cap=12):
     """Later Form Ds that name the same people, whatever the fund is called. Managers often raise Fund II and III under
     new names (Stratos Venture Partners Fund I, then "Frontier Fund", "Prosperity Fund"), so the name search alone misses
@@ -140,15 +152,15 @@ def person_filings(s, start, seen, cap=12):
         if len(name.split()) < 2:
             continue
         try:
-            res = search_filings(f'"{name}"', forms=["D", "D/A"], start_date=start, limit=60)
+            total, results = efts(f'"{name}"', start, limit=60)
         except Exception as e:  # noqa: BLE001
             log(f"    person {name}: search failed {e}")
             continue
-        if res.total > 60:
-            log(f"    person {name}: {res.total} filings, too common to use")
+        if total > 60:
+            log(f"    person {name}: {total} filings, too common to use")
             continue
         opened = 0
-        for r in res.results:
+        for r in sorted(results, key=lambda r: str(r.filed)):
             if r.accession_number in seen or (s.get("cik") and str(r.cik) == str(s["cik"])) or opened >= cap:
                 continue
             seen.add(r.accession_number)
@@ -160,16 +172,15 @@ def person_filings(s, start, seen, cap=12):
                 opened += 1
             except Exception as e:  # noqa: BLE001
                 log(f"    could not open {r.company}: {e}")
-        log(f"    person {name}: {res.total} filings, {opened} opened")
+        log(f"    person {name}: {total} filings, {opened} opened")
     return out
 
 
 def probe(names):
     """Debug: print every Form D naming these people (GitHub run, mode probe, from = names separated by ';')."""
     for name in names:
-        only_d = search_filings(f'"{name}"', forms=["D"], limit=5).total
-        res = search_filings(f'"{name}"', forms=["D", "D/A"], limit=100)
-        lines = [f"{name}: {res.total} filings (form D alone: {only_d})"] + [f"{r.filed} {r.form} CIK {r.cik} {r.company}" for r in res.results]
+        total, results = efts(f'"{name}"')
+        lines = [f"{name}: {total} filings"] + [f"{r.filed} {r.form} CIK {r.cik} {r.company}" for r in sorted(results, key=lambda r: str(r.filed))]
         log("\n".join(lines))
         # Also as a GitHub annotation, readable through the API when the raw log isn't reachable.
         print(f"::notice title=probe {name}::" + "%0A".join(x.replace("%", "%25") for x in lines)[:3900], flush=True)
@@ -198,7 +209,7 @@ def check():
                         items.append(item_from(f, f.obj()))
                     except Exception:  # noqa: BLE001
                         items.append({"companyName": f.company, "cik": str(f.cik), "filingDate": str(f.filing_date), "formType": f.form, "accessionNumber": f.accession_no})
-            for r in search_filings(f'"{s["check_keyword"]}"', forms=["D", "D/A"], start_date=start, limit=100):
+            for r in efts(f'"{s["check_keyword"]}"', start)[1]:
                 if r.accession_number in seen:
                     continue
                 seen.add(r.accession_number)

@@ -86,6 +86,13 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   stores and judges with `supabase/functions/fund-signals/rules.js` (pure JS; every verdict stores `reasons`; bump `RULES_VERSION` and the
   15-min cron re-judges). Check = same CIK later filings (amendment numbers) + EFTS full-text search on the manager name (higher fund
   number = cut). HQ "Check" queues (`action: queue`); the hourly job picks queued up. Deploy index.ts + rules.js together.
+  The check also searches every named person on the Fund I filing (`person_filings`): a later pooled fund under ANY name naming the same
+  people = "next" (strong: 2+ shared people, same city, or a one-person filing; else "unsure"). Names with >60 filings are skipped.
+  EDGAR full-text search quirk: several forms in one `search_filings` call only matches one form (D + D/A returned only D/As), so
+  always search one form per call (`efts()` in fund_signals.py, `text_hits` in credit_signals.py). Debug any name with workflow mode
+  `probe` (from = names separated by ;); results come back as a run annotation (`gh api .../check-runs/<job id>/annotations`), since
+  raw logs are on blob storage the sandbox can't reach. `gh api` can dispatch the workflow from the session. Mode `recheck` re-queues
+  every checked Fund I target, then checks.
 - Apify actor `logiover/sec-edgar-form-d-scraper` is a fallback only (it silently returned a partial list on 2 Oct 2026); weekly Apify
   scan stays off (`growth_settings.fund_scan_enabled`), budget `fund_monthly_budget`.
 - Tables `fund_signals` (one row per filing, `fund_key` groups feeder/parallel vehicles) and `fund_signal_runs` (`params.source='github'`

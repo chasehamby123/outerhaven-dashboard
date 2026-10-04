@@ -98,17 +98,21 @@ STATS = {"errors": []}
 
 def text_hits(query, forms, since, cap=600):
     """{cik: {form, date, url}} newest hit per company from EDGAR full-text search (dates re-checked here too)."""
-    out = {}
-    try:
-        res = search_filings(query, forms=forms, start_date=since, end_date=dt.date.today().isoformat(), limit=100)
-        if res.total > len(res.results):
-            res = res.fetch_more(min(cap, res.total) - len(res.results))
-    except Exception as e:  # noqa: BLE001
-        log(f"  search {query}: failed {e}")
-        STATS["errors"].append(f"search {query}: {type(e).__name__}: {str(e)[:200]}")
-        return out
-    STATS[f"search {query}"] = {"total": res.total, "fetched": len(res.results)}
-    for r in res.results:
+    # One search per form: several forms in one call only matches one of them (same EDGAR quirk as Form D / D/A).
+    out, results, totals = {}, [], {}
+    for form in forms:
+        try:
+            res = search_filings(query, forms=[form], start_date=since, end_date=dt.date.today().isoformat(), limit=100)
+            if res.total > len(res.results):
+                res = res.fetch_more(min(cap, res.total) - len(res.results))
+        except Exception as e:  # noqa: BLE001
+            log(f"  search {query} {form}: failed {e}")
+            STATS["errors"].append(f"search {query} {form}: {type(e).__name__}: {str(e)[:200]}")
+            continue
+        totals[form] = res.total
+        results += list(res.results)
+    STATS[f"search {query}"] = {"total": totals, "fetched": len(results)}
+    for r in results:
         if r.filed and str(r.filed) < since:
             continue
         try:
@@ -120,7 +124,7 @@ def text_hits(query, forms, since, cap=600):
         hit = {"form": r.form, "date": r.filed, "url": url}
         if cik not in out or str(r.filed) > str(out[cik]["date"]):
             out[cik] = hit
-    log(f"  search {query} {forms}: {res.total} filings, {len(out)} companies")
+    log(f"  search {query}: {totals} filings, {len(out)} companies")
     return out
 
 
