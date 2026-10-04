@@ -8,7 +8,9 @@ Modes
   daily   new Fund II/III filings (last 4 days) + the Fund I day-window that turned 3.5 years old + queued checks
   live    Fund II/III filings between --from and --to
   fund1   Fund I filings between --from and --to (default: 48 to 36 months ago)
-  check   Fund II checks for queued / unchecked Fund I targets
+  check   Fund II checks for queued / unchecked Fund I targets (fund name + every named person)
+  recheck re-queue every checked Fund I target, then check
+  probe   print the Form Ds naming people (--from "Name One;Name Two")
 
 Needs env: SEC_IDENTITY (name + email, the SEC requires it), FUND_INGEST_KEY (from HQ → Pipeline → Fund signals → Settings).
 """
@@ -128,6 +130,49 @@ def scan(list_name, start, end):
     log(f"{list_name}: {sent} pooled funds sent, {skipped} skipped (not a pooled fund or unreadable)")
 
 
+def person_filings(s, start, seen, cap=12):
+    """Later Form Ds that name the same people, whatever the fund is called. Managers often raise Fund II and III under
+    new names (Stratos Venture Partners Fund I, then "Frontier Fund", "Prosperity Fund"), so the name search alone misses
+    them. Very common names (over 60 filings) are skipped: too many strangers share them. The server decides."""
+    out = []
+    for p in (s.get("executives") or [])[:4]:
+        name = (p.get("name") or "").strip()
+        if len(name.split()) < 2:
+            continue
+        try:
+            res = search_filings(f'"{name}"', forms=["D", "D/A"], start_date=start, limit=60)
+        except Exception as e:  # noqa: BLE001
+            log(f"    person {name}: search failed {e}")
+            continue
+        if res.total > 60:
+            log(f"    person {name}: {res.total} filings, too common to use")
+            continue
+        opened = 0
+        for r in res.results:
+            if r.accession_number in seen or (s.get("cik") and str(r.cik) == str(s["cik"])) or opened >= cap:
+                continue
+            seen.add(r.accession_number)
+            try:
+                f = r.get_filing()
+                item = item_from(f, f.obj())
+                item["via"] = "person"
+                out.append(item)
+                opened += 1
+            except Exception as e:  # noqa: BLE001
+                log(f"    could not open {r.company}: {e}")
+        log(f"    person {name}: {res.total} filings, {opened} opened")
+    return out
+
+
+def probe(names):
+    """Debug: print every Form D naming these people (GitHub run, mode probe, from = names separated by ';')."""
+    for name in names:
+        res = search_filings(f'"{name}"', forms=["D", "D/A"], limit=100)
+        log(f"{name}: {res.total} filings")
+        for r in res.results:
+            log(f"  {r.filed}  {r.form:5} CIK {r.cik}  {r.company}")
+
+
 def check():
     """For each queued / unchecked Fund I target: every later filing by the same fund (by CIK) and any later fund under the
     manager's name (EDGAR full-text search). The server reads them with readCheck()."""
@@ -168,6 +213,7 @@ def check():
                     except Exception as e:  # noqa: BLE001
                         log(f"    could not open {name}: {e}")
                 items.append(light)
+            items += person_filings(s, start, seen)
             post({"action": "ingest", "kind": "check", "signal_ids": [x["id"] for x in group], "items": items})
             log(f"  {s['check_keyword']}: {len(items)} later filings")
         except Exception as e:  # noqa: BLE001
@@ -177,7 +223,7 @@ def check():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", default="daily", choices=["daily", "live", "fund1", "check"])
+    ap.add_argument("--mode", default="daily", choices=["daily", "live", "fund1", "check", "probe", "recheck"])
     ap.add_argument("--from", dest="start")
     ap.add_argument("--to", dest="end")
     a = ap.parse_args()
@@ -200,6 +246,11 @@ def main():
             nxt = min(cur + dt.timedelta(days=90), end)
             scan("fund1", cur.isoformat(), nxt.isoformat())
             cur = nxt + dt.timedelta(days=1)
+    elif a.mode == "probe":
+        probe([n.strip() for n in (a.start or "").split(";") if n.strip()])
+    elif a.mode == "recheck":  # queue every Fund I target already checked, then check them again (new person search)
+        log(f"recheck: {post({'action': 'ingest', 'kind': 'requeue'}).get('queued')} queued")
+        check()
     else:
         check()
 
