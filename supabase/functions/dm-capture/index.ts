@@ -1,6 +1,7 @@
 // Receives a LinkedIn conversation from the "OuterHaven HQ" browser extension (a team member clicked Save).
 // Stores it in dm_conversations (one row per thread), matches our opening message to a DM test version,
 // and logs a meeting when the team member ticked "Meeting booked".
+// Also receives a whole-inbox snapshot (action "inbox_sync"): who is waiting on us, who we are waiting on, per LinkedIn account.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -39,6 +40,62 @@ async function caller(req: Request) {
   return { id: user.id as string | null, email: user.email || "", key: false };
 }
 
+// ---- Inbox snapshot ----
+// The extension reads the LinkedIn conversation list (name, last message, who sent it, time): never opens or changes anything.
+// Each sync upserts one row per conversation and one inbox_syncs row (the accountability trail: who synced which account, when).
+async function inboxSync(b: any, by: string) {
+  const { data: accts } = await sb.from("daily_ops_accounts").select("owner_name");
+  const picked = str(b.account, 80).toLowerCase();
+  const account_name = (accts || []).map((a: any) => a.owner_name).find((n: string) => n && n.toLowerCase() === picked) || null;
+  if (!account_name) return json({ ok: false, error: "Pick which LinkedIn account this is." }, 400);
+
+  const seen = new Set<string>();
+  const threads = (Array.isArray(b.threads) ? b.threads : []).slice(0, 700).map((t: any) => ({
+    thread_key: str(t?.thread_key, 200), thread_url: str(t?.thread_url, 500) || null, participant: str(t?.name, 200),
+    last_sender: t?.last_from === "us" ? "us" : t?.last_from === "them" ? "them" : "unknown",
+    last_snippet: str(t?.snippet, 400), last_at: iso(t?.ts), unread: t?.unread === true,
+  })).filter((t: any) => t.thread_key && !seen.has(t.thread_key) && seen.add(t.thread_key));
+  if (!threads.length) return json({ ok: false, error: "Couldn't read any conversations. Open linkedin.com/messaging, keep the conversation list visible, and try again." }, 400);
+
+  const now = new Date().toISOString();
+  const prior = await sb.from("inbox_syncs").select("id", { count: "exact", head: true }).eq("account_name", account_name);
+  if (prior.error) return json({ ok: false, error: prior.error.message }, 500);
+  const baseline = !prior.count;
+  const { data: existing } = await sb.from("inbox_threads").select("thread_key,last_sender,last_snippet,last_at,first_seen_at,first_seen_baseline").eq("account_name", account_name).limit(5000);
+  const have = new Map((existing || []).map((e: any) => [e.thread_key, e]));
+
+  let fresh = 0;
+  const rows = threads.map((t: any) => {
+    const e: any = have.get(t.thread_key); if (!e) fresh++;
+    // LinkedIn's list only shows "Mon" or "6:21 PM", so keep the stored time while the last message is unchanged.
+    const same = e && e.last_sender === t.last_sender && e.last_snippet === t.last_snippet;
+    return { account_name, ...t, last_at: same ? e.last_at : (t.last_at || e?.last_at || null), first_seen_at: e?.first_seen_at ?? now,
+      first_seen_baseline: e ? e.first_seen_baseline : baseline, last_seen_at: now, gone: false };
+  });
+  for (let i = 0; i < rows.length; i += 200) {
+    const r = await sb.from("inbox_threads").upsert(rows.slice(i, i + 200), { onConflict: "account_name,thread_key" });
+    if (r.error) return json({ ok: false, error: r.error.message }, 500);
+  }
+
+  // Conversations newer than the oldest one we loaded, but missing now: archived, deleted or filtered out. Stop counting them.
+  const stamps = rows.map((r: any) => r.last_at).filter(Boolean).sort();
+  const oldest = stamps[0] || null;
+  if (oldest) {
+    const cut = new Date(Date.parse(oldest) + 864e5).toISOString();
+    await sb.from("inbox_threads").update({ gone: true }).eq("account_name", account_name).eq("gone", false).lt("last_seen_at", now).gte("last_at", cut);
+  }
+
+  const us = rows.filter((r: any) => r.last_sender === "them").length, them = rows.filter((r: any) => r.last_sender === "us").length;
+  const unread = rows.filter((r: any) => r.unread).length;
+  const log = await sb.from("inbox_syncs").insert({
+    account_name, synced_by: by, synced_at: now, thread_count: rows.length, awaiting_us: us, awaiting_them: them, unread,
+    oldest_loaded_at: oldest, is_baseline: baseline, strategy: str(b.strategy, 30) || null,
+    notes: { loaded: rows.length, new: fresh, scrolls: Number(b.scrolls) || 0, version: str(b.version, 20) },
+  });
+  if (log.error) return json({ ok: false, error: log.error.message }, 500);
+  return json({ ok: true, account_name, threads: rows.length, awaiting_us: us, awaiting_them: them, unread, new: fresh, baseline, at: now });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
@@ -54,6 +111,7 @@ Deno.serve(async (req) => {
   const booked_by = TEAM.find(n => n.toLowerCase() === str(b.booked_by, 40).toLowerCase()) || null;
   if (who.key && !booked_by) return json({ ok: false, error: "Pick who you are first (top of the HQ panel)." }, 400);
   if (who.key) who.email = "extension · " + booked_by;
+  if (b.action === "inbox_sync") return await inboxSync(b, booked_by || who.email);
 
   const thread_key = str(b.thread_key, 200);
   if (!thread_key) return json({ ok: false, error: "Open a LinkedIn conversation first." }, 400);

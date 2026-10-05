@@ -7,6 +7,7 @@ import { scraperStatus } from './scraper.js';
 import { renderWeekHistory } from './today.js';
 import { renderPostCheck } from './postcheck.js';
 import { renderReplyQueue } from './pipeline.js';
+import { renderAccountability, renderNeedle } from './inbox.js';
 
 export const SOURCES = {
   inbound_post: ['Inbound · from a post', 'in'], inbound_dm: ['Inbound · DM', 'in'], comment_to_dm: ['Comment → DM', 'in'],
@@ -109,6 +110,8 @@ export function renderOverview(root) {
   <div class="stack">
     <div id="ovPosts"></div>
     <div id="ovReplies"></div>
+    <div id="ovInbox"></div>
+    <div id="ovNeedle"></div>
     <div class="kpis">
       ${kpi('Meetings booked', fmt(booked), 'meetingsBooked', '', true)}
       ${kpi('Impressions', fmt(imp), 'impressions')}
@@ -145,6 +148,8 @@ export function renderOverview(root) {
   root.querySelector('#ovWeek')?.addEventListener('change', e => { week = e.target.value; renderOverview(root); });
   const ovPosts = root.querySelector('#ovPosts'); if (ovPosts) renderPostCheck(ovPosts);
   const ovReplies = root.querySelector('#ovReplies'); if (ovReplies) renderReplyQueue(ovReplies);
+  const ovInbox = root.querySelector('#ovInbox'); if (ovInbox) renderAccountability(ovInbox);
+  const ovNeedle = root.querySelector('#ovNeedle'); if (ovNeedle) renderNeedle(ovNeedle);
   const ovTasks = root.querySelector('#ovTasks'); if (ovTasks) renderWeekHistory(ovTasks);
   root.querySelector('#ovRefresh')?.addEventListener('click', async e => { e.target.disabled = true; e.target.textContent = 'Refreshing…'; await loadSheet(); });
 }

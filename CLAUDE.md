@@ -159,6 +159,23 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   opening message fuzzy-matched to a DM version via `match_dm_variant`, "meeting booked" creates a growth_meetings row).
   `dm_variant_stats` counts saved conversations as sends/replies. Re-zip after editing the extension.
 
+## Inbox accountability + outbound (5 Oct 2026; `hq/inbox.js`, `supabase/2026-10-05-inbox-tracking.sql`)
+- **Extension v2.1 "Sync inbox"** (HQ pill on linkedin.com/messaging): scrolls the conversation LIST only (never opens/sends), reads name,
+  preview ("You:" prefix = we spoke last), time, unread, then POSTs `dm-capture` action `inbox_sync` (x-capture-key) → `inbox_threads`
+  (one row per account+thread_key, `name_key` via trigger/`ohq_name_key`), `inbox_syncs` (log; first sync per account = baseline, so
+  "new conversations" ignore it). Parser has a classic-selector pass and a generic anchor fallback; LinkedIn selectors are unverified live, fixture-tested only.
+- **Responder** per inbox: `inbox_owners` (seed: Peter/Chase/Tengku → Chase, everyone else → Anaz; admin edits it in the Overview card).
+- **Missed commenters** `missed_commenters(p_days)`: audience comment (scraper) with no team reply, and the author's name not in that inbox's threads.
+  Verdict: missed (inbox synced after the comment) / unverified (synced before) / unsynced / in_inbox (not missed). Needs the comment scraper on.
+- Dismissals `inbox_dismissals` ("Not needed"): thread refs include the day of the last message, so a new message brings the thread back.
+- RPCs (ops + admin): `inbox_state`, `inbox_waiting`, `missed_commenters`, `needle_metrics(p_days)`. Admin only: `prosp_key_set`, `set_prosp_key`.
+- HQ: Overview cards "Inbox accountability" and "What moves the needle"; Today card "Needs a reply" (responder = person viewed); Growth → Outbound tab.
+- **Prosp** (Peter/Chase/Tengku): edge function `prosp-sync` (verify_jwt=false; admin JWT or `x-outerhaven-cron`) → `prosp_stats` (+ `prosp_sync_runs`);
+  pg_cron `prosp-sync` every 6h; key `PROSP_API_KEY` pasted in HQ → Growth → Outbound (write-only; never enter it for the user). API response shapes
+  are unverified: statuses are stored raw (`prosp_stats.statuses`) and mapped to stages by regex in the function; tune `STAGES` after seeing real values.
+  Webhooks (Connection Sent / Message Sent / Connection Accepted) would be the exact alternative. Source: `supabase/functions/prosp-sync/index.ts`.
+- Known smell: `prosp-reply` has its webhook token hardcoded in source.
+
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.
 - Never enter passwords, API keys or tokens for the user, even with permission. Point them to the HQ field.

@@ -1,5 +1,6 @@
 // OuterHaven HQ: a small "HQ" button on LinkedIn. Nothing is read until someone clicks "Save conversation".
-// It never sends, types or clicks anything on LinkedIn. "Load full history" only scrolls the open chat upwards.
+// It never sends, types or clicks anything on LinkedIn. "Load full history" only scrolls the open chat upwards;
+// "Sync inbox" only scrolls the conversation list and reads names, previews and times.
 (() => {
   if (window.__ohqLoaded) return; window.__ohqLoaded = true;
 
@@ -88,6 +89,78 @@
     return { root: t.root, payload: { thread_key: threadKey(t.root, who, me), thread_url: location.href.split('?')[0], our_name: me, prospect_name: who.name, prospect_url: who.url, prospect_headline: who.headline, messages: msgs, raw_text: txt(listEl).slice(0, 120000) } };
   }
 
+
+  // ---------- the inbox list (Sync inbox) ----------
+  // Reads only the conversation LIST (name, last message preview, time). Never opens, sends or clicks a conversation.
+  const THREAD_RE = /\/messaging\/thread\/([^/?#]+)/;
+  function listTime(raw) {
+    const t = String(raw || '').trim(); if (!t) return null;
+    if (/^\d{1,2}:\d{2}/.test(t)) return toIso('today', t);
+    const wd = t.toLowerCase().slice(0, 3), full = WEEKDAYS.find(w => w.startsWith(wd));
+    if (full && /^[a-z]{3,9}$/i.test(t)) return toIso(full, '12:00 PM');
+    if (/^yesterday$/i.test(t)) return toIso('yesterday', '12:00 PM');
+    const md = t.match(/^([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2})(?:,?\s*(\d{4}))?$/);
+    if (md) return toIso(`${md[1]} ${md[2]}${md[3] ? ' ' + md[3] : ''}`, '12:00 PM');
+    return null;
+  }
+  // "You: thanks" / "You sent an attachment" => we spoke last.
+  const FROM_US = /^you(:|\s+(sent|replied|shared|reacted|liked|loved|laughed)\b)/i;
+  function rowFromAnchor(a, li, strategy) {
+    const m = (a.getAttribute('href') || '').match(THREAD_RE); if (!m) return null;
+    const q = sel => li.querySelector(sel);
+    let name = txt(q('.msg-conversation-card__participant-names, .msg-conversation-listitem__participant-names')).split('\n')[0];
+    let snippet = txt(q('.msg-conversation-card__message-snippet, .msg-conversation-card__message-snippet-body, .msg-overview-list__snippet'));
+    let time = txt(q('time.msg-conversation-listitem__time-stamp, .msg-conversation-card__time-stamp, time'));
+    if (strategy === 'generic' || !name) {
+      const lines = txt(li).split('\n').map(x => x.trim()).filter(x => x.length > 2);
+      name = name || lines[0] || '';
+      const tm = lines.find(l => /^(\d{1,2}:\d{2}\s*[AP]M|mon|tue|wed|thu|fri|sat|sun|yesterday|[A-Z][a-z]{2}\s+\d{1,2})/i.test(l) && l.length < 14);
+      time = time || tm || '';
+      snippet = snippet || lines.slice(1).filter(l => l !== time && l !== name).join(' ');
+    }
+    snippet = snippet.replace(/\s+/g, ' ').trim();
+    const unread = !!(q('.msg-conversation-card__unread-count, .notification-badge--show') || /--unread|is-unread/.test(li.className) || /^\d+\s+unread/i.test(txt(li)));
+    if (!name) return null;
+    return { thread_key: 'thread:' + m[1], thread_url: 'https://www.linkedin.com/messaging/thread/' + m[1] + '/', name: name.slice(0, 120),
+      last_from: FROM_US.test(snippet) ? 'us' : 'them', snippet: snippet.replace(FROM_US, '').replace(/^:\s*/, '').trim().slice(0, 300), ts: listTime(time), unread };
+  }
+  function readInboxList() {
+    const out = new Map(); let strategy = 'classic';
+    const items = [...document.querySelectorAll('li.msg-conversation-listitem, li.msg-conversation-card, .msg-conversations-container__conversations-list li')];
+    for (const li of items) {
+      const a = li.querySelector('a[href*="/messaging/thread/"]'); if (!a) continue;
+      const r = rowFromAnchor(a, li, 'classic'); if (r) out.set(r.thread_key, r);
+    }
+    if (!out.size) {
+      strategy = 'generic';
+      for (const a of document.querySelectorAll('a[href*="/messaging/thread/"]')) {
+        const li = a.closest('li') || a.parentElement; if (!li || li.querySelector('.msg-s-message-list')) continue;
+        const r = rowFromAnchor(a, li, 'generic'); if (r && !out.has(r.thread_key)) out.set(r.thread_key, r);
+      }
+    }
+    return { rows: [...out.values()], strategy };
+  }
+  function listScroller() {
+    const a = document.querySelector('a[href*="/messaging/thread/"]'); if (!a) return null;
+    for (let el = a.parentElement; el && el !== document.body; el = el.parentElement) {
+      const cs = getComputedStyle(el); if (/(auto|scroll)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 4) return el;
+    }
+    return document.scrollingElement;
+  }
+  async function syncInbox(say) {
+    const sc = listScroller(); let strategy = 'classic', scrolls = 0, last = -1, stable = 0, rows = [];
+    const cutoff = Date.now() - 30 * 864e5;
+    for (; scrolls < 14; scrolls++) {
+      const r = readInboxList(); rows = r.rows; strategy = r.strategy; say(`Reading inbox… ${rows.length} conversations`);
+      const oldest = rows.map(x => x.ts && Date.parse(x.ts)).filter(Boolean).sort((a, b) => a - b)[0];
+      if (rows.length >= 300 || (oldest && oldest < cutoff)) break;
+      stable = rows.length === last ? stable + 1 : 0; last = rows.length; if (stable >= 2 || !sc) break;
+      sc.scrollTop = sc.scrollHeight; await new Promise(ok => setTimeout(ok, 1100));
+    }
+    if (sc) sc.scrollTop = 0;
+    return { rows, strategy, scrolls };
+  }
+
   // ---------- the HQ button (shadow DOM so LinkedIn's CSS can't touch it) ----------
   const host = document.createElement('div'); host.id = 'ohq-host'; host.style.cssText = 'position:fixed;right:18px;bottom:78px;z-index:2147483000;display:none';
   const sh = host.attachShadow({ mode: 'open' });
@@ -103,6 +176,8 @@
     button.go:disabled{opacity:.5;cursor:default}
     button.link{background:none;border:0;padding:0;color:#111;text-decoration:underline;font-size:12px;cursor:pointer;justify-self:start}
     .pick{display:grid;grid-template-columns:1fr 1fr;gap:6px}.pick select{height:30px;border:1px solid #d8d8d4;border-radius:6px;font-size:12px;background:#fff;color:#111;min-width:0}
+    hr{border:0;border-top:1px solid #e4e4e0;margin:2px 0;width:100%}
+    button.go.alt{background:#fff;color:#111;border:1px solid #111}
     .msg{font-size:12px;color:#6b6b6b;min-height:1em;white-space:pre-wrap}.msg.bad{color:#b42318}.msg.good{color:#067647}
   </style>
   <div class="card" id="card">
@@ -111,6 +186,9 @@
     <label><input type="checkbox" id="mtg"> A meeting is booked with this person</label>
     <button class="go" id="save">Save conversation to HQ</button>
     <button class="link" id="full">Load full history first (long chats)</button>
+    <hr><div class="sub">Whole inbox for this account</div>
+    <button class="go alt" id="sync">Sync inbox to HQ</button>
+    <div class="sub" id="lastsync"></div>
     <div class="msg" id="msg"></div>
   </div>
   <button class="pill" id="pill"><i>O</i>HQ</button>`;
@@ -119,12 +197,16 @@
   const say = (t, tone = '') => { $('msg').textContent = t; $('msg').className = 'msg ' + tone; };
 
   function refresh() {
-    const r = read();
-    host.style.display = r ? 'block' : 'none';
-    if (!r) { $('card').classList.remove('open'); return; }
-    const p = r.payload, ours = p.messages.filter(m => m.from === 'us').length;
-    $('who').textContent = p.prospect_name || 'This conversation';
-    $('sub').textContent = `${p.messages.length} messages visible · ${ours} from ${p.our_name || 'us'}`;
+    const r = read(), onMsg = /^\/messaging/.test(location.pathname);
+    host.style.display = r || onMsg ? 'block' : 'none';
+    if (!r && !onMsg) { $('card').classList.remove('open'); return; }
+    $('save').style.display = $('full').style.display = $('mtg').parentElement.style.display = r ? '' : 'none';
+    if (r) {
+      const p = r.payload, ours = p.messages.filter(m => m.from === 'us').length;
+      $('who').textContent = p.prospect_name || 'This conversation';
+      $('sub').textContent = `${p.messages.length} messages visible · ${ours} from ${p.our_name || 'us'}`;
+    } else { $('who').textContent = 'Inbox'; $('sub').textContent = 'Sync the whole inbox so HQ can show what is waiting on a reply.'; }
+    showLast();
   }
   // Who's saving and which account: remembered per browser profile, changeable right here.
   async function loadPicks() {
@@ -153,10 +235,36 @@
     $('mtg').checked = false;
   };
 
+
+  async function showLast() {
+    try {
+      const { lastSync } = await chrome.storage.local.get('lastSync'); const a = $('acct').value, v = lastSync?.[a];
+      $('lastsync').textContent = v ? `Last sync for ${a}: ${new Date(v.at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })} · ${v.threads} chats · ${v.awaiting_us} waiting on us` : '';
+    } catch { /* storage unavailable */ }
+  }
+  $('acct').addEventListener('change', showLast);
+  $('sync').onclick = async () => {
+    if (!/^\/messaging/.test(location.pathname)) { say('Open linkedin.com/messaging first.', 'bad'); return; }
+    if (!$('me').value) { say('Pick who you are first.', 'bad'); return; }
+    if (!$('acct').value) { say('Pick which LinkedIn account this is.', 'bad'); return; }
+    $('sync').disabled = true; say('Reading inbox…');
+    try {
+      const { rows, strategy, scrolls } = await syncInbox(m => say(m));
+      if (!rows.length) { say("Couldn't read any conversations. Make sure the conversation list is visible on the left (not minimised), then try again. If it keeps failing, tell Chase: LinkedIn may have changed its layout.", 'bad'); return; }
+      say(`Sending ${rows.length} conversations…`);
+      const res = await new Promise(ok => chrome.runtime.sendMessage({ type: 'capture', payload: { action: 'inbox_sync', account: $('acct').value, booked_by: $('me').value, threads: rows, strategy, scrolls, version: chrome.runtime.getManifest().version } }, ok));
+      if (!res?.ok) { say(res?.error || 'Sync failed', 'bad'); return; }
+      const x = res.result;
+      try { const { lastSync = {} } = await chrome.storage.local.get('lastSync'); lastSync[$('acct').value] = { at: x.at, threads: x.threads, awaiting_us: x.awaiting_us }; await chrome.storage.local.set({ lastSync }); } catch {}
+      say([`Synced ${x.threads} conversations for ${x.account_name}`, `${x.awaiting_us} waiting on our reply · ${x.awaiting_them} waiting on them`, x.baseline ? 'First sync: this is the baseline.' : `${x.new} new since last sync`].join('\n'), 'good'); showLast();
+    } catch (e) { say('Sync failed: ' + (e.message || e), 'bad'); }
+    finally { $('sync').disabled = false; }
+  };
+
   // LinkedIn is a single-page app: re-check what's open every second (cheap: no network, reads a few elements).
   let lastUrl = '';
   setInterval(() => { if (location.href !== lastUrl || host.style.display === 'none') { lastUrl = location.href; refresh(); } }, 1000);
 
   // Exposed for tests only.
-  window.__ohqTest = { read, messages, toIso };
+  window.__ohqTest = { read, messages, toIso, readInboxList, listTime };
 })();

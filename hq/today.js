@@ -2,6 +2,7 @@
 import { sb, state, esc, $, $$, toast, fail, modal, acIdx, avatar, firstName } from './core.js';
 import { loadDms, dmCardHtml, bindDmCard, meetingModal } from './dms.js';
 import { leadHeat } from './pipeline.js';
+import { renderNeedsReply } from './inbox.js';
 import { taskModal, openTaskById, me, TEAM, syncTeamTasks } from './tasks.js';
 
 const TZ = 'Asia/Singapore';
@@ -155,6 +156,7 @@ function draw() {
   </section>
   ${teamCard('narrow')}
   ${unfinishedHtml()}
+  <div id="tNeeds"></div>
   <div class="today">
     <div>${total ? `<ul class="checklist">${W === 'Everyone' ? people.filter(p => vr.some(r => assigneeOf(r) === p)).map(p => { const l = vr.filter(r => assigneeOf(r) === p); return `<li class="grpHead">${avatar(p)}<b>${esc(p)}</b><span>${l.filter(r => r.status === 'done').length} of ${l.length} done</span></li>` + l.map(itemHtml).join(''); }).join('') : vr.map(itemHtml).join('')}</ul>` : `<div class="card"><div class="empty">${W === 'Everyone' || W === me() ? 'No tasks for today yet.' : `No tasks for ${esc(W)} today.`} <button class="link" id="tAdd2">Add one</button></div></div>`}
     </div>
@@ -166,6 +168,7 @@ function draw() {
   $$('[data-who]', root).forEach(b => b.onclick = () => { who = b.dataset.who; try { localStorage.setItem('hq-today-who', who); } catch { } draw(); });
   $$('[data-edittask]', root).forEach(b => b.onclick = e => { e.preventDefault(); e.stopPropagation(); openTaskById(b.dataset.edittask, load); });
   $('#tMtg', root)?.addEventListener('click', () => meetingModal());
+  const needs = $('#tNeeds', root); if (needs) renderNeedsReply(needs, W);
   bindDmCard(root, draw);
   $$('[data-late]', root).forEach(b => b.onclick = () => settle(b.dataset.late, 'done'));
   $$('[data-skip]', root).forEach(b => b.onclick = () => settle(b.dataset.skip, 'skipped'));
