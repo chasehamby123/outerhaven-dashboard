@@ -126,11 +126,20 @@ def latest_amendment(cik, since):
             # A fresh D starts a new offering: its first-sale date and investor count belong to that offering, not the fund
             # (WovenEarth Fund II: first sale Nov 2024 on the original, Apr 2026 on the fresh D). Keep the fund's own.
             fresh = f.form == "D"
-            return {"date": str(f.filing_date), "url": f.homepage_url, "form": f.form,
-                    "offering": txt(osa.total_offering_amount) if osa else None, "sold": txt(osa.total_amount_sold) if osa else None,
-                    "remaining": txt(osa.total_remaining) if osa else None,
-                    "investors": None if fresh else (txt(inv.total_already_invested) if inv else None),
-                    "firstSale": None if fresh else txt(fd.offering_data.date_of_first_sale)}
+            out = {"date": str(f.filing_date), "url": f.homepage_url, "form": f.form,
+                   "offering": txt(osa.total_offering_amount) if osa else None, "sold": txt(osa.total_amount_sold) if osa else None,
+                   "remaining": txt(osa.total_remaining) if osa else None,
+                   "investors": None if fresh else (txt(inv.total_already_invested) if inv else None),
+                   "firstSale": None if fresh else txt(fd.offering_data.date_of_first_sale)}
+            if fresh:
+                # The fund's own investor count and first sale come from its newest amendment, if it has one.
+                prev = next((x for x in amends if x.form == "D/A" and str(x.filing_date) < str(f.filing_date)), None)
+                if prev is not None:
+                    pd = sec(prev.obj)
+                    pinv = pd.offering_data.investors
+                    out["investors"] = txt(pinv.total_already_invested) if pinv else None
+                    out["firstSale"] = txt(pd.offering_data.date_of_first_sale)
+            return out
         except Exception as e:  # noqa: BLE001
             last_err = e
     raise RuntimeError(f"newest D/A of CIK {cik} unreadable: {last_err}")
@@ -166,6 +175,8 @@ def with_latest(item, cik, since):
 KNOWN = [
     {"name": "Eventide Healthcare Innovation Fund I", "cik": 1901436, "since": "2022-11-29", "amended": "2023-11-29", "sold": (64_000_000, 65_000_000)},
     {"name": "Hartbeat Ventures I", "cik": 1950228, "since": "2022-10-17", "amended": "2024-01-29", "sold": (27_500_000, 28_500_000)},
+    # Newest filing is a fresh D (2026-04-15), not a D/A: amounts from it; investors (39) from the D/A of 2025-07-22.
+    {"name": "WovenEarth Fund II", "cik": 2033240, "since": "2024-11-05", "amended": "2026-04-15", "sold": (22_000_000, 23_000_000), "investors": 39},
 ]
 
 
@@ -179,6 +190,8 @@ def selftest():
                 fails.append(f'{k["name"]}: newest D/A should be {k["amended"]}, read {a and a["date"]}')
             elif sold is None or not (k["sold"][0] <= sold <= k["sold"][1]):
                 fails.append(f'{k["name"]}: raised should be {k["sold"][0]:,.0f}-{k["sold"][1]:,.0f}, read {sold}')
+            elif k.get("investors") is not None and str(a.get("investors")) != str(k["investors"]):
+                fails.append(f'{k["name"]}: investors should be {k["investors"]}, read {a.get("investors")}')
         except Exception as e:  # noqa: BLE001
             fails.append(f'{k["name"]}: {e}')
     # Full-text search must see original Form Ds (several forms in one call once returned only amendments).
