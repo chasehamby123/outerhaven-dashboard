@@ -11,6 +11,8 @@ Modes
   check   Fund II checks for queued / unchecked Fund I targets (fund name + every named person)
   recheck re-queue every checked Fund I target, then check
   probe   print the Form Ds naming people (--from "Name One;Name Two")
+  selftest known cases against live SEC data (fails the run if wrong); also first step of daily
+  audit   re-verify every list row against the SEC filing index (newest amendment), fix stale rows; also run daily
   study1 / study2  cadence study: how long Fund I / Fund II managers take to file their next fund (fund_gap_stats view)
 
 Needs env: SEC_IDENTITY (name + email, the SEC requires it), FUND_INGEST_KEY (from HQ → Pipeline → Fund signals → Settings).
@@ -92,31 +94,116 @@ def item_from(filing, fd):
     }
 
 
-def with_latest(item, cik, since):
-    """Overwrite the first Form D's numbers with the newest amendment's (D/A): the first filing is made within 15 days of
-    the first close, so its "amount sold" is only the first cheque (Eventide Healthcare Innovation Fund I: $0 on the
-    original, $64M on its latest D/A). Keeps the original filing date; adds amendedAt."""
-    try:
-        amends = [f for f in Company(int(cik)).get_filings(form="D/A") if str(f.filing_date) > str(since)]
-    except Exception:  # noqa: BLE001
-        return item
-    for f in sorted(amends, key=lambda f: str(f.filing_date), reverse=True)[:2]:
+def latest_amendment(cik, since):
+    """Numbers from the newest D/A the fund filed after `since`, straight from the SEC's filing index for that CIK.
+    Returns None when there is none. Raises when the SEC can't be read, so a failure is never mistaken for "no amendment"."""
+    amends = sorted((f for f in Company(int(cik)).get_filings(form="D/A") if str(f.filing_date) > str(since)),
+                    key=lambda f: str(f.filing_date), reverse=True)
+    if not amends:
+        return None
+    last_err = None
+    for f in amends[:3]:
         try:
             fd = f.obj()
             osa, inv = fd.offering_data.offering_sales_amounts, fd.offering_data.investors
-            if osa:
-                item["totalOfferingAmount"] = txt(osa.total_offering_amount) or item["totalOfferingAmount"]
-                item["totalAmountSold"] = txt(osa.total_amount_sold) or item["totalAmountSold"]
-                item["totalRemaining"] = txt(osa.total_remaining) or item.get("totalRemaining")
-            if inv:
-                item["numberOfInvestors"] = txt(inv.total_already_invested) or item["numberOfInvestors"]
-            item["dateOfFirstSale"] = txt(fd.offering_data.date_of_first_sale) or item["dateOfFirstSale"]
-            item["amendedAt"] = str(f.filing_date)
-            item["amendmentUrl"] = f.homepage_url
-            return item
-        except Exception:  # noqa: BLE001
-            continue
+            return {"date": str(f.filing_date), "url": f.homepage_url,
+                    "offering": txt(osa.total_offering_amount) if osa else None, "sold": txt(osa.total_amount_sold) if osa else None,
+                    "remaining": txt(osa.total_remaining) if osa else None,
+                    "investors": txt(inv.total_already_invested) if inv else None,
+                    "firstSale": txt(fd.offering_data.date_of_first_sale)}
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+    raise RuntimeError(f"newest D/A of CIK {cik} unreadable: {last_err}")
+
+
+AMEND_ERRORS = []
+
+
+def with_latest(item, cik, since):
+    """Overwrite the first Form D's numbers with the newest amendment's: the first filing is made within 15 days of the
+    first close, so its "amount sold" is only the first cheque (Eventide Healthcare Innovation Fund I: $0 on the
+    original, $64.65M on its D/A). Keeps the original filing date; adds amendedAt. Read failures are recorded (the audit
+    retries them), never silently treated as "no amendment"."""
+    try:
+        a = latest_amendment(cik, since)
+    except Exception as e:  # noqa: BLE001
+        AMEND_ERRORS.append(f"{item.get('companyName')}: {str(e)[:150]}")
+        item["amendError"] = True
+        return item
+    if a:
+        for k_item, k_a in (("totalOfferingAmount", "offering"), ("totalAmountSold", "sold"), ("totalRemaining", "remaining"),
+                            ("numberOfInvestors", "investors"), ("dateOfFirstSale", "firstSale")):
+            if a.get(k_a) is not None:
+                item[k_item] = a[k_a]
+        item["amendedAt"], item["amendmentUrl"] = a["date"], a["url"]
     return item
+
+
+# ---- Hard checks ----
+# Known cases verified by hand against EDGAR. If the code ever reads them wrong again, the GitHub run fails (red, emailed)
+# and HQ shows the failure. Add every case someone catches by hand.
+KNOWN = [
+    {"name": "Eventide Healthcare Innovation Fund I", "cik": 1901436, "since": "2022-11-29", "amended": "2023-11-29", "sold": (64_000_000, 65_000_000)},
+    {"name": "Hartbeat Ventures I", "cik": 1950228, "since": "2022-10-17", "amended": "2024-01-29", "sold": (27_500_000, 28_500_000)},
+]
+
+
+def selftest():
+    fails = []
+    for k in KNOWN:
+        try:
+            a = latest_amendment(k["cik"], k["since"])
+            sold = float(a["sold"]) if a and a.get("sold") not in (None, "") else None
+            if not a or a["date"] != k["amended"]:
+                fails.append(f'{k["name"]}: newest D/A should be {k["amended"]}, read {a and a["date"]}')
+            elif sold is None or not (k["sold"][0] <= sold <= k["sold"][1]):
+                fails.append(f'{k["name"]}: raised should be {k["sold"][0]:,.0f}-{k["sold"][1]:,.0f}, read {sold}')
+        except Exception as e:  # noqa: BLE001
+            fails.append(f'{k["name"]}: {e}')
+    # Full-text search must see original Form Ds (several forms in one call once returned only amendments).
+    try:
+        total, results = efts('"Electric Capital"')
+        if sum(1 for r in results if r.form == "D") < 10:
+            fails.append(f"full-text search: only {sum(1 for r in results if r.form == 'D')} original Form Ds for Electric Capital (expected 10+)")
+    except Exception as e:  # noqa: BLE001
+        fails.append(f"full-text search failed: {e}")
+    # Person search must find renamed funds (Mike Abbaei: NTV Frontier Fund 2020, NTV Prosperity Fund 2021).
+    try:
+        names = " | ".join(r.company or "" for r in efts('"Abbaei"')[1]).lower()
+        for want in ("ntv frontier fund", "ntv prosperity fund"):
+            if want not in names:
+                fails.append(f"person search: {want} not found for Abbaei")
+    except Exception as e:  # noqa: BLE001
+        fails.append(f"person search failed: {e}")
+    post({"action": "ingest", "kind": "data_check", "check": "selftest", "ok": not fails, "checked": len(KNOWN) + 2, "failures": fails})
+    log("selftest:", "ok" if not fails else f"{len(fails)} FAILED: " + " / ".join(fails))
+    return fails
+
+
+def audit():
+    """Re-verify every list row against the SEC's filing index for its CIK: numbers must come from the newest amendment.
+    Stale rows are fixed on the spot; anything unreadable is counted and listed."""
+    rows = post({"action": "ingest", "kind": "audit_todo"}).get("rows", [])
+    stale = fixed = errors = 0
+    fails = []
+    for i, r in enumerate(rows):
+        try:
+            a = latest_amendment(r["cik"], r["filing_date"])
+            newest = a["date"] if a else None
+            if newest != r.get("amended_at"):
+                stale += 1
+                if a:
+                    post({"action": "ingest", "kind": "audit_fix", "id": r["id"], "amendment": a})
+                    fixed += 1
+        except Exception as e:  # noqa: BLE001
+            errors += 1
+            if len(fails) < 50:
+                fails.append(f'{r.get("company_name")}: {str(e)[:150]}')
+        if i % 200 == 0:
+            log(f"  audit {i}/{len(rows)}: {stale} stale, {errors} errors")
+    post({"action": "ingest", "kind": "data_check", "check": "audit", "ok": errors == 0, "checked": len(rows), "stale": stale, "fixed": fixed,
+          "errors": errors, "failures": fails})
+    log(f"audit: {len(rows)} rows, {stale} stale ({fixed} fixed), {errors} errors")
 
 
 def flush(batch, list_name, start, end, sent):
@@ -336,7 +423,7 @@ def study(fund_no, start, end, sample=250):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", default="daily", choices=["daily", "live", "fund1", "check", "probe", "recheck", "study1", "study2"])
+    ap.add_argument("--mode", default="daily", choices=["daily", "live", "fund1", "check", "probe", "recheck", "study1", "study2", "selftest", "audit"])
     ap.add_argument("--from", dest="start")
     ap.add_argument("--to", dest="end")
     a = ap.parse_args()
@@ -344,13 +431,23 @@ def main():
         sys.exit("Set the FUND_INGEST_KEY and SEC_IDENTITY secrets in GitHub (see the workflow file).")
     set_identity(os.environ["SEC_IDENTITY"])
     today = dt.date.today()
+    if a.mode == "selftest":
+        sys.exit(1 if selftest() else 0)
+    if a.mode == "audit":
+        audit()
+        return
     if a.mode == "daily":
+        fails = selftest()
         scan("live", (today - dt.timedelta(days=4)).isoformat(), today.isoformat())
         c = today - dt.timedelta(days=round(42 * 30.44))
         scan("fund1", (c - dt.timedelta(days=3)).isoformat(), c.isoformat())
+        audit()
         check()
+        if fails:
+            sys.exit(1)  # the run shows red on GitHub (and is emailed) when a known case reads wrong
     elif a.mode == "live":
         scan("live", a.start or (today - dt.timedelta(days=30)).isoformat(), a.end or today.isoformat())
+        audit()
     elif a.mode == "fund1":
         start = dt.date.fromisoformat(a.start) if a.start else today - dt.timedelta(days=round(48 * 30.44))
         end = dt.date.fromisoformat(a.end) if a.end else today - dt.timedelta(days=round(36 * 30.44))
@@ -359,6 +456,7 @@ def main():
             nxt = min(cur + dt.timedelta(days=90), end)
             scan("fund1", cur.isoformat(), nxt.isoformat())
             cur = nxt + dt.timedelta(days=1)
+        audit()
     elif a.mode in ("study1", "study2"):  # cadence study on an old window (default: the year 7 years ago)
         y = today.year - 7
         study(int(a.mode[-1]), a.start or f"{y}-01-01", a.end or f"{y}-12-31")

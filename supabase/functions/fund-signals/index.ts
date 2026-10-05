@@ -127,6 +127,7 @@ async function ingestCheck(ids: string[], items: any[], error: string | null, at
     const c = readCheck(s, items), patch: any = { check_status: c.status, check_note: c.note, later: c.later, later_count: c.funds_since, checked_at: at };
     if (c.latest) {
       if (c.latest.sold != null) patch.sold = c.latest.sold;
+      if (c.latest.form === "D/A" && c.latest.date && (!s.amended_at || c.latest.date > s.amended_at)) patch.amended_at = c.latest.date;
       if (c.latest.offering != null) patch.offering = c.latest.offering;
       const off = patch.offering ?? s.offering, sold = patch.sold ?? s.sold;
       if (Date.now() - Date.parse(c.latest.date) < 400 * DAY && (!off || sold / off < 0.6)) patch.still_raising = `${money(sold)}${off ? ` of ${money(off)}` : ''} as of ${c.latest.date}`;
@@ -180,7 +181,7 @@ async function ingest(body: any) {
     const fundNo = Number(body.fund_no) || 1, cohort = String(body.cohort || "");
     const rows = (Array.isArray(body.items) ? body.items.slice(0, 200) : []).filter((it: any) => it.companyName).map((it: any) => {
       const n = normalize(it, "fund1");
-      return { cohort, accession: n.accession, company_name: n.company_name, cik: n.cik, fund_no: fundNo, manager_key: n.manager_key, check_keyword: n.check_keyword,
+      return { cohort, accession: `${cohort}:${n.accession}`, company_name: n.company_name, cik: n.cik, fund_no: fundNo, manager_key: n.manager_key, check_keyword: n.check_keyword,
         filing_date: n.filing_date, offering: n.offering, sold: n.sold, state: n.state, executives: n.executives };
     });
     if (rows.length) { const r = await sb.from("fund_gap_study").upsert(rows, { onConflict: "accession", ignoreDuplicates: true }); if (r.error) throw new Error(r.error.message); }
@@ -200,6 +201,36 @@ async function ingest(body: any) {
     await sb.from("fund_gap_study").update({ status: c.status, note: c.note, later: c.later, later_count: c.funds_since, next_name: nx?.name || null, next_date: nx?.date || null,
       next_renamed: nx ? !!nx.renamed : null, gap_months: gap, checked_at: now }).eq("id", row.id);
     return { status: c.status, gap_months: gap };
+  }
+  // ---- Hard data checks (scripts/fund_signals.py selftest / audit) ----
+  if (body.kind === "audit_todo") {
+    // Every list row a person could act on: skip deal vehicles and big brands (cut for reasons numbers can't change).
+    const out: any[] = [];
+    for (let from = 0; ; from += 1000) {
+      const r = await sb.from("fund_signals").select("id,cik,filing_date,amended_at,company_name,reasons").in("list", ["live", "fund1"]).not("cik", "is", null).range(from, from + 999);
+      if (r.error) throw new Error(r.error.message);
+      for (const x of r.data || []) if (!(x.reasons || []).some((y: any) => /Single-deal vehicle|Big brand/.test(y.text || ""))) out.push({ id: x.id, cik: x.cik, filing_date: x.filing_date, amended_at: x.amended_at, company_name: x.company_name });
+      if ((r.data || []).length < 1000) break;
+    }
+    return { rows: out };
+  }
+  if (body.kind === "audit_fix") {
+    const a = body.amendment || {}, off = Number(String(a.offering ?? "").replace(/[$,\s]/g, ""));
+    const patch: any = { amended_at: a.date || null, amendment_url: a.url || null, updated_at: now };
+    if (a.offering != null) { patch.offering = Number.isFinite(off) && String(a.offering).trim() !== "" ? off : null; patch.offering_text = patch.offering == null ? a.offering : null; }
+    if (a.sold != null && a.sold !== "") patch.sold = Number(a.sold);
+    if (a.investors != null && a.investors !== "") patch.investors = Number(a.investors);
+    if (a.firstSale) patch.first_sale = String(a.firstSale).slice(0, 10);
+    const r = await sb.from("fund_signals").update(patch).eq("id", body.id);
+    if (r.error) throw new Error(r.error.message);
+    await judge((await sb.from("fund_signals").select("*").eq("id", body.id)).data || []);
+    return { fixed: 1 };
+  }
+  if (body.kind === "data_check") {
+    const r = await sb.from("fund_data_checks").insert({ kind: String(body.check || "audit"), ok: !!body.ok, checked: body.checked || 0, stale: body.stale || 0,
+      fixed: body.fixed || 0, errors: body.errors || 0, failures: Array.isArray(body.failures) ? body.failures.slice(0, 50) : [] });
+    if (r.error) throw new Error(r.error.message);
+    return { logged: true };
   }
   if (body.kind === "requeue") {
     // Re-check every Fund I target / maybe already checked (e.g. after the check learned to search people's names).
