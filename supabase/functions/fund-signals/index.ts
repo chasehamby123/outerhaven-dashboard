@@ -320,7 +320,7 @@ Deno.serve(async req => {
     if (cron) {
       if (cron !== await secret("FUND_CRON_SECRET")) return json({ ok: false, error: "bad cron secret" }, 401);
       const p = await poll();
-      const stale = (await sb.from("fund_signals").select("*").lt("rules_version", RULES_VERSION).limit(500)).data || [];
+      const stale = (await sb.from("fund_signals").select("*").lt("rules_version", RULES_VERSION).limit(1500)).data || [];
       if (stale.length) await judge(stale);
       const staleCredit = (await sb.from("credit_signals").select("*").lt("rules_version", CREDIT_RULES_VERSION).limit(500)).data || [];
       if (staleCredit.length) await judgeCredit(staleCredit);
