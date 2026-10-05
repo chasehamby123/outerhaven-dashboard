@@ -47,3 +47,45 @@ select fund_no,
   round(100.0 * count(*) filter (where status = 'next' and gap_months <= 60) / nullif(count(*) filter (where status is not null), 0), 1) pct_within_60m
 from public.fund_gap_study group by fund_no;
 grant select on public.fund_gap_stats to authenticated;
+
+-- Distinct funds started after the scanned one (fund families: amendments, feeders, parallel/-A/-B and series SPVs folded).
+alter table public.fund_signals add column if not exists later_count integer;
+alter table public.fund_gap_study add column if not exists later_count integer;
+create or replace view public.fund_gap_stats with (security_invoker = true) as
+select fund_no,
+  count(*) filter (where status is not null) checked,
+  count(*) filter (where status = 'next') raised_next,
+  round(100.0 * count(*) filter (where status = 'next') / nullif(count(*) filter (where status is not null), 0), 1) pct_raised_next,
+  count(*) filter (where status = 'next' and next_renamed) renamed,
+  round(avg(gap_months) filter (where status = 'next'), 1) avg_months,
+  round((percentile_cont(0.25) within group (order by gap_months) filter (where status = 'next'))::numeric, 1) p25_months,
+  round((percentile_cont(0.5) within group (order by gap_months) filter (where status = 'next'))::numeric, 1) median_months,
+  round((percentile_cont(0.75) within group (order by gap_months) filter (where status = 'next'))::numeric, 1) p75_months,
+  round(100.0 * count(*) filter (where status = 'next' and gap_months <= 24) / nullif(count(*) filter (where status is not null), 0), 1) pct_within_24m,
+  round(100.0 * count(*) filter (where status = 'next' and gap_months <= 36) / nullif(count(*) filter (where status is not null), 0), 1) pct_within_36m,
+  round(100.0 * count(*) filter (where status = 'next' and gap_months <= 48) / nullif(count(*) filter (where status is not null), 0), 1) pct_within_48m,
+  round(100.0 * count(*) filter (where status = 'next' and gap_months <= 60) / nullif(count(*) filter (where status is not null), 0), 1) pct_within_60m,
+  round(avg(coalesce(later_count, 0)) filter (where status is not null), 2) avg_funds_since,
+  round((percentile_cont(0.5) within group (order by later_count) filter (where status = 'next'))::numeric, 1) median_funds_since_if_raised,
+  round(100.0 * count(*) filter (where later_count >= 2) / nullif(count(*) filter (where status is not null), 0), 1) pct_2plus_funds_since
+from public.fund_gap_study group by fund_no;
+grant select on public.fund_gap_stats to authenticated;
+
+-- Per cohort (v1 cohorts of 5 Oct counted series SPVs and feeders as funds; use the -v2 ones).
+create or replace view public.fund_gap_stats_by_cohort with (security_invoker = true) as
+select cohort, fund_no,
+  count(*) filter (where status is not null) checked,
+  round(100.0 * count(*) filter (where status = 'next') / nullif(count(*) filter (where status is not null), 0), 1) pct_raised_next,
+  round(100.0 * count(*) filter (where status = 'next' and next_renamed) / nullif(count(*) filter (where status = 'next'), 0), 1) pct_next_renamed,
+  round(avg(gap_months) filter (where status = 'next'), 1) avg_months,
+  round((percentile_cont(0.25) within group (order by gap_months) filter (where status = 'next'))::numeric, 1) p25_months,
+  round((percentile_cont(0.5) within group (order by gap_months) filter (where status = 'next'))::numeric, 1) median_months,
+  round((percentile_cont(0.75) within group (order by gap_months) filter (where status = 'next'))::numeric, 1) p75_months,
+  round(100.0 * count(*) filter (where status = 'next' and gap_months <= 24) / nullif(count(*) filter (where status is not null), 0), 1) pct_within_24m,
+  round(100.0 * count(*) filter (where status = 'next' and gap_months <= 36) / nullif(count(*) filter (where status is not null), 0), 1) pct_within_36m,
+  round(100.0 * count(*) filter (where status = 'next' and gap_months <= 48) / nullif(count(*) filter (where status is not null), 0), 1) pct_within_48m,
+  round(100.0 * count(*) filter (where status = 'next' and gap_months <= 60) / nullif(count(*) filter (where status is not null), 0), 1) pct_within_60m,
+  round(avg(coalesce(later_count, 0)) filter (where status is not null), 2) avg_funds_since,
+  round(100.0 * count(*) filter (where later_count >= 2) / nullif(count(*) filter (where status is not null), 0), 1) pct_2plus_funds_since
+from public.fund_gap_study group by cohort, fund_no;
+grant select on public.fund_gap_stats_by_cohort to authenticated;

@@ -3,14 +3,18 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 7;
+export const RULES_VERSION = 8;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
 // Managers with their own fundraising teams, and wealth platforms whose feeders just repackage someone else's fund.
 const BRANDS = /\b(apollo|blackstone|kkr|carlyle|ares|cerberus|adams street|investcorp|canyon capital|h\.?i\.?g\.?|bain capital|andreessen|lightspeed|neuberger|icapital|cais|brown advisory|ashwood|nuveen|crestline|lindsay goldberg|hines|greystar|goldman|morgan stanley|j\.?p\.? ?morgan|blackrock|tpg|warburg|general atlantic|sequoia|accel|insight partners|thoma bravo|brookfield|oaktree|hamilton lane|stepstone|pantheon|harbourvest|partners group|ardian|eqt|cvc|permira|silver lake|fortress|starwood|pimco|invesco|fidelity|ubs|wells fargo|meridiam|cresset|moonfare|yieldstreet|novacap|columbia capital|patient square|grey rock|cvp nolimit|blue owl|dfj)\b/i;
 // Single-deal or pass-through vehicles: not a fund raising from LPs.
-const VEHICLE = /\b(spv|co-?invest\w*|series of|splitter|blocker|continuation|sidecar|aggregator|access fund|annex)\b/i;
+const VEHICLE = /\b(spv|co-?invest\w*|series of|splitter|blocker|continuation|sidecar|aggregator|access fund|annex)\b|\bseries\s+(?!fund\b)[a-z0-9]/i;
+// One fund files many Form Ds: amendments, feeders, parallel and offshore twins, -A/-B classes. Same family = same fund.
+export const fundFamily = name => String(name || '').toLowerCase().replace(/\([^)]*\)/g, ' ')
+  .replace(/\b(feeder|offshore|onshore|parallel|master|qp|ai|institutional|international|cayman|delaware|us|usd|eur|lux|scsp|l\.?\s?p\.?|llc|ltd|limited|inc|co|the)\b/g, ' ')
+  .replace(/\b([ivx]+)-[a-z0-9]+\b/g, '$1').replace(/[^a-z0-9 ]/g, ' ').replace(/\b[a-z]\b/g, ' ').replace(/\s+/g, ' ').trim();
 const STOP = new Set('fund funds lp llc llp ltd inc l p gp partners partnership capital ventures venture vc equity growth opportunity opportunities holdings investors investment investments management private credit global strategic select co company the a limited sicav scsp master offshore onshore feeder parallel us international series of and & fof'.split(' '));
 const ENTITY = /\b(llc|l\.?l\.?c|l\.?p\.?|inc|ltd|limited|gp|partners|management|corporation|company|s\.?a\.? ?r\.?l|trust|fund|advisers|advisors|group|holdings)\b/i;
 
@@ -188,14 +192,16 @@ export function readCheck(s, items) {
   const firstPer = rows => rows.sort(byDate).filter((r, i, a) => a.findIndex(x => String(x.name).toLowerCase() === String(r.name).toLowerCase()) === i);
   const renamed = firstPer(byPerson.filter(r => r.strong)), renamedUnsure = firstPer(byPerson.filter(r => !r.strong));
   later.push(...renamed.map(r => ({ ...r, renamed: true }))); unsure.push(...renamedUnsure.map(r => ({ ...r, renamed: true })));
-  later.sort(byDate); unsure.sort(byDate);
+  const families = rows => rows.sort(byDate).filter((r, i, a) => a.findIndex(x => fundFamily(x.name) === fundFamily(r.name)) === i);
+  later.splice(0, later.length, ...families(later)); unsure.splice(0, unsure.length, ...families(unsure));
   amends.sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  const out = { later: [...later, ...unsure.map(r => ({ ...r, unconfirmed: true })), ...strangers.map(r => ({ ...r, other_manager: true }))], latest: amends.find(a => a.sold != null) || amends[0] || null };
+  const out = { funds_since: later.length, later: [...later, ...unsure.map(r => ({ ...r, unconfirmed: true })), ...strangers.map(r => ({ ...r, other_manager: true }))], latest: amends.find(a => a.sold != null) || amends[0] || null };
   const fresh = out.latest ? `Latest Fund ${romanOf(mine)} filing ${out.latest.date}${out.latest.sold != null ? `: ${money(out.latest.sold)} raised${out.latest.offering ? ` of ${money(out.latest.offering)}` : ''}` : ''}` : '';
   const ignored = strangers.length ? ` Ignored ${strangers.length} same-name filing${strangers.length > 1 ? 's' : ''} by different people (${strangers[0].name}).` : '';
   if (later.length) { const f = later[0]; out.status = 'next'; out.note = f.renamed
-    ? `Already raised a later fund under a new name: ${f.name} (${f.date}${f.offering ? `, ${money(f.offering)} target` : ''}), same people (${f.shared.join(', ')})${later.length > 1 ? `; ${later.length} later funds in all` : ''}`
-    : `Already filed ${f.name} (${f.date}${f.offering ? `, ${money(f.offering)} target` : ''}); same people on both filings`; }
+    ? `Already raised a later fund under a new name: ${f.name} (${f.date}${f.offering ? `, ${money(f.offering)} target` : ''}), same people (${f.shared.join(', ')})`
+    : `Already filed ${f.name} (${f.date}${f.offering ? `, ${money(f.offering)} target` : ''}); same people on both filings`;
+    if (later.length > 1) out.note += `. ${later.length} funds since: ${later.map(x => `${x.name} (${String(x.date).slice(0, 4)})`).join('; ')}`; }
   else if (unsure.length) { const f = unsure[0]; out.status = 'unsure'; out.note = f.renamed
     ? `Possible later fund under a new name: ${f.name} (${f.date}) names ${f.shared.join(', ')}, but nothing else matches (could be another firm with the same person). Check by hand.${ignored}`
     : `Possible Fund II: ${f.name} (${f.date}), but no named people to confirm it's the same manager. Check by hand.${ignored}`; }

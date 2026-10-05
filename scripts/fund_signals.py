@@ -253,7 +253,7 @@ def check():
 
 
 FUND2_RE = re.compile(r"\bII(-[A-Z0-9]+)?\b")
-VEHICLE_RE = re.compile(r"\b(spv|co-?invest\w*|series of|splitter|blocker|continuation|sidecar|aggregator|access fund|annex|feeder|offshore|parallel)\b", re.I)
+VEHICLE_RE = re.compile(r"\b(spv|co-?invest\w*|series of|splitter|blocker|continuation|sidecar|aggregator|access fund|annex|feeder|offshore|parallel)\b|\bseries\s+(?!fund\b)[a-z0-9]", re.I)
 
 
 def study(fund_no, start, end, sample=250):
@@ -261,7 +261,7 @@ def study(fund_no, start, end, sample=250):
     with the same logic as the Fund II check. Stored in fund_gap_study; summary in the fund_gap_stats view.
     Only original filings of pooled funds, $10M+ target or raised, no feeder/parallel/offshore twins (one per manager)."""
     import random
-    cohort = f"fund{fund_no}-{start[:4]}"
+    cohort = f"fund{fund_no}-{start[:4]}-v2"  # v2: series SPVs excluded, later funds counted per fund family
     rx = FUND1_RE if fund_no == 1 else FUND2_RE
     fs = get_filings(form="D", amendments=False, filing_date=f"{start}:{end}")
     cands = [f for f in fs if rx.search(f.company or "") and not VEHICLE_RE.search(f.company or "")]

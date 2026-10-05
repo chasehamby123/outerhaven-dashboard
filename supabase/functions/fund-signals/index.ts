@@ -124,7 +124,7 @@ async function ingestCheck(ids: string[], items: any[], error: string | null, at
   const sigs = (await sb.from("fund_signals").select("*").in("id", ids)).data || [];
   for (const s of sigs) {
     if (error) { await sb.from("fund_signals").update({ check_status: "error", check_note: error, checked_at: at }).eq("id", s.id); continue; }
-    const c = readCheck(s, items), patch: any = { check_status: c.status, check_note: c.note, later: c.later, checked_at: at };
+    const c = readCheck(s, items), patch: any = { check_status: c.status, check_note: c.note, later: c.later, later_count: c.funds_since, checked_at: at };
     if (c.latest) {
       if (c.latest.sold != null) patch.sold = c.latest.sold;
       if (c.latest.offering != null) patch.offering = c.latest.offering;
@@ -195,7 +195,7 @@ async function ingest(body: any) {
     const c = readCheck(row, Array.isArray(body.items) ? body.items.slice(0, 800) : []);
     const nx = c.status === "next" ? (c.later || []).find((x: any) => !x.unconfirmed && !x.other_manager) : null;
     const gap = nx?.date && row.filing_date ? Math.round((Date.parse(nx.date) - Date.parse(row.filing_date)) / (30.44 * DAY) * 10) / 10 : null;
-    await sb.from("fund_gap_study").update({ status: c.status, note: c.note, later: c.later, next_name: nx?.name || null, next_date: nx?.date || null,
+    await sb.from("fund_gap_study").update({ status: c.status, note: c.note, later: c.later, later_count: c.funds_since, next_name: nx?.name || null, next_date: nx?.date || null,
       next_renamed: nx ? !!nx.renamed : null, gap_months: gap, checked_at: now }).eq("id", row.id);
     return { status: c.status, gap_months: gap };
   }
