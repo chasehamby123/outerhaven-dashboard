@@ -123,11 +123,14 @@ def latest_amendment(cik, since):
         try:
             fd = sec(f.obj)
             osa, inv = fd.offering_data.offering_sales_amounts, fd.offering_data.investors
-            return {"date": str(f.filing_date), "url": f.homepage_url,
+            # A fresh D starts a new offering: its first-sale date and investor count belong to that offering, not the fund
+            # (WovenEarth Fund II: first sale Nov 2024 on the original, Apr 2026 on the fresh D). Keep the fund's own.
+            fresh = f.form == "D"
+            return {"date": str(f.filing_date), "url": f.homepage_url, "form": f.form,
                     "offering": txt(osa.total_offering_amount) if osa else None, "sold": txt(osa.total_amount_sold) if osa else None,
                     "remaining": txt(osa.total_remaining) if osa else None,
-                    "investors": txt(inv.total_already_invested) if inv else None,
-                    "firstSale": txt(fd.offering_data.date_of_first_sale)}
+                    "investors": None if fresh else (txt(inv.total_already_invested) if inv else None),
+                    "firstSale": None if fresh else txt(fd.offering_data.date_of_first_sale)}
         except Exception as e:  # noqa: BLE001
             last_err = e
     raise RuntimeError(f"newest D/A of CIK {cik} unreadable: {last_err}")
