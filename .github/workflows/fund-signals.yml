@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "daily | live | fund1 | check | recheck | credit | probe"
+        description: "daily | live | fund1 | check | recheck | credit | probe | study1 | study2"
         default: daily
         required: true
       from:
@@ -27,7 +27,7 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -52,7 +52,7 @@ jobs:
           else
             MODE="$IN_MODE"
           fi
-          case "$MODE" in daily|live|fund1|check|recheck|credit|probe) ;; *) echo "mode must be daily, live, fund1, check, recheck, credit or probe"; exit 1;; esac
+          case "$MODE" in daily|live|fund1|check|recheck|credit|probe|study1|study2) ;; *) echo "unknown mode $MODE"; exit 1;; esac
           if [ "$MODE" = "credit" ]; then python scripts/credit_signals.py; exit $?; fi
           set -- --mode "$MODE"
           if [ "$MODE" = "probe" ]; then python scripts/fund_signals.py --mode probe --from "$IN_FROM"; exit $?; fi

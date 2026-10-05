@@ -11,6 +11,7 @@ Modes
   check   Fund II checks for queued / unchecked Fund I targets (fund name + every named person)
   recheck re-queue every checked Fund I target, then check
   probe   print the Form Ds naming people (--from "Name One;Name Two")
+  study1 / study2  cadence study: how long Fund I / Fund II managers take to file their next fund (fund_gap_stats view)
 
 Needs env: SEC_IDENTITY (name + email, the SEC requires it), FUND_INGEST_KEY (from HQ → Pipeline → Fund signals → Settings).
 """
@@ -196,9 +197,44 @@ def probe(names):
         print(f"::notice title=probe {name}::" + "%0A".join(x.replace("%", "%25") for x in lines)[:3900], flush=True)
 
 
+def gather(s):
+    """Every filing after s's own that could be its next fund: the same CIK (amendments), the manager's name (full-text
+    search) and every named person (person_filings). The server reads them with readCheck()."""
+    since = s.get("filing_date") or "2015-01-01"
+    start = (dt.date.fromisoformat(since) + dt.timedelta(days=1)).isoformat()
+    items, seen = [], set()
+    if s.get("cik"):
+        for f in Company(int(s["cik"])).get_filings(form=["D", "D/A"]):
+            if str(f.filing_date) <= since or f.accession_no in seen:
+                continue
+            seen.add(f.accession_no)
+            try:
+                items.append(item_from(f, f.obj()))
+            except Exception:  # noqa: BLE001
+                items.append({"companyName": f.company, "cik": str(f.cik), "filingDate": str(f.filing_date), "formType": f.form, "accessionNumber": f.accession_no})
+    for r in efts(f'"{s["check_keyword"]}"', start)[1]:
+        if r.accession_number in seen:
+            continue
+        seen.add(r.accession_number)
+        name = re.sub(r"\s*\((?:[A-Z.\-]+\)\s*\()?CIK \d+\)\s*$", "", r.company or "").strip()
+        light = {"companyName": name, "cik": r.cik, "filingDate": r.filed, "formType": r.form, "accessionNumber": r.accession_number}
+        # A possible later fund: open the filing so the server can compare the named people with this fund's.
+        if LATER_RE.search(name):
+            try:
+                f = r.get_filing()
+                full = item_from(f, f.obj())
+                full["companyName"] = name or full["companyName"]
+                items.append(full)
+                continue
+            except Exception as e:  # noqa: BLE001
+                log(f"    could not open {name}: {e}")
+        items.append(light)
+    items += person_filings(s, start, seen)
+    return items
+
+
 def check():
-    """For each queued / unchecked Fund I target: every later filing by the same fund (by CIK) and any later fund under the
-    manager's name (EDGAR full-text search). The server reads them with readCheck()."""
+    """For each queued / unchecked Fund I target: gather() later filings, the server judges them."""
     todo = post({"action": "ingest", "kind": "todo"}).get("signals", [])
     groups = {}
     for s in todo:
@@ -206,37 +242,8 @@ def check():
     log(f"check: {len(todo)} signals, {len(groups)} managers")
     for key, group in groups.items():
         s = group[0]
-        since = s.get("filing_date") or "2015-01-01"
-        start = (dt.date.fromisoformat(since) + dt.timedelta(days=1)).isoformat()
-        items, seen = [], set()
         try:
-            if s.get("cik"):
-                for f in Company(int(s["cik"])).get_filings(form=["D", "D/A"]):
-                    if str(f.filing_date) <= since or f.accession_no in seen:
-                        continue
-                    seen.add(f.accession_no)
-                    try:
-                        items.append(item_from(f, f.obj()))
-                    except Exception:  # noqa: BLE001
-                        items.append({"companyName": f.company, "cik": str(f.cik), "filingDate": str(f.filing_date), "formType": f.form, "accessionNumber": f.accession_no})
-            for r in efts(f'"{s["check_keyword"]}"', start)[1]:
-                if r.accession_number in seen:
-                    continue
-                seen.add(r.accession_number)
-                name = re.sub(r"\s*\((?:[A-Z.\-]+\)\s*\()?CIK \d+\)\s*$", "", r.company or "").strip()
-                light = {"companyName": name, "cik": r.cik, "filingDate": r.filed, "formType": r.form, "accessionNumber": r.accession_number}
-                # A possible later fund: open the filing so the server can compare the named people with Fund I's.
-                if LATER_RE.search(name):
-                    try:
-                        f = r.get_filing()
-                        full = item_from(f, f.obj())
-                        full["companyName"] = name or full["companyName"]
-                        items.append(full)
-                        continue
-                    except Exception as e:  # noqa: BLE001
-                        log(f"    could not open {name}: {e}")
-                items.append(light)
-            items += person_filings(s, start, seen)
+            items = gather(s)
             post({"action": "ingest", "kind": "check", "signal_ids": [x["id"] for x in group], "items": items})
             log(f"  {s['check_keyword']}: {len(items)} later filings")
         except Exception as e:  # noqa: BLE001
@@ -244,9 +251,64 @@ def check():
             post({"action": "ingest", "kind": "check_error", "signal_ids": [x["id"] for x in group], "error": str(e)[:300]})
 
 
+FUND2_RE = re.compile(r"\bII(-[A-Z0-9]+)?\b")
+VEHICLE_RE = re.compile(r"\b(spv|co-?invest\w*|series of|splitter|blocker|continuation|sidecar|aggregator|access fund|annex|feeder|offshore|parallel)\b", re.I)
+
+
+def study(fund_no, start, end, sample=250):
+    """Cadence study: a random sample of Fund I (or Fund II) filings from an old window, each checked for its next fund
+    with the same logic as the Fund II check. Stored in fund_gap_study; summary in the fund_gap_stats view.
+    Only original filings of pooled funds, $10M+ target or raised, no feeder/parallel/offshore twins (one per manager)."""
+    import random
+    cohort = f"fund{fund_no}-{start[:4]}"
+    rx = FUND1_RE if fund_no == 1 else FUND2_RE
+    fs = get_filings(form="D", amendments=False, filing_date=f"{start}:{end}")
+    cands = [f for f in fs if rx.search(f.company or "") and not VEHICLE_RE.search(f.company or "")]
+    random.Random(42).shuffle(cands)
+    log(f"study {cohort}: {len(fs)} Form Ds, {len(cands)} named like Fund {fund_no}")
+    picked, batch, managers = 0, [], set()
+    for f in cands:
+        if picked >= sample:
+            break
+        try:
+            fd = f.obj()
+            ig = fd.offering_data.industry_group
+            if not ig or ig.industry_group_type != POOLED:
+                continue
+            it = item_from(f, fd)
+            off = float(it["totalOfferingAmount"] or 0) if str(it["totalOfferingAmount"] or "").replace(".", "").isdigit() else 0
+            sold = float(it["totalAmountSold"] or 0) if str(it["totalAmountSold"] or "").replace(".", "").isdigit() else 0
+            if max(off, sold) < 10e6:
+                continue
+            key = re.split(r"\b(?:fund|I|II)\b", (it["companyName"] or "").lower())[0].strip()
+            if key in managers:
+                continue
+            managers.add(key)
+            batch.append(it)
+            picked += 1
+        except Exception as e:  # noqa: BLE001
+            log(f"  skip {f.company}: {e}")
+        if len(batch) >= 50:
+            post({"action": "ingest", "kind": "study_add", "cohort": cohort, "fund_no": fund_no, "items": batch})
+            batch = []
+    if batch:
+        post({"action": "ingest", "kind": "study_add", "cohort": cohort, "fund_no": fund_no, "items": batch})
+    todo = post({"action": "ingest", "kind": "study_todo", "cohort": cohort}).get("rows", [])
+    log(f"study {cohort}: {picked} sampled, {len(todo)} to check")
+    for i, s in enumerate(todo):
+        try:
+            items = gather(s)
+            post({"action": "ingest", "kind": "study_check", "id": s["id"], "items": items})
+        except Exception as e:  # noqa: BLE001
+            post({"action": "ingest", "kind": "study_check", "id": s["id"], "error": str(e)[:300]})
+        if i % 25 == 0:
+            log(f"  {i}/{len(todo)} checked")
+    log(f"study {cohort}: done")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", default="daily", choices=["daily", "live", "fund1", "check", "probe", "recheck"])
+    ap.add_argument("--mode", default="daily", choices=["daily", "live", "fund1", "check", "probe", "recheck", "study1", "study2"])
     ap.add_argument("--from", dest="start")
     ap.add_argument("--to", dest="end")
     a = ap.parse_args()
@@ -269,6 +331,9 @@ def main():
             nxt = min(cur + dt.timedelta(days=90), end)
             scan("fund1", cur.isoformat(), nxt.isoformat())
             cur = nxt + dt.timedelta(days=1)
+    elif a.mode in ("study1", "study2"):  # cadence study on an old window (default: the year 7 years ago)
+        y = today.year - 7
+        study(int(a.mode[-1]), a.start or f"{y}-01-01", a.end or f"{y}-12-31")
     elif a.mode == "probe":
         probe([n.strip() for n in (a.start or "").split(";") if n.strip()])
     elif a.mode == "recheck":  # queue every Fund I target already checked, then check them again (new person search)

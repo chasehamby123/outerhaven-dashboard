@@ -173,6 +173,32 @@ async function ingest(body: any) {
     if (all.length) await sb.from("fund_signals").update({ check_status: "checking", updated_at: now }).in("id", all.map(x => x.id));
     return { signals: all };
   }
+  // ---- Cadence study (scripts/fund_signals.py --mode study1/study2) ----
+  if (body.kind === "study_add") {
+    const fundNo = Number(body.fund_no) || 1, cohort = String(body.cohort || "");
+    const rows = (Array.isArray(body.items) ? body.items.slice(0, 200) : []).filter((it: any) => it.companyName).map((it: any) => {
+      const n = normalize(it, "fund1");
+      return { cohort, accession: n.accession, company_name: n.company_name, cik: n.cik, fund_no: fundNo, manager_key: n.manager_key, check_keyword: n.check_keyword,
+        filing_date: n.filing_date, offering: n.offering, sold: n.sold, state: n.state, executives: n.executives };
+    });
+    if (rows.length) { const r = await sb.from("fund_gap_study").upsert(rows, { onConflict: "accession", ignoreDuplicates: true }); if (r.error) throw new Error(r.error.message); }
+    return { added: rows.length };
+  }
+  if (body.kind === "study_todo") {
+    const r = await sb.from("fund_gap_study").select("id,company_name,cik,fund_no,manager_key,check_keyword,filing_date,executives").eq("cohort", String(body.cohort || "")).is("status", null).limit(1000);
+    return { rows: r.data || [] };
+  }
+  if (body.kind === "study_check") {
+    const row = (await sb.from("fund_gap_study").select("*").eq("id", body.id).maybeSingle()).data;
+    if (!row) throw new Error("study row not found");
+    if (body.error) { await sb.from("fund_gap_study").update({ status: "error", note: String(body.error).slice(0, 300), checked_at: now }).eq("id", row.id); return { status: "error" }; }
+    const c = readCheck(row, Array.isArray(body.items) ? body.items.slice(0, 800) : []);
+    const nx = c.status === "next" ? (c.later || []).find((x: any) => !x.unconfirmed && !x.other_manager) : null;
+    const gap = nx?.date && row.filing_date ? Math.round((Date.parse(nx.date) - Date.parse(row.filing_date)) / (30.44 * DAY) * 10) / 10 : null;
+    await sb.from("fund_gap_study").update({ status: c.status, note: c.note, later: c.later, next_name: nx?.name || null, next_date: nx?.date || null,
+      next_renamed: nx ? !!nx.renamed : null, gap_months: gap, checked_at: now }).eq("id", row.id);
+    return { status: c.status, gap_months: gap };
+  }
   if (body.kind === "requeue") {
     // Re-check every Fund I target / maybe already checked (e.g. after the check learned to search people's names).
     const r = await sb.from("fund_signals").update({ check_status: "queued", updated_at: now }).eq("list", "fund1").in("check_status", ["clear", "unsure", "error"]).neq("verdict", "cut").select("id");
