@@ -172,7 +172,9 @@ async function ingest(body: any) {
       ...((await sb.from("fund_signals").select(cols).eq("list", "fund1").eq("verdict", "maybe").is("check_status", null).limit(300)).data || [])];
     const stale = (await sb.from("fund_signals").select(cols).eq("list", "fund1").eq("verdict", "target").eq("check_status", "clear").lt("checked_at", new Date(Date.now() - 30 * DAY).toISOString()).limit(30)).data || [];
     const stuck = (await sb.from("fund_signals").select(cols).eq("check_status", "checking").lt("updated_at", new Date(Date.now() - 6 * 3600e3).toISOString()).limit(30)).data || [];
-    const all = [...queued, ...stuck, ...fresh, ...stale].filter((x, i, a) => a.findIndex(y => y.id === x.id) === i).slice(0, 300);
+    // Checks that failed (an SEC filing couldn't be read) are retried after an hour.
+    const failed = (await sb.from("fund_signals").select(cols).eq("check_status", "error").lt("updated_at", new Date(Date.now() - 3600e3).toISOString()).limit(60)).data || [];
+    const all = [...queued, ...stuck, ...failed, ...fresh, ...stale].filter((x, i, a) => a.findIndex(y => y.id === x.id) === i).slice(0, 300);
     if (all.length) await sb.from("fund_signals").update({ check_status: "checking", updated_at: now }).in("id", all.map(x => x.id));
     return { signals: all };
   }

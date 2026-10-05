@@ -40,6 +40,20 @@ def log(*a):
     print(*a, flush=True)
 
 
+def sec(fn, *args, tries=5, **kw):
+    """Call the SEC with retries. Under load the SEC answers with an error page instead of the filing ("returned HTML
+    instead of SGML", 429, timeouts); treating that as "no data" is how a fund with a $28M amendment showed $0."""
+    for i in range(tries):
+        try:
+            return fn(*args, **kw)
+        except Exception as e:  # noqa: BLE001
+            if i == tries - 1:
+                raise
+            wait = (3, 8, 20, 45)[min(i, 3)]
+            log(f"    SEC retry in {wait}s: {str(e)[:100]}")
+            time.sleep(wait)
+
+
 def post(body):
     for attempt in range(3):
         try:
@@ -97,14 +111,14 @@ def item_from(filing, fd):
 def latest_amendment(cik, since):
     """Numbers from the newest D/A the fund filed after `since`, straight from the SEC's filing index for that CIK.
     Returns None when there is none. Raises when the SEC can't be read, so a failure is never mistaken for "no amendment"."""
-    amends = sorted((f for f in Company(int(cik)).get_filings(form="D/A") if str(f.filing_date) > str(since)),
+    amends = sorted((f for f in sec(lambda: list(Company(int(cik)).get_filings(form="D/A"))) if str(f.filing_date) > str(since)),
                     key=lambda f: str(f.filing_date), reverse=True)
     if not amends:
         return None
     last_err = None
     for f in amends[:3]:
         try:
-            fd = f.obj()
+            fd = sec(f.obj)
             osa, inv = fd.offering_data.offering_sales_amounts, fd.offering_data.investors
             return {"date": str(f.filing_date), "url": f.homepage_url,
                     "offering": txt(osa.total_offering_amount) if osa else None, "sold": txt(osa.total_amount_sold) if osa else None,
@@ -117,6 +131,7 @@ def latest_amendment(cik, since):
 
 
 AMEND_ERRORS = []
+GATHER_ERRORS = []
 
 
 def with_latest(item, cik, since):
@@ -215,16 +230,16 @@ def flush(batch, list_name, start, end, sent):
 def scan(list_name, start, end):
     """Form D filings (originals) in [start, end] whose name has the fund number we want; pooled funds only."""
     rx = LIVE_RE if list_name == "live" else NEXT_RE
-    fs = get_filings(form="D", amendments=False, filing_date=f"{start}:{end}")
+    fs = sec(get_filings, form="D", amendments=False, filing_date=f"{start}:{end}")
     if fs is None or len(fs) == 0:
         log(f"{list_name}: no Form D filings {start}..{end}")
         return
     cands = [f for f in fs if rx.search(f.company or "")]
     log(f"{list_name}: {len(fs)} Form D filings {start}..{end}, {len(cands)} with the right fund number")
-    batch, sent, skipped = [], 0, 0
+    batch, sent, skipped, unreadable = [], 0, 0, []
     for f in cands:
         try:
-            fd = f.obj()
+            fd = sec(f.obj)
             if fd is None or not hasattr(fd, "offering_data"):
                 skipped += 1
                 continue
@@ -234,8 +249,8 @@ def scan(list_name, start, end):
                 continue
             batch.append(with_latest(item_from(f, fd), f.cik, f.filing_date))
         except Exception as e:  # noqa: BLE001
-            log(f"  skip {f.company}: {e}")
-            skipped += 1
+            log(f"  UNREADABLE {f.company}: {e}")
+            unreadable.append(f"{f.company} ({f.accession_no}): {str(e)[:120]}")
         if len(batch) >= 100:
             sent += flush(batch, list_name, start, end, sent)
             batch = []
@@ -243,7 +258,11 @@ def scan(list_name, start, end):
     # and up to 99 funds per window were silently dropped (fixed 2 Oct 2026).
     if batch:
         sent += flush(batch, list_name, start, end, sent)
-    log(f"{list_name}: {sent} pooled funds sent, {skipped} skipped (not a pooled fund or unreadable)")
+    log(f"{list_name}: {sent} pooled funds sent, {skipped} not pooled funds, {len(unreadable)} unreadable, {len(AMEND_ERRORS)} amendment read errors")
+    # Hard check: every candidate must be either read or listed as unreadable, never silently dropped.
+    post({"action": "ingest", "kind": "data_check", "check": f"scan {list_name} {start}..{end}", "ok": not unreadable and not AMEND_ERRORS,
+          "checked": len(cands), "errors": len(unreadable) + len(AMEND_ERRORS), "failures": (unreadable + AMEND_ERRORS)[:50]})
+    AMEND_ERRORS.clear()
 
 
 def efts(query, start=None, limit=100):
@@ -252,7 +271,7 @@ def efts(query, start=None, limit=100):
     silently hid most later funds from the Fund II check. Returns (total, results)."""
     total, out = 0, []
     for form in ("D", "D/A"):
-        res = search_filings(query, forms=[form], start_date=start, limit=limit)
+        res = sec(search_filings, query, forms=[form], start_date=start, limit=limit)
         total += res.total
         out += list(res.results)
     return total, out
@@ -291,13 +310,14 @@ def person_filings(s, start, seen, cap=12):
                 continue
             seen.add(r.accession_number)
             try:
-                f = r.get_filing()
-                item = item_from(f, f.obj())
+                f = sec(r.get_filing)
+                item = item_from(f, sec(f.obj))
                 item["via"] = "person"
                 out.append(item)
                 opened += 1
             except Exception as e:  # noqa: BLE001
                 log(f"    could not open {r.company}: {e}")
+                GATHER_ERRORS.append(r.company or "?")
         log(f"    person {name}: {total} filings, {opened} opened")
     return out
 
@@ -319,12 +339,12 @@ def gather(s):
     start = (dt.date.fromisoformat(since) + dt.timedelta(days=1)).isoformat()
     items, seen = [], set()
     if s.get("cik"):
-        for f in Company(int(s["cik"])).get_filings(form=["D", "D/A"]):
+        for f in sec(lambda: list(Company(int(s["cik"])).get_filings(form=["D", "D/A"]))):
             if str(f.filing_date) <= since or f.accession_no in seen:
                 continue
             seen.add(f.accession_no)
             try:
-                items.append(item_from(f, f.obj()))
+                items.append(item_from(f, sec(f.obj)))
             except Exception:  # noqa: BLE001
                 items.append({"companyName": f.company, "cik": str(f.cik), "filingDate": str(f.filing_date), "formType": f.form, "accessionNumber": f.accession_no})
     for r in efts(f'"{s["check_keyword"]}"', start)[1]:
@@ -336,15 +356,22 @@ def gather(s):
         # A possible later fund: open the filing so the server can compare the named people with this fund's.
         if LATER_RE.search(name):
             try:
-                f = r.get_filing()
-                full = item_from(f, f.obj())
+                f = sec(r.get_filing)
+                full = item_from(f, sec(f.obj))
                 full["companyName"] = name or full["companyName"]
                 items.append(full)
                 continue
             except Exception as e:  # noqa: BLE001
                 log(f"    could not open {name}: {e}")
+                GATHER_ERRORS.append(name)
         items.append(light)
     items += person_filings(s, start, seen)
+    if GATHER_ERRORS:
+        # A possible later fund we couldn't read: never report "clear" on half the evidence. The check is marked as an
+        # error and picked up again by a later run.
+        bad = list(GATHER_ERRORS)
+        GATHER_ERRORS.clear()
+        raise RuntimeError(f"{len(bad)} later filing(s) unreadable after retries: {', '.join(bad[:3])}")
     return items
 
 
@@ -386,7 +413,7 @@ def study(fund_no, start, end, sample=250):
         if picked >= sample:
             break
         try:
-            fd = f.obj()
+            fd = sec(f.obj)
             ig = fd.offering_data.industry_group
             if not ig or ig.industry_group_type != POOLED:
                 continue

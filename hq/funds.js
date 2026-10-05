@@ -20,14 +20,36 @@ async function call(body) {
   return data;
 }
 
+// Every row, paged (the list passed 2,000 rows; a capped query silently hid the lowest-scored ones).
+async function allSignals() {
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    const r = await sb.from('fund_signals').select('*').order('score', { ascending: false }).order('id').range(from, from + 999);
+    if (r.error) return { error: r.error };
+    out.push(...(r.data || []));
+    if ((r.data || []).length < 1000) return { data: out };
+  }
+}
+let checks = [];
 async function load() {
-  const [s, r, g] = await Promise.all([
-    sb.from('fund_signals').select('*').order('score', { ascending: false }).limit(2000),
+  const [s, r, g, c] = await Promise.all([
+    allSignals(),
     sb.from('fund_signal_runs').select('*').order('created_at', { ascending: false }).limit(60),
     sb.from('growth_settings').select('fund_scan_enabled,fund_monthly_budget').eq('id', 1).maybeSingle(),
+    sb.from('fund_data_checks').select('*').order('created_at', { ascending: false }).limit(40),
   ]);
   if (s.error) { rows = null; return; }
-  rows = s.data || []; runs = r.data || []; cfg = g.data || { fund_scan_enabled: false, fund_monthly_budget: 10 };
+  rows = s.data || []; runs = r.data || []; cfg = g.data || { fund_scan_enabled: false, fund_monthly_budget: 10 }; checks = c.data || [];
+}
+
+// Hard-check status line: latest self-test (known cases vs live SEC data) and latest audit (every row vs the SEC index).
+function checksLine() {
+  const st = checks.find(c => c.kind === 'selftest'), au = checks.find(c => c.kind === 'audit');
+  const when = c => new Date(c.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const bits = [];
+  if (st) bits.push(st.ok ? `<span class="pFlag good">Self-test passed</span> ${when(st)}` : `<span class="pFlag bad">Self-test FAILED</span> ${when(st)}: ${esc((st.failures || []).join(' · ').slice(0, 300))}`);
+  if (au) bits.push(`${au.ok ? '<span class="pFlag good">Audit</span>' : '<span class="pFlag warn">Audit</span>'} ${when(au)}: ${au.checked} rows checked against the SEC, ${au.fixed} corrected${au.errors ? `, <b>${au.errors} unreadable</b> (retried next run)` : ''}`);
+  return bits.length ? `<p class="pHint">Data checks: ${bits.join(' · ')}</p>` : '<p class="pHint">Data checks: none run yet.</p>';
 }
 
 // One row per fund: feeders, parallels and -A/-B vehicles of the same fund collapse into the best-scored one.
@@ -80,6 +102,7 @@ function draw() {
         <button class="btn sm" id="fsCollect">${running.length ? `Collect results (${running.length} running)` : 'Refresh'}</button>
         <button class="btn sm ghost" id="fsHow">How it works</button><button class="btn sm ghost" id="fsSet">Setup</button></div>
     </div>
+    ${checksLine()}
     <p class="pHint">${list === 'live' ? 'Fund IIs and IIIs that filed a Form D: they started taking investor money in the last few weeks.' : 'Fund I and Fund II managers whose fund started 3–4 years ago and who have not filed their next fund yet, under any name (checked by fund name and by every named person).'}
       Source: SEC EDGAR (edgartools), scanned daily on GitHub, free. ${gh ? `Last run <b>${new Date(gh.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>.` : ''}${spent ? ` Apify fallback: $${spent.toFixed(2)} this month.` : ''}</p>
     ${gh ? '' : `<div class="fsBulk fsSetup"><span>Finish setup: add two secrets to GitHub so the daily scan can run.</span><button class="btn sm primary" id="fsSetup">Show me how</button></div>`}
