@@ -129,7 +129,7 @@ function rowHtml(s) {
     <div class="fsScore"><b>${s.score}</b><span>score</span></div>
     <div class="fsMain">
       <h4>${esc(s.company_name)}${s.vehicles.length > 1 ? ` <span class="fsVeh" title="${esc(s.vehicles.map(v => v.company_name).join('\n'))}">+${s.vehicles.length - 1} vehicle${s.vehicles.length > 2 ? 's' : ''}</span>` : ''}</h4>
-      <div class="fsFacts">${facts.map(f => `<span>${f}</span>`).join('')}<span class="muted">Filed ${day(s.filing_date)}${s.form_type === 'D/A' ? ' (amendment)' : ''}${s.amended_at ? ` · numbers from the ${s.amendment_url ? `<a href="${esc(s.amendment_url)}" target="_blank" rel="noopener">latest amendment ↗</a>` : 'latest amendment'} (${day(s.amended_at)})` : ' · numbers from the first filing'}</span></div>
+      <div class="fsFacts">${facts.map(f => `<span>${f}</span>`).join('')}<span class="muted">Filed ${day(s.filing_date)}${s.form_type === 'D/A' ? ' (amendment)' : ''}${s.amended_at ? ` · numbers from the ${s.amendment_url ? `<a href="${esc(s.amendment_url)}" target="_blank" rel="noopener">latest filing ↗</a>` : 'latest filing'} (${day(s.amended_at)})` : ' · numbers from the first filing'}</span></div>
       <ul class="fsWhy">${(s.reasons || []).map(r => `<li data-tone="${toneOf(r.tone)}">${esc(r.text)}</li>`).join('')}</ul>
       ${chk ? `<div class="fsCheck">${chk}</div>` : ''}
       ${ppl.length ? `<div class="fsPeople">${ppl.map(p => `<a href="${liSearch(p.name, s)}" target="_blank" rel="noopener" title="Search LinkedIn">${esc(p.name)} ↗</a>`).join('')}${(s.executives || []).length > 4 ? `<span class="muted">+${s.executives.length - 4} more</span>` : ''}</div>` : ''}

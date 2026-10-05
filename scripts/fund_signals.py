@@ -109,10 +109,13 @@ def item_from(filing, fd):
 
 
 def latest_amendment(cik, since):
-    """Numbers from the newest D/A the fund filed after `since`, straight from the SEC's filing index for that CIK.
-    Returns None when there is none. Raises when the SEC can't be read, so a failure is never mistaken for "no amendment"."""
-    amends = sorted((f for f in sec(lambda: list(Company(int(cik)).get_filings(form="D/A"))) if str(f.filing_date) > str(since)),
-                    key=lambda f: str(f.filing_date), reverse=True)
+    """Numbers from the newest Form D filing (a D/A, or a fresh D for a new offering, e.g. Solomon Hess IO Opportunities
+    Fund II: D/A 2024-08, then a new D 2025-11) the fund filed after `since`, straight from the SEC's filing index for
+    that CIK. Returns None when there is none. Raises when the SEC can't be read, so a failure is never mistaken for
+    "no amendment". One form per call (several forms in one call have returned only one form before)."""
+    co = sec(lambda: Company(int(cik)))
+    filings = [f for form in ("D/A", "D") for f in sec(lambda form=form: list(co.get_filings(form=form)))]
+    amends = sorted((f for f in filings if str(f.filing_date) > str(since)), key=lambda f: str(f.filing_date), reverse=True)
     if not amends:
         return None
     last_err = None
