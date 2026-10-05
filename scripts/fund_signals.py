@@ -5,9 +5,9 @@ and posts them to the `fund-signals` edge function (action `ingest`). Judging (r
 the same verdicts and reasons whichever source found the filing.
 
 Modes
-  daily   new Fund II/III filings (last 4 days) + the Fund I day-window that turned 3.5 years old + queued checks
+  daily   selftest, new Fund II/III filings (last 4 days), Fund I/II filings turning 12 months old, audit, queued checks
   live    Fund II/III filings between --from and --to
-  fund1   next-fund watch: Fund I and Fund II filings between --from and --to (default: 48 to 36 months ago)
+  fund1   next-fund watch: Fund I and Fund II filings between --from and --to (default: 39 to 12 months ago)
   check   Fund II checks for queued / unchecked Fund I targets (fund name + every named person)
   recheck re-queue every checked Fund I target, then check
   probe   print the Form Ds naming people (--from "Name One;Name Two")
@@ -466,7 +466,8 @@ def main():
     if a.mode == "daily":
         fails = selftest()
         scan("live", (today - dt.timedelta(days=4)).isoformat(), today.isoformat())
-        c = today - dt.timedelta(days=round(42 * 30.44))
+        # Funds entering the next-fund window today (12 months after the filing; see the cadence study in rules.js).
+        c = today - dt.timedelta(days=round(12 * 30.44))
         scan("fund1", (c - dt.timedelta(days=3)).isoformat(), c.isoformat())
         audit()
         check()
@@ -476,8 +477,9 @@ def main():
         scan("live", a.start or (today - dt.timedelta(days=30)).isoformat(), a.end or today.isoformat())
         audit()
     elif a.mode == "fund1":
-        start = dt.date.fromisoformat(a.start) if a.start else today - dt.timedelta(days=round(48 * 30.44))
-        end = dt.date.fromisoformat(a.end) if a.end else today - dt.timedelta(days=round(36 * 30.44))
+        # Default: the whole next-fund window (Fund I 12-36 months, Fund II 15-39 months after filing).
+        start = dt.date.fromisoformat(a.start) if a.start else today - dt.timedelta(days=round(39 * 30.44))
+        end = dt.date.fromisoformat(a.end) if a.end else today - dt.timedelta(days=round(12 * 30.44))
         cur = start
         while cur <= end:  # a quarter at a time keeps each index download small
             nxt = min(cur + dt.timedelta(days=90), end)

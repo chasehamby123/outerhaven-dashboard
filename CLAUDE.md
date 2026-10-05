@@ -75,8 +75,12 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Outbound reality (Oct 2026): Peter, Tengku, Chase run campaigns in Prosp (replies arrive in `lead_intake` via webhook; sends are not tracked); the other 6 accounts are manual in AdsPower.
 
 ## Fund signals (Pipeline → Fund signals tab, `hq/funds.js`, admin only)
-- Finds US funds raising now (Form D, II/III in the name, pooled fund, $50–250M, <60% sold, no sales commissions) and Fund I
-  managers 3–4 years in who haven't filed a Fund II.
+- Finds US funds raising now (Form D, II/III in the name, pooled fund, $50–250M, <60% sold, no sales commissions) and Fund I / Fund II
+  managers inside the next-fund window who haven't filed their next fund under any name (list `fund1` holds both; `fund_no` tells them apart).
+- Windows come from the cadence study (`fund_gap_study`, cohorts `fund1-2019-v2` / `fund2-2019-v2`, rows keyed `<cohort>:<accession>`;
+  next fund = first later fund by the same people 9+ months on, shorter gaps are parallel vehicles): Fund I → next median 24 months
+  (middle half 16–35, 53% ever raise again), Fund II → next median 28 (19–37, 63%). Window: Fund I 12–36 months, Fund II 15–39; the scan
+  default is filings 39–12 months old, daily adds those turning 12 months.
 - **Source: GitHub Actions** `.github/workflows/fund-signals.yml` runs `scripts/fund_signals.py` (edgartools, SEC direct, free):
   daily 01:40 UTC (new II/III filings, the Fund I window turning 3.5 years, checks) and hourly :10 (checks: queued + unchecked Fund I targets, up to 300 per run). Check confirms "same manager" by a shared named person; name-only = "unsure" (Maybe). Backfills:
   Actions → Fund signals → Run workflow (mode live/fund1 + dates). Repo secrets: `FUND_INGEST_KEY` (= `FUND_INGEST_SECRET`, admins copy it

@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 11;
+export const RULES_VERSION = 12;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -121,10 +121,16 @@ export function classify(s, now = Date.now()) {
     else if (size < 10e6 && !(s.offering == null && !s.check_status && !s.amended_at)) add('cut', `${nm} ${word} only ${money(size)}: too small to pay for help on ${nextNm}`);
     else if (size < 10e6) add('maybe', `${nm} had raised ${money(size)} at its first filing, target not stated: check for later amendments`);
     else if (size > max) add('cut', `${nm} ${word} ${money(size)} (over ${money(max)}): likely already has a fundraising process`);
+    // Windows from the cadence study (5 Oct 2026, 250 Fund Is + 250 Fund IIs filed in 2019, next fund = first later fund by the
+    // same people, any name, 9+ months later): Fund I -> next median 24 months (middle half 16-35); Fund II -> next median 28
+    // (19-37). Only ~1 in 7 Fund I managers with no next fund at year 3 files one by year 5.
+    const W = n === 2 ? { lo: 15, hi: 39, med: 28, q: '19-37' } : { lo: 12, hi: 36, med: 24, q: '16-35' };
     if (months != null) {
-      if (months < 30) add('maybe', `${nm} is only ${(months / 12).toFixed(1)} years old: too early for ${nextNm}`);
-      else if (months > 60) add('maybe', `${nm} is ${(months / 12).toFixed(1)} years old: may have moved on or stopped`);
-      else add('good', `${nm} is ${(months / 12).toFixed(1)} years old: inside the ${nextNm} window (years 3–5)`, 20);
+      const yrs = `${nm} is ${months < 24 ? Math.round(months) + ' months' : (months / 12).toFixed(1) + ' years'} old`;
+      if (months < W.lo) add('maybe', `${yrs}: early, most managers file their next fund at ${W.q} months (median ${W.med})`);
+      else if (months <= W.hi) add('good', `${yrs}: inside the window where most managers file their next fund (median ${W.med} months, middle half ${W.q})`, 25);
+      else if (months <= 60) add('good', `${yrs}: past the usual window; most who raise again have filed by now, so this manager may be stalled (or need help most)`, 5);
+      else add('maybe', `${yrs}: may have moved on or stopped`);
     }
     if (pctSold != null && sold > 0 && pctSold < 0.6) add('good', `${nm} reached only ${pctTxt(pctSold)} of its target: ${nextNm} will be harder`, 10);
     if (n === 2) add('good', 'Fund II manager: has a track record to sell for Fund III', 5);

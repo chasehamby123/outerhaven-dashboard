@@ -103,7 +103,7 @@ function draw() {
         <button class="btn sm ghost" id="fsHow">How it works</button><button class="btn sm ghost" id="fsSet">Setup</button></div>
     </div>
     ${checksLine()}
-    <p class="pHint">${list === 'live' ? 'Fund IIs and IIIs that filed a Form D: they started taking investor money in the last few weeks.' : 'Fund I and Fund II managers whose fund started 3–4 years ago and who have not filed their next fund yet, under any name (checked by fund name and by every named person).'}
+    <p class="pHint">${list === 'live' ? 'Fund IIs and IIIs that filed a Form D: they started taking investor money in the last few weeks.' : 'Fund I and Fund II managers inside the window where most file their next fund (Fund I: 12–36 months after filing, median 24; Fund II: 15–39, median 28; from a study of 500 funds filed in 2019) who have not filed it yet, under any name.'}
       Source: SEC EDGAR (edgartools), scanned daily on GitHub, free. ${gh ? `Last run <b>${new Date(gh.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>.` : ''}${spent ? ` Apify fallback: $${spent.toFixed(2)} this month.` : ''}</p>
     ${gh ? '' : `<div class="fsBulk fsSetup"><span>Finish setup: add two secrets to GitHub so the daily scan can run.</span><button class="btn sm primary" id="fsSetup">Show me how</button></div>`}
     <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed']].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
@@ -241,7 +241,7 @@ function howModal() {
       <h4>1. Where the data comes from</h4>
       <p>Every US private fund must file a <b>Form D</b> with the SEC within 15 days of taking its first investor's money, and amend it each year while it keeps raising. HQ reads them straight from the SEC with edgartools (open source), on a free daily GitHub job. Only pooled investment funds are kept.</p>
       <h4>2. The two lists</h4>
-      <p><b>Raising now:</b> filings with "II" or "III" in the fund name, financial services only. <b>Due for next fund:</b> Fund I and Fund II filings from 3–4 years ago, scanned one quarter at a time.</p>
+      <p><b>Raising now:</b> filings with "II" or "III" in the fund name, financial services only. <b>Due for next fund:</b> Fund I and Fund II filings from 12–39 months ago, scanned one quarter at a time.</p>
       <h4>3. Automatic cuts (a fund is cut if any one applies)</h4>
       <ul><li>A single-deal vehicle: SPV, co-invest, "a series of", splitter, continuation fund.</li>
       <li>A big brand or wealth platform (Apollo, Ares, a16z, iCapital, CAIS…): they have their own fundraising team.</li>
