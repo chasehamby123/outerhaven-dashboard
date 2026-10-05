@@ -7,7 +7,7 @@ the same verdicts and reasons whichever source found the filing.
 Modes
   daily   new Fund II/III filings (last 4 days) + the Fund I day-window that turned 3.5 years old + queued checks
   live    Fund II/III filings between --from and --to
-  fund1   Fund I filings between --from and --to (default: 48 to 36 months ago)
+  fund1   next-fund watch: Fund I and Fund II filings between --from and --to (default: 48 to 36 months ago)
   check   Fund II checks for queued / unchecked Fund I targets (fund name + every named person)
   recheck re-queue every checked Fund I target, then check
   probe   print the Form Ds naming people (--from "Name One;Name Two")
@@ -29,6 +29,7 @@ FN = os.environ.get("FUND_SIGNALS_URL", "https://nfcysxqdwpdhrdpgxrlo.supabase.c
 KEY = os.environ.get("FUND_INGEST_KEY", "")
 LIVE_RE = re.compile(r"\b(II|III)(-[A-Z0-9]+)?\b")
 FUND1_RE = re.compile(r"\bI(-[A-Z0-9]+)?\b")
+NEXT_RE = re.compile(r"\bII?(-[A-Z0-9]+)?\b")  # next-fund watch: Fund I and Fund II filings
 LATER_RE = re.compile(r"\b(II|III|IV|V|VI|VII|VIII|IX|X)(-[A-Z0-9]+)?\b|\bFund\s+[2-9]\b", re.I)
 POOLED = "Pooled Investment Fund"
 
@@ -99,7 +100,7 @@ def flush(batch, list_name, start, end, sent):
 
 def scan(list_name, start, end):
     """Form D filings (originals) in [start, end] whose name has the fund number we want; pooled funds only."""
-    rx = LIVE_RE if list_name == "live" else FUND1_RE
+    rx = LIVE_RE if list_name == "live" else NEXT_RE
     fs = get_filings(form="D", amendments=False, filing_date=f"{start}:{end}")
     if fs is None or len(fs) == 0:
         log(f"{list_name}: no Form D filings {start}..{end}")

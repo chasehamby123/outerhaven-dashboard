@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 6;
+export const RULES_VERSION = 7;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -101,27 +101,30 @@ export function classify(s, now = Date.now()) {
     if (months != null && months >= 6 && pctSold != null && pctSold < 0.3 && s.first_sale) add('good', `Stuck: only ${pctTxt(pctSold)} raised in ${Math.round(months)} months`, 40);
     else if (months != null && months >= 12 && pctSold == null && s.first_sale) add('good', `Still raising ${Math.round(months)} months after the first sale`, 20);
   } else {
-    if (s.fund_no >= 2) add('cut', 'Not a Fund I');
-    // Size = money actually raised when there is any (a $50M target with $375K raised never really happened).
-    const size = s.sold > 0 ? s.sold : s.offering || null;
-    if (!size) add('maybe', 'Fund I size unknown');
-    else if (size < 10e6) add('cut', `Fund I ${s.sold > 0 ? 'raised' : 'targeted'} only ${money(size)}: too small to pay for help on Fund II`);
-    else if (size > 75e6) add('cut', `Fund I over $75M (${money(size)}): likely already has a fundraising process`);
+    // Next-fund watch (list 'fund1' holds Fund Is AND Fund IIs since 5 Oct 2026): a manager whose last fund is old enough
+    // that the next one is due. Fund II managers raising a Fund III are in scope too.
+    const n = s.fund_no || 1, nm = `Fund ${romanOf(n) || 'I'}`, nextNm = `Fund ${romanOf(n + 1)}`;
+    if (n >= 3) add('cut', `${nm}: established manager with existing investors`);
+    const size = s.sold > 0 ? s.sold : s.offering || null, max = n === 2 ? 150e6 : 75e6;
+    if (!size) add('maybe', `${nm} size unknown`);
+    else if (size < 10e6) add('cut', `${nm} ${s.sold > 0 ? 'raised' : 'targeted'} only ${money(size)}: too small to pay for help on ${nextNm}`);
+    else if (size > max) add('cut', `${nm} over ${money(max)} (${money(size)}): likely already has a fundraising process`);
     if (months != null) {
-      if (months < 30) add('maybe', `Fund I is only ${(months / 12).toFixed(1)} years old: too early for Fund II`);
-      else if (months > 60) add('maybe', `Fund I is ${(months / 12).toFixed(1)} years old: may have moved on or stopped`);
-      else add('good', `Fund I is ${(months / 12).toFixed(1)} years old: inside the Fund II window (years 3–5)`, 20);
+      if (months < 30) add('maybe', `${nm} is only ${(months / 12).toFixed(1)} years old: too early for ${nextNm}`);
+      else if (months > 60) add('maybe', `${nm} is ${(months / 12).toFixed(1)} years old: may have moved on or stopped`);
+      else add('good', `${nm} is ${(months / 12).toFixed(1)} years old: inside the ${nextNm} window (years 3–5)`, 20);
     }
-    if (pctSold != null && sold > 0 && pctSold < 0.6) add('good', `Fund I reached only ${pctTxt(pctSold)} of its target: Fund II will be harder`, 10);
-    if (s.check_status === 'clear' && !(s.sold > 0)) add('maybe', 'No money reported raised, even in later filings: Fund I may never have closed');
-    else if (s.check_status === 'clear') add('good', `No Fund II filed yet (checked ${String(s.checked_at || '').slice(0, 10)})`, 25);
+    if (pctSold != null && sold > 0 && pctSold < 0.6) add('good', `${nm} reached only ${pctTxt(pctSold)} of its target: ${nextNm} will be harder`, 10);
+    if (n === 2) add('good', 'Fund II manager: has a track record to sell for Fund III', 5);
+    if (s.check_status === 'clear' && !(s.sold > 0)) add('maybe', `No money reported raised, even in later filings: ${nm} may never have closed`);
+    else if (s.check_status === 'clear') add('good', `No ${nextNm} or renamed next fund filed yet (checked ${String(s.checked_at || '').slice(0, 10)})`, 25);
     else if (s.check_status === 'next') add('cut', s.check_note || 'Already filed a later fund');
-    else if (s.check_status === 'unsure') add('maybe', s.check_note || 'Possible Fund II, not confirmed: check by hand');
-    else if (s.check_status === 'error') add('maybe', 'Fund II check failed: run it again');
-    else if (s.check_status === 'checking') add('info', 'Checking EDGAR for a Fund II…');
-    else if (s.check_status === 'queued') add('info', 'Queued for a Fund II check (runs hourly on GitHub)');
-    else add('info', 'Not checked for a Fund II yet');
-    if (s.still_raising) add('good', `Still raising Fund I: ${s.still_raising}`, 30);
+    else if (s.check_status === 'unsure') add('maybe', s.check_note || `Possible ${nextNm}, not confirmed: check by hand`);
+    else if (s.check_status === 'error') add('maybe', 'Next-fund check failed: run it again');
+    else if (s.check_status === 'checking') add('info', `Checking EDGAR for a ${nextNm}…`);
+    else if (s.check_status === 'queued') add('info', 'Queued for a next-fund check (runs hourly on GitHub)');
+    else add('info', 'Not checked for a next fund yet');
+    if (s.still_raising) add('good', `Still raising ${nm}: ${s.still_raising}`, 30);
   }
   if (/06c/.test(s.exemptions || '')) add('good', 'Rule 506(c): allowed to market publicly, so already looking for investors openly', 8);
 

@@ -75,16 +75,16 @@ function draw() {
 
   el.innerHTML = `<div class="fs">
     <div class="fsTop">
-      <div class="pSeg" role="group">${[['live', 'Raising now'], ['fund1', 'Fund I, due for Fund II']].map(([k, l]) => `<button type="button" data-list="${k}" class="${list === k ? 'on' : ''}">${l}<em>${grouped(k).filter(s => bucket(s) === 'target').length}</em></button>`).join('')}</div>
+      <div class="pSeg" role="group">${[['live', 'Raising now'], ['fund1', 'Due for next fund']].map(([k, l]) => `<button type="button" data-list="${k}" class="${list === k ? 'on' : ''}">${l}<em>${grouped(k).filter(s => bucket(s) === 'target').length}</em></button>`).join('')}</div>
       <div class="row fsBtns"><a class="btn sm primary" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a>
         <button class="btn sm" id="fsCollect">${running.length ? `Collect results (${running.length} running)` : 'Refresh'}</button>
         <button class="btn sm ghost" id="fsHow">How it works</button><button class="btn sm ghost" id="fsSet">Setup</button></div>
     </div>
-    <p class="pHint">${list === 'live' ? 'Fund IIs and IIIs that filed a Form D: they started taking investor money in the last few weeks.' : 'Fund Is that started 3–4 years ago. If no Fund II has been filed, they are about to raise one.'}
+    <p class="pHint">${list === 'live' ? 'Fund IIs and IIIs that filed a Form D: they started taking investor money in the last few weeks.' : 'Fund I and Fund II managers whose fund started 3–4 years ago and who have not filed their next fund yet, under any name (checked by fund name and by every named person).'}
       Source: SEC EDGAR (edgartools), scanned daily on GitHub, free. ${gh ? `Last run <b>${new Date(gh.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>.` : ''}${spent ? ` Apify fallback: $${spent.toFixed(2)} this month.` : ''}</p>
     ${gh ? '' : `<div class="fsBulk fsSetup"><span>Finish setup: add two secrets to GitHub so the daily scan can run.</span><button class="btn sm primary" id="fsSetup">Show me how</button></div>`}
     <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed']].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
-    ${list === 'fund1' && view === 'target' && shown.some(s => !s.check_status) ? `<div class="fsBulk"><span>${shown.filter(s => !s.check_status).length} not yet checked for a Fund II.</span><button class="btn sm" id="fsCheckAll">Queue them all (free, runs within the hour)</button></div>` : ''}
+    ${list === 'fund1' && view === 'target' && shown.some(s => !s.check_status) ? `<div class="fsBulk"><span>${shown.filter(s => !s.check_status).length} not yet checked for a next fund.</span><button class="btn sm" id="fsCheckAll">Queue them all (free, runs within the hour)</button></div>` : ''}
     <div class="fsList">${shown.length ? shown.map(rowHtml).join('') : `<div class="empty">${view === 'target' ? (all.length ? 'No targets in this list right now.' : 'Nothing scanned yet. Run a scan above; results arrive in a few minutes.') : 'Nothing here.'}</div>`}</div>
   </div>`;
   bind(shown);
@@ -114,7 +114,7 @@ function rowHtml(s) {
     <div class="fsAct">
       ${s.status !== 'added' ? `<button class="btn sm ${s.verdict === 'target' ? 'primary' : ''}" data-add="${s.id}">Add to pipeline</button>` : '<span class="pFlag good">In pipeline</span>'}
       <button class="btn sm" data-copy="${s.id}">Copy opener</button>
-      ${!['checking', 'queued'].includes(s.check_status) ? `<button class="btn sm" data-check="${s.id}">${s.check_status ? 'Re-check' : s.list === 'live' ? 'Check newer filings' : 'Check for Fund II'}</button>` : ''}
+      ${!['checking', 'queued'].includes(s.check_status) ? `<button class="btn sm" data-check="${s.id}">${s.check_status ? 'Re-check' : s.list === 'live' ? 'Check newer filings' : 'Check for next fund'}</button>` : ''}
       ${s.filing_url ? `<a class="btn sm ghost" href="${esc(s.filing_url)}" target="_blank" rel="noopener">Filing ↗</a>` : ''}
       ${s.status === 'dismissed' ? `<button class="btn sm ghost" data-undo="${s.id}">Restore</button>` : s.status !== 'added' ? `<button class="btn sm ghost" data-dismiss="${s.id}">Dismiss</button>` : ''}
     </div></article>`;
@@ -125,7 +125,8 @@ function opener(s) {
   const pct = s.offering && s.sold ? Math.round(s.sold / s.offering * 100) : null;
   if (s.list === 'fund1') {
     const yrs = s.first_sale || s.filing_date ? ((Date.now() - Date.parse(s.first_sale || s.filing_date)) / (365.25 * DAY)).toFixed(0) : 'a few';
-    return `Hi ${who}, ${s.check_keyword} Fund I is about ${yrs} years in, so Fund II planning is probably on the table. We help emerging managers line up new LPs (family offices especially) before launch, not after. Open to comparing notes on who's on your list?`;
+    const cur = s.fund_no === 2 ? 'Fund II' : 'Fund I', nxt = s.fund_no === 2 ? 'Fund III' : 'Fund II';
+    return `Hi ${who}, ${s.check_keyword} ${cur} is about ${yrs} years in, so ${nxt} planning is probably on the table. We help emerging managers line up new LPs (family offices especially) before launch, not after. Open to comparing notes on who's on your list?`;
   }
   const where = s.sold && s.offering ? `${money(s.sold)} toward ${money(s.offering)}${pct != null ? ` (${pct}%)` : ''}` : 'the raise';
   return `Hi ${who}, congrats on getting ${s.check_keyword} Fund ${ROMAN[s.fund_no] || ''} underway: ${where}. We introduce family offices and other LPs to managers at your stage. Worth a quick chat on who's still on your list?`;
@@ -217,7 +218,7 @@ function howModal() {
       <h4>1. Where the data comes from</h4>
       <p>Every US private fund must file a <b>Form D</b> with the SEC within 15 days of taking its first investor's money, and amend it each year while it keeps raising. HQ reads them straight from the SEC with edgartools (open source), on a free daily GitHub job. Only pooled investment funds are kept.</p>
       <h4>2. The two lists</h4>
-      <p><b>Raising now:</b> filings with "II" or "III" in the fund name, financial services only. <b>Fund I, due for Fund II:</b> Fund I filings from 3–4 years ago, scanned one quarter at a time.</p>
+      <p><b>Raising now:</b> filings with "II" or "III" in the fund name, financial services only. <b>Due for next fund:</b> Fund I and Fund II filings from 3–4 years ago, scanned one quarter at a time.</p>
       <h4>3. Automatic cuts (a fund is cut if any one applies)</h4>
       <ul><li>A single-deal vehicle: SPV, co-invest, "a series of", splitter, continuation fund.</li>
       <li>A big brand or wealth platform (Apollo, Ares, a16z, iCapital, CAIS…): they have their own fundraising team.</li>
@@ -228,8 +229,8 @@ function howModal() {
       <ul><li>Target size "Indefinite", so % raised can't be worked out.</li><li>Non-US manager, or no named people on the filing.</li><li>Fund I younger than 2.5 or older than 5 years.</li></ul>
       <h4>5. Score (higher = call first)</h4>
       <ul><li><b>+40</b> stuck: under 30% raised 6+ months after the first sale.</li><li><b>+30</b> Fund I still raising years later.</li><li><b>+25</b> checked: no Fund II filed yet.</li><li><b>+20</b> Fund II (the hardest raise), or Fund I inside the year 3–5 window.</li><li><b>+15</b> filed before taking money, or under 30% raised.</li><li><b>+8</b> Rule 506(c): allowed to market publicly.</li></ul>
-      <h4>6. The Fund II check</h4>
-      <p>Pulls every later filing by the same fund (by its SEC company number), and runs an SEC full-text search for later Form Ds under the manager's name (e.g. "Ground Game"). A later fund with a higher number = cut ("already filed Fund II"). A newer amendment of the same fund (same SEC company number) updates how much it has raised. Different firms that share a word are ignored unless the name matches.</p>
+      <h4>6. The next-fund check</h4>
+      <p>Pulls every later filing by the same fund (by its SEC company number), and runs an SEC full-text search for later Form Ds under the manager's name (e.g. "Ground Game"). A later fund with a higher number = cut ("already filed Fund II"). It also searches every person named on the filing: a later pooled fund under any name with the same people (e.g. a Fund I followed by a "Frontier Fund" with the same partners) also counts as the next fund. A newer amendment of the same fund (same SEC company number) updates how much it has raised. Different firms that share a word are ignored unless the name matches.</p>
       <h4>7. What it can't see</h4>
       <ul><li>Funds that raise without filing, or file under a different name.</li><li>Whether the people are still active or reachable: check LinkedIn before messaging.</li><li>Funds whose target is "Indefinite" can't be ranked on % raised.</li></ul>
       <p class="s muted">Placement for a success fee on fund capital needs a US broker-dealer (or a partner who is one). Sort that before signing a mandate.</p></div>`,
