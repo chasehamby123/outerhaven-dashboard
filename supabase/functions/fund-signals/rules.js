@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 8;
+export const RULES_VERSION = 9;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -109,10 +109,15 @@ export function classify(s, now = Date.now()) {
     // that the next one is due. Fund II managers raising a Fund III are in scope too.
     const n = s.fund_no || 1, nm = `Fund ${romanOf(n) || 'I'}`, nextNm = `Fund ${romanOf(n + 1)}`;
     if (n >= 3) add('cut', `${nm}: established manager with existing investors`);
-    const size = s.sold > 0 ? s.sold : s.offering || null, max = n === 2 ? 150e6 : 75e6;
-    if (!size) add('maybe', `${nm} size unknown`);
-    else if (size < 10e6) add('cut', `${nm} ${s.sold > 0 ? 'raised' : 'targeted'} only ${money(size)}: too small to pay for help on ${nextNm}`);
-    else if (size > max) add('cut', `${nm} over ${money(max)} (${money(size)}): likely already has a fundraising process`);
+    // Size = the target. The amount raised on the first Form D is only the first close (filed within 15 days of it), so it
+    // is used only when no target is stated, or once the check has read the latest amendment.
+    const raisedFinal = s.check_status && s.sold > 0 ? s.sold : null;
+    const size = s.offering || raisedFinal || (s.sold > 0 ? s.sold : null), max = n === 2 ? 150e6 : 75e6;
+    const word = s.offering ? 'targeted' : 'raised';
+    if (!size) add('maybe', `${nm} size unknown (target "Indefinite", nothing raised yet at filing)`);
+    else if (size < 10e6 && !(s.offering == null && !s.check_status)) add('cut', `${nm} ${word} only ${money(size)}: too small to pay for help on ${nextNm}`);
+    else if (size < 10e6) add('maybe', `${nm} had raised ${money(size)} at its first filing, target not stated: check for later amendments`);
+    else if (size > max) add('cut', `${nm} ${word} ${money(size)} (over ${money(max)}): likely already has a fundraising process`);
     if (months != null) {
       if (months < 30) add('maybe', `${nm} is only ${(months / 12).toFixed(1)} years old: too early for ${nextNm}`);
       else if (months > 60) add('maybe', `${nm} is ${(months / 12).toFixed(1)} years old: may have moved on or stopped`);

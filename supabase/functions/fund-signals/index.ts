@@ -166,7 +166,9 @@ async function ingest(body: any) {
   if (body.kind === "todo") {
     const cols = "id,manager_key,check_keyword,cik,filing_date,fund_no,company_name,executives";
     const queued = (await sb.from("fund_signals").select(cols).eq("check_status", "queued").limit(300)).data || [];
-    const fresh = (await sb.from("fund_signals").select(cols).eq("list", "fund1").eq("verdict", "target").is("check_status", null).limit(300)).data || [];
+    // Targets first, then maybes (often "size unknown": the latest amendment can settle it).
+    const fresh = [...((await sb.from("fund_signals").select(cols).eq("list", "fund1").eq("verdict", "target").is("check_status", null).limit(300)).data || []),
+      ...((await sb.from("fund_signals").select(cols).eq("list", "fund1").eq("verdict", "maybe").is("check_status", null).limit(300)).data || [])];
     const stale = (await sb.from("fund_signals").select(cols).eq("list", "fund1").eq("verdict", "target").eq("check_status", "clear").lt("checked_at", new Date(Date.now() - 30 * DAY).toISOString()).limit(30)).data || [];
     const stuck = (await sb.from("fund_signals").select(cols).eq("check_status", "checking").lt("updated_at", new Date(Date.now() - 6 * 3600e3).toISOString()).limit(30)).data || [];
     const all = [...queued, ...stuck, ...fresh, ...stale].filter((x, i, a) => a.findIndex(y => y.id === x.id) === i).slice(0, 300);
