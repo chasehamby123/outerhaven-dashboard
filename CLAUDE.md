@@ -93,6 +93,12 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   `probe` (from = names separated by ;); results come back as a run annotation (`gh api .../check-runs/<job id>/annotations`), since
   raw logs are on blob storage the sandbox can't reach. `gh api` can dispatch the workflow from the session. Mode `recheck` re-queues
   every checked Fund I target, then checks.
+- **Data accuracy rules (5 Oct 2026, after Tengku caught Eventide $0 vs $64.65M and Hartbeat $0 vs $28M):** numbers come from the
+  newest D/A (`with_latest` at scan, `amended_at` / `amendment_url` shown in HQ); every SEC call goes through `sec()` retries; an
+  unreadable filing is recorded, never treated as "no data" (scan → `fund_data_checks` failures; check → status error, retried hourly).
+  Hard checks in `fund_data_checks`: `selftest` (KNOWN cases in fund_signals.py vs live SEC data, run first in daily; failure = red
+  GitHub run) and `audit` (every non-vehicle row re-verified against the SEC filing index, stale rows fixed; after daily/fund1/live).
+  Add every hand-caught error to KNOWN. HQ shows the latest self-test and audit above the list.
 - Apify actor `logiover/sec-edgar-form-d-scraper` is a fallback only (it silently returned a partial list on 2 Oct 2026); weekly Apify
   scan stays off (`growth_settings.fund_scan_enabled`), budget `fund_monthly_budget`.
 - Tables `fund_signals` (one row per filing, `fund_key` groups feeder/parallel vehicles) and `fund_signal_runs` (`params.source='github'`
