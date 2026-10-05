@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 5;
+export const RULES_VERSION = 6;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -159,8 +159,9 @@ export function readCheck(s, items) {
       if (s.cik && it.cik && Number(s.cik) === Number(it.cik)) continue;
       if (!date || (s.filing_date && date <= s.filing_date)) continue;
       if (it.industryGroup && it.industryGroup !== 'Pooled Investment Fund') continue;
+      // Deal vehicles (one property, one co-invest) don't count as a next fund: under $10M, or AIV / opportunity-zone names.
       const off = num(it.totalOfferingAmount);
-      if (off != null && off < 5e6) continue;
+      if ((off != null && off < 10e6) || /\b(aiv|oz|qof|qozf|investco|propco)\b/i.test(it.companyName || '')) continue;
       const theirs = people(it), shared = sharedPeople(s.executives, theirs);
       if (!shared.length) continue;
       byPerson.push({ name: it.companyName, date, form: it.formType, offering: off, sold: num(it.totalAmountSold), fund_no: p.fund_no, cik: it.cik || null,
