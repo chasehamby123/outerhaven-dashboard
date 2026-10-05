@@ -101,3 +101,7 @@ select cron.schedule('fund-signals', '*/15 * * * *', 'select public.invoke_fund_
 
 -- Re-judging after a rules change: rows whose rules_version is behind rules.js RULES_VERSION are re-judged by the cron.
 alter table public.fund_signals add column if not exists rules_version smallint not null default 0;
+
+-- 5 Oct 2026: numbers come from the newest amendment (D/A) when there is one; the first Form D only shows the first close.
+alter table public.fund_signals add column if not exists amended_at date;
+alter table public.fund_signals add column if not exists amendment_url text;

@@ -92,6 +92,33 @@ def item_from(filing, fd):
     }
 
 
+def with_latest(item, cik, since):
+    """Overwrite the first Form D's numbers with the newest amendment's (D/A): the first filing is made within 15 days of
+    the first close, so its "amount sold" is only the first cheque (Eventide Healthcare Innovation Fund I: $0 on the
+    original, $64M on its latest D/A). Keeps the original filing date; adds amendedAt."""
+    try:
+        amends = [f for f in Company(int(cik)).get_filings(form="D/A") if str(f.filing_date) > str(since)]
+    except Exception:  # noqa: BLE001
+        return item
+    for f in sorted(amends, key=lambda f: str(f.filing_date), reverse=True)[:2]:
+        try:
+            fd = f.obj()
+            osa, inv = fd.offering_data.offering_sales_amounts, fd.offering_data.investors
+            if osa:
+                item["totalOfferingAmount"] = txt(osa.total_offering_amount) or item["totalOfferingAmount"]
+                item["totalAmountSold"] = txt(osa.total_amount_sold) or item["totalAmountSold"]
+                item["totalRemaining"] = txt(osa.total_remaining) or item.get("totalRemaining")
+            if inv:
+                item["numberOfInvestors"] = txt(inv.total_already_invested) or item["numberOfInvestors"]
+            item["dateOfFirstSale"] = txt(fd.offering_data.date_of_first_sale) or item["dateOfFirstSale"]
+            item["amendedAt"] = str(f.filing_date)
+            item["amendmentUrl"] = f.homepage_url
+            return item
+        except Exception:  # noqa: BLE001
+            continue
+    return item
+
+
 def flush(batch, list_name, start, end, sent):
     r = post({"action": "ingest", "kind": "scan", "list": list_name, "items": batch, "from": start, "to": end})
     log(f"  sent {sent + len(batch)} (new {r.get('added')})")
@@ -118,7 +145,7 @@ def scan(list_name, start, end):
             if not ig or ig.industry_group_type != POOLED:
                 skipped += 1
                 continue
-            batch.append(item_from(f, fd))
+            batch.append(with_latest(item_from(f, fd), f.cik, f.filing_date))
         except Exception as e:  # noqa: BLE001
             log(f"  skip {f.company}: {e}")
             skipped += 1
