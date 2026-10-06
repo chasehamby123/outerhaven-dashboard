@@ -189,6 +189,18 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   Webhooks (Connection Sent / Message Sent / Connection Accepted) would be the exact alternative. Source: `supabase/functions/prosp-sync/index.ts`.
 - Known smell: `prosp-reply` has its webhook token hardcoded in source.
 
+## HQ chat button (6 Oct 2026; `hq/chat.js`, `supabase/functions/hq-chat`, `routines/chat.md`, `supabase/2026-10-06-chat.sql`)
+- Floating button bottom right on every HQ page (admin + ops). Each person has their own tabs (`chat_threads`) and permanent history
+  (`chat_messages`; closing a tab only sets `archived`, History reopens it; RLS = own rows only; browser never writes messages).
+- Send → edge function `hq-chat` (verify_jwt=false, checks the user's JWT + role) → inserts user message + 'working' assistant placeholder +
+  a `resource_jobs` row (`payload.type='chat'`, hidden from Resources by `isResource`; fired_at stays null so it doesn't use the resource cap)
+  → fires the same routine as resource-request. The skill redirects to `routines/chat.md`; the routine writes the answer into the placeholder.
+  Replies take 1–2 min. Limits: one answer at a time per tab, 3 chats at once, `growth_settings.chat_daily_cap` (40) messages/person/day.
+  `chat_sweep()` turns replies stuck >20 min into errors.
+- Policy (Tengku, 6 Oct): mostly ask. The routine's DB access is read-only in chat; any change goes to a branch `chat/<date>-<slug>` with a
+  GitHub compare link, never main, never live (no migrations applied, no deploys). Ops role = ask only (`payload.access`).
+  Untested end to end against the live routine: first real message is the test.
+
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.
 - Never enter passwords, API keys or tokens for the user, even with permission. Point them to the HQ field.

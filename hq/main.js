@@ -7,6 +7,7 @@ import { renderToday, armWhip, refreshBadge } from './today.js';
 import { renderResources } from './resources.js';
 import { renderSchedule } from './schedule.js';
 import { renderPipeline, refreshPipelineBadge } from './pipeline.js';
+import { mountChat } from './chat.js';
 
 const ROUTES = {
   today: { label: 'Today', render: r => renderToday(r), ops: true },
@@ -124,6 +125,7 @@ async function start() {
   const r = await authenticate();
   if (!r.ok) return authScreen(r.msg);
   shell();
+  mountChat();
   $('#view').innerHTML = '<div class="empty">Loading…</div>';
   onChange(render);
   window.addEventListener('hq:modalclosed', render);

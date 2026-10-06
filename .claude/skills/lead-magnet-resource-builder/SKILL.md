@@ -6,6 +6,9 @@ description: Build the free resource behind a lead magnet post (Notion doc, PDF,
 <!-- Copy of Tengku's account skill, committed so the "OuterHaven resource builder" routine can use it.
      When the account skill changes, update this file too. -->
 
+> **HQ chat jobs:** if the job row's `payload->>'type'` is `'chat'`, this is a message from the HQ chat button, not a lead magnet.
+> Ignore the rest of this skill and follow `routines/chat.md` in this repo for the whole job.
+
 > **Deal teaser jobs:** if the job row's `payload->>'type'` is `'teaser'`, this is not a lead magnet.
 > Ignore the rest of this skill and follow `routines/teaser-builder.md` in this repo for the whole job.
 
