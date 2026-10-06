@@ -33,6 +33,53 @@ const duration = mins => {
 
 const isChase = () => String(state.user?.email || '').toLowerCase() === 'chasehamby@chproduction.org';
 
+function injectStyles() {
+  if (document.getElementById('chaseDailyStyles')) return;
+  const style = document.createElement('style');
+  style.id = 'chaseDailyStyles';
+  style.textContent = `
+    .chaseDailyPage{max-width:1180px;margin:0 auto;padding:28px 28px 56px}
+    .chaseDailyHero{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:24px}
+    .chaseDailyEyebrow{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--brass);margin-bottom:8px}
+    .chaseDailyHero h1{margin:0;font:600 38px/1.05 "Source Serif 4",serif}
+    .chaseDailyHero p{margin:8px 0 0;max-width:680px;color:var(--muted);font-size:15px}
+    .chaseDailyStats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:18px}
+    .chaseDailyStats .card{padding:18px 20px}
+    .cdStatLabel{display:block;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+    .chaseDailyStats b{display:block;margin-top:5px;font-size:22px}
+    .chaseDailyStats small{display:block;margin-top:4px;color:var(--muted);font-size:13px}
+    .chaseDailyList{overflow:hidden}
+    .chaseDailyList>header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:22px 24px;border-bottom:1px solid var(--line)}
+    .chaseDailyList h2{margin:0;font-size:19px}
+    .chaseDailyList header p{margin:5px 0 0;color:var(--muted);font-size:13px}
+    .cdProgress{font-size:18px;color:var(--brass)}
+    .chaseDailyList>ul{list-style:none;margin:0;padding:0}
+    .cdBlock{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 24px;border-bottom:1px solid var(--line);transition:background .15s}
+    .cdBlock:last-child{border-bottom:0}
+    .cdBlock:hover{background:color-mix(in srgb,var(--panel) 86%,var(--brass))}
+    .cdBlock.done{opacity:.62}
+    .cdCheck{display:flex;align-items:center;gap:14px;min-width:0;cursor:pointer;flex:1}
+    .cdCheck input{position:absolute;opacity:0;pointer-events:none}
+    .cdBox{width:22px;height:22px;flex:0 0 22px;border:1.5px solid var(--muted);border-radius:6px;display:grid;place-items:center}
+    .cdBlock.done .cdBox{background:var(--good);border-color:var(--good)}
+    .cdBlock.done .cdBox:after{content:"✓";color:#fff;font-weight:800;font-size:14px}
+    .cdBlockMain{display:flex;flex-direction:column;gap:5px;min-width:0}
+    .cdBlockMain>b{font-size:16px}
+    .cdBlock.done .cdBlockMain>b{text-decoration:line-through}
+    .cdMeta{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:13px}
+    .cdMeta em{font-style:normal;font-weight:700;color:var(--text)}
+    .cdBlockMain small{color:var(--muted);font-size:13px;white-space:normal}
+    .cdEmpty{text-align:center;padding:58px 24px}
+    .cdEmptyIcon{width:44px;height:44px;border:1px dashed var(--muted);border-radius:50%;display:grid;place-items:center;margin:0 auto 14px;font-size:24px;color:var(--brass)}
+    .cdEmpty h3{margin:0;font-size:18px}
+    .cdEmpty p{max-width:560px;margin:8px auto 18px;color:var(--muted);font-size:14px;line-height:1.55}
+    .cdForm{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media(max-width:760px){.chaseDailyPage{padding:20px 14px 40px}.chaseDailyHero{align-items:flex-start;flex-direction:column}.chaseDailyHero h1{font-size:32px}.chaseDailyStats{grid-template-columns:1fr}.cdBlock{padding:16px}.chaseDailyList>header{padding:18px 16px}.cdForm{grid-template-columns:1fr}}
+  `;
+  document.head.appendChild(style);
+}
+
+
 async function load() {
   if (!isChase()) return;
   workDate = localDate();
@@ -240,6 +287,7 @@ function openBlockModal(def = null) {
 }
 
 export function renderChaseDaily(el) {
+  injectStyles();
   root = el;
   if (!isChase()) {
     el.innerHTML = '<div class="empty">This page is private.</div>';
