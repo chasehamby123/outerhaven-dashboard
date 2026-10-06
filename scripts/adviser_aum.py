@@ -198,7 +198,7 @@ def match(s, by_crd, by_name):
         names = {norm(h.get("firm_name"))} | {norm(x) for x in (h.get("firm_other_names") or [])}
         if names & en:
             crd = str(h.get("firm_source_id"))
-            return by_crd.get(crd) or {"crd": crd, "name": h.get("firm_name"), "type": "State-registered" if crd not in by_crd else None,
+            return by_crd.get(crd) or {"crd": crd, "name": h.get("firm_name"), "type": "Not in SEC files (state-registered or relying adviser)",
                                        "raum": None, "gav": None, "pf": None, "filed": None}, "adviser's other names include a filing entity"
     if len(key) >= 5 and (len(key.split()) >= 2 or len(key) >= 7):
         st = (s.get("state") or "").upper()
@@ -214,7 +214,7 @@ def match(s, by_crd, by_name):
             names = [norm(h.get("firm_name"))] + [norm(x) for x in (h.get("firm_other_names") or [])]
             if st and hst == st and any(n == key or n.startswith(key + " ") for n in names):
                 crd = str(h.get("firm_source_id"))
-                rec = by_crd.get(crd) or {"crd": crd, "name": h.get("firm_name"), "type": "State-registered", "raum": None, "gav": None, "pf": None, "filed": None}
+                rec = by_crd.get(crd) or {"crd": crd, "name": h.get("firm_name"), "type": "Not in SEC files (state-registered or relying adviser)", "raum": None, "gav": None, "pf": None, "filed": None}
                 return rec, "same name and state"
     return None, None
 
