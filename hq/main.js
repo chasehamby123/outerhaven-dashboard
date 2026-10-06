@@ -8,6 +8,7 @@ import { renderResources } from './resources.js';
 import { renderSchedule } from './schedule.js';
 import { renderPipeline, refreshPipelineBadge } from './pipeline.js';
 import { mountChat } from './chat.js';
+import { renderChaseDaily } from './chase-daily.js';
 
 const ROUTES = {
   today: { label: 'Today', render: r => renderToday(r), ops: true },
@@ -16,12 +17,14 @@ const ROUTES = {
   schedule: { label: 'Schedule', render: (r, sub) => renderSchedule(r, sub), ops: true },
   pipeline: { label: 'Pipeline', render: (r, sub) => renderPipeline(r, sub) },
   resources: { label: 'Resources', render: (r, sub) => renderResources(r, sub), ops: true },
+  'chase-daily': { label: 'My Daily Ops', render: r => renderChaseDaily(r), chaseOnly: true },
 };
 
 const home = () => state.role === 'ops' ? 'today' : 'overview';
 function route() {
   let [, page, sub] = (location.hash || '').split('/');
-  if (!ROUTES[page] || (state.role === 'ops' && !ROUTES[page].ops)) page = home();
+  const chase = String(state.user?.email || '').toLowerCase() === 'chasehamby@chproduction.org';
+  if (!ROUTES[page] || (state.role === 'ops' && !ROUTES[page].ops) || (ROUTES[page].chaseOnly && !chase)) page = home();
   return { page, sub };
 }
 
@@ -67,6 +70,7 @@ function shell() {
         ${navLink('pipeline', '#/pipeline', 'Pipeline')}
         ${navLink('growth', '#/growth/posts', 'Growth')}
         ${navLink('resources', '#/resources', 'Resources')}
+        ${String(state.user?.email || '').toLowerCase() === 'chasehamby@chproduction.org' ? navLink('chase-daily', '#/chase-daily', 'My Daily Ops') : ''}
         <small>Legacy</small>
         <a href="/shared.html">${ICON.pipeline}<span>Old pipeline board</span><em>↗</em></a>`}
       </nav>
