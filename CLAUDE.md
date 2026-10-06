@@ -97,6 +97,12 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   `probe` (from = names separated by ;); results come back as a run annotation (`gh api .../check-runs/<job id>/annotations`), since
   raw logs are on blob storage the sandbox can't reach. `gh api` can dispatch the workflow from the session. Mode `recheck` re-queues
   every checked Fund I target, then checks.
+- **Reliable runs (6 Oct 2026):** GitHub's cron is best-effort (Oct 3-5: ~6 of ~25 scheduled runs a day, hours late). pg_cron jobs
+  `fund-signals-daily-dispatch` (01:40 UTC) and `fund-signals-check-dispatch` (:10 hourly) call `dispatch_fund_workflow(mode)`, which
+  POSTs workflow_dispatch to GitHub with `integration_secrets.GITHUB_DISPATCH_TOKEN` (no token = no-op). Admin pastes it in Fund signals →
+  Setup (RPC `set_github_dispatch_token`, write-only; never enter it for the user); `github_dispatch_status()` shows token + last answers
+  (204 = started). Log: `fund_dispatch_log`. Once dispatches return 204, drop the `schedule:` block from the workflow (duplicates).
+  Migration `supabase/2026-10-06-github-dispatch.sql`.
 - **Data accuracy rules (5 Oct 2026, after Tengku caught Eventide $0 vs $64.65M and Hartbeat $0 vs $28M):** numbers come from the
   newest D/A (`with_latest` at scan, `amended_at` / `amendment_url` shown in HQ); every SEC call goes through `sec()` retries; an
   unreadable filing is recorded, never treated as "no data" (scan → `fund_data_checks` failures; check → status error, retried hourly).

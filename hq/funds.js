@@ -226,10 +226,37 @@ function settingsModal() {
         <li>New secret again. Name <b>SEC_IDENTITY</b>, value: a name and email, e.g. <code>OuterHaven Advisory you@yourdomain.com</code>. The SEC asks every tool to identify itself; it's never shown publicly.</li>
         <li>Open <a href="${GH_RUN}" target="_blank" rel="noopener">Actions → Fund signals ↗</a>, click <b>Run workflow</b>. Mode <b>daily</b> for a quick test, or <b>fund1</b> / <b>live</b> with dates for a backfill.</li>
       </ol>
-      <h4>Schedule</h4>
-      <p>Daily at 09:40 MYT: new Fund II/III filings, the Fund I filings turning 3.5 years old, and Fund II checks. Hourly at :10: checks you queued here. Results show up in this tab as they land.</p>
+      <h4>Reliable schedule</h4>
+      <p>GitHub's own timer is best-effort and skips most runs (Oct 3–5: about 6 of 25 a day, hours late). HQ's database starts the runs on time instead (daily 09:40 MYT, checks hourly at :10) once it has a GitHub token that may start workflows. Paste it once:</p>
+      <ol>
+        <li>Who: the repo owner (Chase) makes a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token ↗</a>: repository <b>outerhaven-dashboard</b> only, permission <b>Actions: Read and write</b>, expiry 1 year. (Anyone else with push access can use a <a href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=OuterHaven%20HQ%20dispatch" target="_blank" rel="noopener">classic token ↗</a> with <b>repo</b> + <b>workflow</b>.)</li>
+        <li>Paste it here: <input type="password" id="fsGhTok" placeholder="github_pat_… or ghp_…" autocomplete="off" style="width:min(100%,320px)"> <button type="button" class="btn sm primary" id="fsGhSave">Save</button> <button type="button" class="btn sm ghost" id="fsGhClear">Remove</button></li>
+      </ol>
+      <p id="fsGhStatus" class="s muted">Checking…</p>
       <p class="s muted">The key only lets GitHub add filings and check results to this tab. If it leaks, tell Claude to rotate FUND_INGEST_SECRET and paste the new one.</p></div>`,
   });
+  const ghStatus = async () => {
+    const { data, error } = await sb.rpc('github_dispatch_status');
+    const el = $('#fsGhStatus', m); if (!el) return;
+    if (error) { el.textContent = 'Status unavailable: ' + error.message; return; }
+    const last = (data.recent || [])[0];
+    const ans = r => r.status_code === 204 ? 'started' : r.status_code ? `GitHub said ${r.status_code}${r.status_code === 401 || r.status_code === 403 || r.status_code === 404 ? ' (token can\'t start workflows: check its repo and Actions permission)' : ''}` : 'waiting for GitHub';
+    el.textContent = !data.token_set ? 'No token yet: runs depend on GitHub\'s unreliable timer.'
+      : last ? `Token saved. Last run started from HQ: ${last.mode}, ${new Date(last.created_at).toLocaleString()}: ${ans(last)}.` : 'Token saved. The first run starts at the next :10.';
+  };
+  ghStatus();
+  $('#fsGhSave', m).onclick = async () => {
+    const v = $('#fsGhTok', m).value.trim();
+    if (!/^(github_pat_|ghp_)[A-Za-z0-9_]{20,}$/.test(v)) { toast('That doesn\'t look like a GitHub token.'); return; }
+    const { error } = await sb.rpc('set_github_dispatch_token', { p_value: v });
+    $('#fsGhTok', m).value = '';
+    if (error) { toast('Could not save: ' + error.message); return; }
+    toast('Saved. Runs now start from HQ on time.'); ghStatus();
+  };
+  $('#fsGhClear', m).onclick = async () => {
+    const { error } = await sb.rpc('set_github_dispatch_token', { p_value: '' });
+    if (error) { toast('Could not remove: ' + error.message); return; } toast('Token removed.'); ghStatus();
+  };
   $('#fsKey', m).onclick = async () => {
     const { data, error } = await sb.rpc('fund_ingest_key');
     if (error || !data) { toast('Could not get the key: ' + (error?.message || 'not set up')); return; }
