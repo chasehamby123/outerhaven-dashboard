@@ -28,9 +28,9 @@
     daily_ops_schedule: [],
     growth_settings: [{ id: 1, scrape_enabled: true, monthly_budget: 19, scrape_mode: 'daily', scrape_hour: 9 }],
     daily_ops_linkedin_auto_log: [
-      { id: 3, created_at: d(0.1), run_mode: 'comments', usage_before: 6.2, usage_after: 6.26, detail: { usage_usd: 6.2, recommended_average_interval_minutes: 190, result: { comment_posts_processed: 2 } } },
-      { id: 2, created_at: d(0.3), run_mode: 'posts', usage_before: 6.1, usage_after: 6.2, detail: { usage_usd: 6.1, result: { posts_saved: 9 } } },
-      { id: 1, created_at: d(0.6), run_mode: 'error_posts', usage_before: 6.0, detail: { error: 'insert post: duplicate key' } },
+      { id: 3, created_at: d(0.1), run_mode: 'comments', usage_before: 6.2, usage_after: 6.26, detail: { usage_usd: 6.2, accounts: [{ slot: 1, used: 6.2 }, { slot: 2, used: 0.6 }], recommended_average_interval_minutes: 190, result: { comment_posts_processed: 2 } } },
+      { id: 2, created_at: d(0.3), run_mode: 'posts', usage_before: 6.1, usage_after: 6.1001, detail: { usage_usd: 6.1, accounts: [{ slot: 1, used: 6.1 }, { slot: 2, used: 0.4 }], result: { posts_saved: 9, apify_cost_usd: 0.0001 } } },
+      { id: 1, created_at: d(0.6), run_mode: 'error_posts', usage_before: 6.0, detail: { error: 'insert post: duplicate key', accounts: [{ slot: 1, used: 6.0 }, { slot: 2, used: 0.4 }] } },
     ],
   };
   { const t = new Date(Date.now() - 2 * 3600e3 + 8 * 3600e3).toISOString().slice(0, 10);
