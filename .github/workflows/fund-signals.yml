@@ -65,4 +65,6 @@ jobs:
           # The daily run also refreshes credit signals (public companies that need private credit), even when a fund
           # self-test failed; the run still ends red so the failure is seen.
           if [ "$MODE" = "daily" ]; then python scripts/credit_signals.py || rc=$?; fi
+          # ...and sizes every fund lead's manager from the SEC adviser files (Form ADV; refreshed monthly by the SEC).
+          if [ "$MODE" = "daily" ]; then python scripts/adviser_aum.py --mode run || rc=$?; fi
           exit $rc
