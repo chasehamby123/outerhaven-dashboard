@@ -107,6 +107,13 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   scan stays off (`growth_settings.fund_scan_enabled`), budget `fund_monthly_budget`.
 - Tables `fund_signals` (one row per filing, `fund_key` groups feeder/parallel vehicles) and `fund_signal_runs` (`params.source='github'`
   for GitHub calls). Migrations: `supabase/2026-10-02-fund-signals.sql`, `supabase/2026-10-02-fund-signals-github.sql`.
+- **Manager size (6 Oct 2026, Tengku's rule):** all the manager's funds together under $150M = the target (+20), $150–500M = keep,
+  lower priority (−15), over $500M = cut. `scripts/adviser_aum.py` (workflow mode `adviser`, also in daily; `adviserprobe` debugs a name)
+  loads the SEC's monthly adviser files (ia*.zip + ia*-exempt.zip: Form ADV 5.F(2)(c) RAUM, total gross assets of private funds, count)
+  and ties each non-cut fund to its adviser: a Form D entity name = the adviser's name, or one of its IAPD other names (strong), else
+  adviser name starts with the manager name + same state. Ingest kinds `adviser_todo` / `adviser` → `fund_signals.adviser_*`,
+  `manager_total` = max(adviser RAUM or private fund assets, Form D raises across the manager's funds via `formDTotal()` in rules.js),
+  `manager_total_src`. Solomon Hess (Form ADV $1.08B) was the case that started it. Migration `supabase/2026-10-06-fund-adviser-size.sql`.
 - "Add to pipeline" creates Sell Side `people` (source 'Form D') + a task. Fund placement for a success fee needs a US broker-dealer.
 
 ## Credit signals (Pipeline → Credit signals tab, `hq/credit.js`, admin only)

@@ -103,7 +103,7 @@ function draw() {
         <button class="btn sm ghost" id="fsHow">How it works</button><button class="btn sm ghost" id="fsSet">Setup</button></div>
     </div>
     ${checksLine()}
-    <p class="pHint">${list === 'live' ? 'Fund IIs and IIIs that filed a Form D: they started taking investor money in the last few weeks.' : 'Fund I and Fund II managers inside the window where most file their next fund (Fund I: 12–36 months after filing, median 24; Fund II: 15–39, median 28; from a study of 500 funds filed in 2019) who have not filed it yet, under any name.'}
+    <p class="pHint">${list === 'live' ? 'Fund IIs and IIIs that filed a Form D: they started taking investor money in the last few weeks.' : 'Fund I and Fund II managers inside the window where most file their next fund (Fund I: 12–36 months after filing, median 24; Fund II: 15–39, median 28; from a study of 500 funds filed in 2019) who have not filed it yet, under any name.'} Manager size (SEC Form ADV, or Form D totals): under $150M across all its funds is the target, $150–500M lower priority, over $500M cut.
       Source: SEC EDGAR (edgartools), scanned daily on GitHub, free. ${gh ? `Last run <b>${new Date(gh.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>.` : ''}${spent ? ` Apify fallback: $${spent.toFixed(2)} this month.` : ''}</p>
     ${gh ? '' : `<div class="fsBulk fsSetup"><span>Finish setup: add two secrets to GitHub so the daily scan can run.</span><button class="btn sm primary" id="fsSetup">Show me how</button></div>`}
     <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed']].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
@@ -121,6 +121,9 @@ function rowHtml(s) {
     s.investors != null ? `<b>${s.investors}</b> investor${s.investors === 1 ? '' : 's'}` : '',
     s.first_sale ? `First sale <b>${day(s.first_sale)}</b>` : '<b>No money taken yet</b>',
     [s.city, s.state].filter(Boolean).join(', '),
+    // Manager size (Form ADV / Form D totals): under $150M = emerging (our target), $150-500M = lower priority, over $500M = cut.
+    s.manager_total ? `Manager total <b>${money(s.manager_total)}</b> <span class="pFlag ${s.manager_total <= 150e6 ? 'good' : s.manager_total <= 500e6 ? 'warn' : 'bad'}">${s.manager_total <= 150e6 ? 'Emerging' : s.manager_total <= 500e6 ? 'Lower priority' : 'Established'}</span>` : '',
+    s.adviser_crd ? `<a href="https://adviserinfo.sec.gov/firm/summary/${encodeURIComponent(s.adviser_crd)}" target="_blank" rel="noopener" title="${esc(`Matched: ${s.adviser_match || ''}${s.adviser_filed ? ` · Form ADV ${s.adviser_filed}` : ''}`)}">Adviser: ${esc(s.adviser_name || s.adviser_crd)}${s.adviser_type ? ` (${esc(s.adviser_type)})` : ''} ↗</a>` : s.adviser_checked_at ? '<span class="muted">No SEC adviser filing</span>' : '',
   ].filter(Boolean);
   const ppl = (s.executives || []).slice(0, 4);
   const chk = ['checking', 'queued'].includes(s.check_status) && s.list === 'fund1' ? '' : s.check_status === 'checking' ? '<span class="pFlag">Checking EDGAR for newer filings…</span>' : s.check_status === 'queued' ? '<span class="pFlag">Queued: GitHub checks EDGAR hourly</span>'
