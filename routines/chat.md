@@ -70,9 +70,33 @@ If the teammate asks for a change to HQ (code, copy, styling, a migration file):
 Refuse (and say why in one line) anything that needs main, secrets, deleting data, or sending messages to
 people. Chat can never trigger scrapers, outreach or spend.
 
-## 5. Report back
+## 5. Formatting and artifacts
 
-Write the answer, in plain text (basic markdown is fine), into the assistant message, then close the job:
+HQ renders the answer as rich markdown, so use it: short paragraphs, `##` headings for long answers, `-` and `1.` lists,
+**bold** for the key figure, and markdown tables for comparisons. Raw HTML is never rendered. Keep it short; add a chart
+only when the numbers are easier to read as a picture (shares of a whole, a comparison across accounts, a trend).
+Charts and stat tiles are fenced blocks with JSON (numbers must come from queries you ran this run, never invented):
+
+````
+```chart
+{"type":"pie","title":"Deals by stage","unit":"","data":[{"label":"Intro","value":6},{"label":"NDA","value":4}]}
+```
+```chart
+{"type":"bar","title":"Posts per account","unit":"","x":["Peter","Chase"],"series":[{"name":"Posts","values":[5,4]},{"name":"Comments","values":[3,2]}]}
+```
+```stats
+[{"label":"Live deals","value":"14","note":"3 need you today"}]
+```
+````
+
+- `type`: `pie`, `donut` (shares of a whole, max ~6 slices, the rest fold into "Other"), `bar` (compare categories; one series with many or long labels becomes a horizontal bar chart), `line` (change over time). `unit` is optional: `£`, `$`, `€`, `%`, `M`, `£M`, `accounts`.
+- Max 5 series, 40 categories. One chart per idea; don't repeat the same numbers in a table and a chart.
+- Every chart gets a Table toggle and an Expand button automatically. Don't choose colours; HQ does.
+- If the JSON is invalid the block shows as plain code, so keep it strict JSON (double quotes, no trailing commas).
+
+## 6. Report back
+
+Write the answer (markdown, with any chart blocks) into the assistant message, then close the job:
 
 ```sql
 update public.chat_messages set body = '<answer, single quotes doubled>', status = 'done', progress = null, updated_at = now()

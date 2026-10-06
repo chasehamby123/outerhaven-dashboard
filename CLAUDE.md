@@ -195,6 +195,7 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Send → edge function `hq-chat` (verify_jwt=false, checks the user's JWT + role) → inserts user message + 'working' assistant placeholder +
   a `resource_jobs` row (`payload.type='chat'`, hidden from Resources by `isResource`; fired_at stays null so it doesn't use the resource cap)
   → fires the same routine as resource-request. The skill redirects to `routines/chat.md`; the routine writes the answer into the placeholder.
+  Replies render as rich markdown plus chart artifacts (`hq/chatmd.js`: ```chart / ```stats fenced JSON, drawn as SVG with `--viz1..5` tokens, no orange; Table toggle + Expand; spec in `routines/chat.md` §5). Panel has a wide mode. Chat UI uses ink/mist tokens only (`--inv`), never brass.
   Replies take 1–2 min. Limits: one answer at a time per tab, 3 chats at once, `growth_settings.chat_daily_cap` (40) messages/person/day.
   `chat_sweep()` turns replies stuck >20 min into errors.
 - Policy (Tengku, 6 Oct): mostly ask. The routine's DB access is read-only in chat; any change goes to a branch `chat/<date>-<slug>` with a

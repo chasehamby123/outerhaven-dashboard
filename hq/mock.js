@@ -148,7 +148,7 @@
     functions: { invoke: async (n, { body }) => { window.__apifyExtra ||= []; await new Promise(r => setTimeout(r, 150));
       if (n === 'hq-chat') { let th = db.chat_threads.find(x => x.id === body.thread_id); if (!th) { th = { id: id(), title: body.body.slice(0, 40), archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }; db.chat_threads.unshift(th); }
         db.chat_messages.push({ id: id(), thread_id: th.id, role: 'user', body: body.body, status: 'done', created_at: new Date().toISOString() }); const rid = id(); db.chat_messages.push({ id: rid, thread_id: th.id, role: 'assistant', body: '', status: 'working', progress: 'Reading the data', created_at: new Date().toISOString() });
-        setTimeout(() => { const r = db.chat_messages.find(x => x.id === rid); r.status = 'done'; r.body = 'Mock reply to: ' + body.body; }, 3500); return { data: { ok: true, thread_id: th.id }, error: null }; }
+        setTimeout(() => { const r = db.chat_messages.find(x => x.id === rid); r.status = 'done'; r.body = /chart|perform|stage/i.test(body.body) ? window.__chatSample : 'Mock reply to: ' + body.body; }, 3500); return { data: { ok: true, thread_id: th.id }, error: null }; }
       if (n === 'prosp-sync') return { data: { ok: true, campaigns: 1, leads: 420 }, error: null };
       if (n === 'fund-signals') { if (body.action === 'queue') (db.fund_signals || []).filter(x => body.ids.includes(x.id)).forEach(x => x.check_status = 'queued'); return { data: { ok: true, queued: (body.ids || []).length, finished: 0 }, error: null }; }
       if (n === 'daily-ops-linkedin-auto' && body.status_only) return { data: { ok: true, accounts: [{ slot: 1, name: 'chasehamby', used: 9.27, limit: 18.99, remaining: 9.72, error: null }, ...window.__apifyExtra.map(x => ({ slot: x, name: 'free-account-' + x, used: 0.4, limit: 4.75, remaining: 4.35, error: null }))] }, error: null };
@@ -180,3 +180,34 @@
   const realFetch = window.fetch;
   window.fetch = (u, o) => String(u).includes('docs.google.com') ? Promise.resolve(new Response(csv, { status: 200 })) : realFetch(u, o);
 })();
+
+window.__chatSample = [
+  'Good morning. **Here is the pipeline by stage** as of now (counts from `opportunities`):',
+  '',
+  '```stats',
+  '[{"label":"Live deals","value":"14","note":"3 need you today"},{"label":"Waiting on us","value":"5","note":"oldest 6 days"},{"label":"Pipeline size","value":"$212M","note":"sell side"}]',
+  '```',
+  '',
+  '## Where the deals sit',
+  '```chart',
+  '{"type":"pie","title":"Deals by stage","unit":"","data":[{"label":"Intro","value":6},{"label":"NDA","value":4},{"label":"Materials","value":2},{"label":"Meeting","value":1},{"label":"Term sheet","value":1}]}',
+  '```',
+  '',
+  '```chart',
+  '{"type":"bar","title":"Posts per account this week","x":["Peter","Chase","Tengku","Anaz","Razeen"],"series":[{"name":"Posts","values":[5,4,6,3,2]},{"name":"Comments","values":[3,2,5,1,1]}]}',
+  '```',
+  '',
+  '```chart',
+  '{"type":"line","title":"Meetings booked","x":["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],"series":[{"name":"Booked","values":[1,0,2,1,3,0,1]}]}',
+  '```',
+  '',
+  '| Account | Waiting | Oldest |',
+  '|---|---|---|',
+  '| Peter | 3 | 6d |',
+  '| Chase | 2 | 2d |',
+  '',
+  '- First point with **bold** and a [link](https://example.com)',
+  '- Second point',
+  '',
+  '> Numbers are as of now.'
+].join('\n');

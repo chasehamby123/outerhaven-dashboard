@@ -2,9 +2,13 @@
 // Claude answers questions read-only and puts any change on a review branch (routines/chat.md). Each person's tabs and
 // history live in chat_threads / chat_messages: closing a tab archives it, nothing is deleted.
 import { sb, esc, $, $$, toast, fmtDate } from './core.js';
+import { rich } from './chatmd.js';
 
-let host = null, threads = [], messages = new Map(), current = null, showArchive = false, open = false, unread = false, timer = null, channel = null, sending = false, fresh = false;
+let host = null, threads = [], messages = new Map(), current = null, showArchive = false, open = false, unread = false, timer = null, channel = null, sending = false, fresh = false, wide = false;
 const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } } };
+const SUGGEST = ['What needs my attention today?', 'Chart our pipeline by stage', 'How did this week\'s posts perform? Show a chart', 'Which replies are we waiting on?'];
+const ICON_ARROW = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+const ICON_GO = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
 const stale = m => m.status === 'working' && Date.now() - new Date(m.created_at).getTime() > 20 * 60e3;
 const working = () => [...messages.values()].flat().some(m => m.status === 'working' && !stale(m));
 const pageLabel = () => (location.hash || '#/').replace(/^#\/?/, '') || 'home';
@@ -48,7 +52,8 @@ function draw() {
   pickCurrent();
   const btn = $('#hqChatBtn', host), panel = $('#hqChatPanel', host);
   btn.classList.toggle('on', open); btn.classList.toggle('busy', working() && !open); btn.classList.toggle('dot', unread && !open);
-  panel.hidden = !open;
+  panel.hidden = !open; panel.classList.toggle('wide', wide);
+  const wb = $('[data-act=wide]', host); if (wb) { wb.title = wide ? 'Make smaller' : 'Make larger'; wb.setAttribute('aria-label', wb.title); }
   if (!open) return;
   const tabs = openTabs(), list = current ? messages.get(current) || [] : [];
   const t = $('#hqChatTabs', host);
@@ -61,15 +66,15 @@ function draw() {
     $('#hqChatForm', host).hidden = true;
   } else {
     $('#hqChatForm', host).hidden = false;
-    body.innerHTML = !current ? `<div class="hqEmpty"><b>Ask Claude about HQ</b><p>Questions about your data, what a number means, or why something looks off. Ask for a change and Claude prepares it on a review branch: nothing goes live until it's reviewed.</p></div>`
-      : list.length ? list.map(m => `<div class="hqMsg ${m.role}${m.status === 'error' || stale(m) ? ' err' : ''}">${m.role === 'assistant' && (m.status === 'working' && !stale(m)) ? `<span class="hqWork"><i></i><i></i><i></i></span><small>${esc(m.progress || 'Working')}. This can take a minute or two.</small>` : stale(m) ? 'Claude did not answer in time. Send the message again.' : md(m.body)}</div>`).join('') : '<div class="hqEmpty">Loading…</div>';
+    body.innerHTML = !current ? `<div class="hqEmpty"><b>How can I help?</b><p>Ask about your data, or ask for a change: it goes to a review branch and nothing is live until it's reviewed. Ask for a chart and you get one.</p><div class="hqSuggest">${SUGGEST.map(q => `<button type="button" data-suggest="${esc(q)}"><span>${esc(q)}</span>${ICON_GO}</button>`).join('')}</div></div>`
+      : list.length ? list.map(m => `<div class="hqMsg ${m.role}${m.status === 'error' || stale(m) ? ' err' : ''}">${m.role === 'assistant' && (m.status === 'working' && !stale(m)) ? `<span class="hqWork"><i></i><i></i><i></i></span><small>${esc(m.progress || 'Working')}. This can take a minute or two.</small>` : stale(m) ? 'Claude did not answer in time. Send the message again.' : m.role === 'assistant' && m.status !== 'error' ? rich(m.body) : md(m.body)}</div>`).join('') : '<div class="hqEmpty">Loading…</div>';
     const full = $('#hqChatBody', host); if (full) full.scrollTop = full.scrollHeight;
   }
   $('#hqChatSend', host).disabled = sending || (current && (messages.get(current) || []).some(m => m.status === 'working' && !stale(m)));
 }
 
-async function send() {
-  const ta = $('#hqChatInput', host), body = ta.value.trim(); if (!body || sending) return;
+async function send(text) {
+  const ta = $('#hqChatInput', host), body = (typeof text === 'string' ? text : ta.value).trim(); if (!body || sending) return;
   sending = true; draw();
   const res = await sb.functions.invoke('hq-chat', { body: { action: 'send', thread_id: current, body, page: pageLabel() } });
   sending = false;
@@ -82,11 +87,28 @@ async function send() {
   await loadThreads(); await loadMessages(current); draw(); poll();
 }
 
+// Expand a chart/table card full screen (a copy, so the chat underneath stays as it was). Click outside or Esc closes.
+function openArtifact(fig) {
+  if (!fig) return; document.querySelector('.czOverlay')?.remove();
+  const ov = document.createElement('div'); ov.className = 'czOverlay'; ov.appendChild(fig.cloneNode(true));
+  ov.querySelector('[data-cz-open]')?.remove();
+  ov.addEventListener('click', e => {
+    if (e.target === ov) return ov.remove();
+    const t = e.target.closest('[data-cz-view]'); if (!t) return;
+    const f = t.closest('.cz'), on = f.querySelector('.czTable').hidden; f.querySelector('.czTable').hidden = !on; f.querySelector('.czChart').hidden = on; t.setAttribute('aria-pressed', on); t.textContent = on ? 'Chart' : 'Table';
+  });
+  document.body.appendChild(ov);
+}
+
 function bind() {
   host.addEventListener('click', async e => {
     const t = e.target.closest('button'); if (!t) return;
     if (t.id === 'hqChatBtn') { open = !open; unread = false; if (open) { await refresh(); $('#hqChatInput', host)?.focus(); } else draw(); return; }
     if (t.id === 'hqChatMin') { open = false; draw(); return; }
+    if (t.dataset.act === 'wide') { wide = !wide; store.set('hq-chat-wide', wide ? '1' : '0'); draw(); return; }
+    if (t.dataset.suggest) { send(t.dataset.suggest); return; }
+    if (t.hasAttribute('data-cz-view')) { const fig = t.closest('.cz'), on = fig.querySelector('.czTable').hidden; fig.querySelector('.czTable').hidden = !on; fig.querySelector('.czChart').hidden = on; t.setAttribute('aria-pressed', on); t.textContent = on ? 'Chart' : 'Table'; return; }
+    if (t.hasAttribute('data-cz-open')) { openArtifact(t.closest('.cz')); return; }
     if (t.id === 'hqChatNew') { fresh = true; current = null; showArchive = false; draw(); $('#hqChatInput', host).focus(); return; }
     if (t.id === 'hqChatHist') { showArchive = !showArchive; await loadThreads(); draw(); return; }
     if (t.dataset.tab) { fresh = false; current = t.dataset.tab; store.set('hq-chat-thread', current); showArchive = false; await loadMessages(current); draw(); return; }
@@ -97,7 +119,7 @@ function bind() {
   const ta = $('#hqChatInput', host);
   ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
   ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && open && !document.querySelector('.modal')) { open = false; draw(); } });
+  document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; const ov = document.querySelector('.czOverlay'); if (ov) { ov.remove(); return; } if (open && !document.querySelector('.modal')) { open = false; draw(); } });
 }
 
 export async function mountChat() {
@@ -105,12 +127,14 @@ export async function mountChat() {
   if (!(await loadThreads())) return; // tables missing or no access: no button
   host = document.createElement('div'); host.id = 'hqChat';
   host.innerHTML = `<section class="hqChatPanel" id="hqChatPanel" hidden aria-label="Chat with Claude">
-      <header><div><b>Claude</b><small>Ask about HQ. Changes go to a review branch.</small></div><button type="button" id="hqChatMin" aria-label="Minimise chat">–</button></header>
+      <header><div class="who"><span class="logo"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18"/></svg></span><div><b>Claude</b><small>Ask about HQ. Changes go to a review branch.</small></div></div>
+        <div class="acts"><button type="button" data-act="wide" aria-label="Make larger" title="Make larger"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4v4M6 14H2v-4M14 2l-5 5M2 14l5-5"/></svg></button><button type="button" id="hqChatMin" aria-label="Minimise chat" title="Minimise">–</button></div></header>
       <div class="hqTabs" id="hqChatTabs"></div>
       <div class="hqBody" id="hqChatBody"></div>
-      <form class="hqForm" id="hqChatForm"><textarea id="hqChatInput" rows="1" maxlength="4000" placeholder="Ask or request a change…" aria-label="Message"></textarea><button class="btn primary sm" id="hqChatSend" type="submit">Send</button></form>
+      <form class="hqForm" id="hqChatForm"><div class="box"><textarea id="hqChatInput" rows="1" maxlength="4000" placeholder="Ask or request a change…" aria-label="Message"></textarea><button class="hqSend" id="hqChatSend" type="submit" aria-label="Send">${ICON_ARROW}</button></div></form>
     </section>
     <button type="button" class="hqChatBtn" id="hqChatBtn" aria-label="Chat with Claude"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg></button>`;
+  wide = store.get('hq-chat-wide') === '1';
   document.body.appendChild(host); bind(); pickCurrent();
   if (current) await loadMessages(current);
   for (const t of openTabs().slice(0, 5)) if (!messages.has(t.id)) loadMessages(t.id);
