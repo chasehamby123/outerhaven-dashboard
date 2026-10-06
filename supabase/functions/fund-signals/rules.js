@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 12;
+export const RULES_VERSION = 13;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -145,6 +145,14 @@ export function classify(s, now = Date.now()) {
     if (s.still_raising) add('good', `Still raising ${nm}: ${s.still_raising}`, 30);
   }
   if (/06c/.test(s.exemptions || '')) add('good', 'Rule 506(c): allowed to market publicly, so already looking for investors openly', 8);
+  // Manager size (6 Oct 2026, Tengku): all its funds together under $150M = the target; $150-500M = keep, lower priority;
+  // over $500M = established, cut. From the adviser's Form ADV (assets under management / private fund gross assets),
+  // or the Form Ds of this manager's funds when no adviser filing is found.
+  const mt = s.manager_total != null ? Number(s.manager_total) : null, src = s.manager_total_src ? ` (${s.manager_total_src})` : '';
+  if (mt != null && mt > 500e6) add('cut', `Manager runs ${money(mt)} in total${src}: established, not an emerging manager`);
+  else if (mt != null && mt > 150e6) add('info', `Manager runs ${money(mt)} in total${src}: past emerging, lower priority`, -15);
+  else if (mt != null && mt > 0) add('good', `Emerging manager: ${money(mt)} across all its funds${src}`, 20);
+  else if (s.adviser_checked_at && !s.adviser_crd) add('info', 'No SEC adviser filing found: likely a small, state-registered manager');
 
   const verdict = R.some(r => r.tone === 'cut') ? 'cut' : R.some(r => r.tone === 'maybe') ? 'maybe' : 'target';
   const score = Math.max(0, Math.min(100, R.reduce((n, r) => n + r.pts, 0)));
@@ -160,6 +168,24 @@ function sharedPeople(ours, theirs) {
   const city = p => String(p.location || '').split(',')[0].trim().toLowerCase();
   const mine = new Map((ours || []).map(p => [key(p), p]));
   return (theirs || []).filter(p => key(p) && mine.has(key(p))).map(p => ({ name: p.name, sameCity: !!city(p) && city(p) === city(mine.get(key(p))) }));
+}
+
+// Money raised across this manager's funds in our Form D data: the latest amount per fund (feeders and parallels folded
+// into one fund), counting only filings that share a named person with this one (or the same city), so two firms with
+// similar names never add up.
+export function formDTotal(s, peers) {
+  const ours = personKeys(s.executives), city = String(s.city || '').toLowerCase();
+  const best = new Map();
+  for (const p of peers || []) {
+    if (p.manager_key !== s.manager_key) continue;
+    const theirs = personKeys(p.executives);
+    const same = p.id === s.id || [...theirs].some(k => ours.has(k)) || (!ours.size && city && String(p.city || '').toLowerCase() === city);
+    if (!same) continue;
+    const fam = `${fundFamily(p.company_name)}#${p.fund_no || 0}`, v = Number(p.sold) || 0;
+    if (v > (best.get(fam) || 0)) best.set(fam, v);
+  }
+  let total = 0; for (const v of best.values()) total += v;
+  return { total, funds: best.size };
 }
 
 // Read a check run: later filings (D or D/A) whose name matches this manager.
