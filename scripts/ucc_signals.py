@@ -346,6 +346,10 @@ def or_rows_to_filings(rows):
     by = {}
     for r in rows:
         n = {re.sub(r"[^a-z0-9]+", "_", (k or "").strip().lower()).strip("_"): (v if isinstance(v, str) else (v or "")) for k, v in r.items()}
+        # Older CSV exports (Wayback copies) name some columns differently.
+        for a, b in (("lien_number", "original_file_number"), ("party_typ", "party_type"), ("entity_typ", "entity_type"), ("zip_code", "zip_code_txt")):
+            if n.get(a) and not n.get(b):
+                n[b] = n[a]
         lt = (n.get("lien_type") or "").upper()
         if lt in OR_SKIP:
             continue
@@ -401,7 +405,7 @@ def or_filings(cut):
         if month in have or month < cut[:7]:
             continue
         try:
-            r = client.get(f"https://web.archive.org/web/{ts}id_/{orig}", follow_redirects=True)
+            r = client.get(f"https://web.archive.org/web/{ts}id_/{orig}", follow_redirects=True, headers={"Accept-Encoding": "identity"})
             rows = list(csv.DictReader(io.StringIO(r.text)))
             back = or_rows_to_filings(rows)
             archive_put("OR", back)
