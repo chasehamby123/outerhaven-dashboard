@@ -3,6 +3,7 @@
 import { sb, esc, $, $$, toast, fail, modal, opts } from './core.js';
 import { me } from './tasks.js';
 import { openTeaserPage, TITLES } from './teasers.js';
+import { importDealPdf, displayAmount } from './deal-import.js';
 
 let el = null, rows = [], view = 'review', onCount = () => {};
 const TYPES = ['Equity raise', 'Debt / private credit', 'M&A sell-side', 'Real estate', 'Fund raise', 'Other'];
@@ -199,22 +200,29 @@ function bind() {
 
 function edit(d) {
   const v = d || {};
-  modal({
+  const m = modal({
     title: d ? `Edit ${d.codename}` : 'Add a deal', submit: d ? 'Save' : 'Add deal', wide: true,
-    body: `<div class="form dlForm">
+    body: `<div class="dlImport" data-drop tabindex="0" role="button" aria-label="Upload the teaser to fill this in">
+        <input type="file" data-pdf accept="application/pdf,.pdf" hidden>
+        <b>Upload their teaser or CIM</b><span>PDF. Fills in the deal for you, attaches the file, and Claude writes our teaser from it.</span>
+        <button type="button" class="btn primary sm" data-pick>Choose PDF</button>
+      </div>
+      <div class="dlImportMsg" data-msg role="status" aria-live="polite"></div>
+      <div class="form dlForm">
       <label class="field">Codename <input class="input" name="codename" required value="${esc(v.codename || '')}" placeholder="Anonymised name for NDA deals, e.g. Project Cement"></label>
       <label class="field">Type <select class="select" name="deal_type"><option value="">Choose…</option>${opts(TYPES, v.deal_type)}</select></label>
       <label class="field">Ask (as given) <input class="input" name="ask_text" value="${esc(v.ask_text || '')}" placeholder="$150M raise, SGD 10m for 20%…"></label>
+      <label class="field">From (who gave it to us) <input class="input" name="source_name" value="${esc(v.source_name || '')}" placeholder="Introducer, sponsor or bank"></label>
+      <label class="field">Owner <input class="input" name="owner_name" value="${esc(v.owner_name || me())}"></label>
+      <label class="field full">Summary <textarea class="textarea" name="summary" rows="4" placeholder="What it is, the numbers that matter, why it's raising">${esc(v.summary || '')}</textarea></label>
+      <details class="full dlMore"${d ? ' open' : ''}><summary>More details (optional)</summary><div class="form dlForm">
       <label class="field">Valuation <input class="input" name="valuation_text" value="${esc(v.valuation_text || '')}" placeholder="e.g. $60M pre-money"></label>
       <label class="field">Sector <input class="input" name="sector" value="${esc(v.sector || '')}"></label>
       <label class="field">Geography <input class="input" name="geography" value="${esc(v.geography || '')}"></label>
-      <label class="field">From (who gave it to us) <input class="input" name="source_name" value="${esc(v.source_name || '')}" placeholder="Introducer, sponsor or bank"></label>
       <label class="field">Received <input class="input" type="date" name="received_at" value="${esc(String(v.received_at || new Date().toISOString()).slice(0, 10))}"></label>
       <label class="field">NDA <select class="select" name="nda_status">${opts(NDA, v.nda_status || 'None')}</select></label>
-      <label class="field">Owner <input class="input" name="owner_name" value="${esc(v.owner_name || me())}"></label>
       <label class="field full">Structure <input class="input" name="structure" value="${esc(v.structure || '')}" placeholder="e.g. senior secured, 3 years, 12%; or 20% equity"></label>
       <label class="field full">Our fee terms <input class="input" name="fee_terms" value="${esc(v.fee_terms || '')}" placeholder="e.g. 2% success fee, $10k/month retainer"></label>
-      <label class="field full">Summary <textarea class="textarea" name="summary" rows="4" placeholder="What it is, the numbers that matter, why it's raising">${esc(v.summary || '')}</textarea></label>
       <h4 class="dlFormH full">For the teaser <span class="muted">(write it anonymised: no company or people names)</span></h4>
       <label class="field full">In one line <input class="input" name="headline" value="${esc(v.headline || '')}" placeholder="e.g. US$40M equity for a 120-key branded resort in the Visayas, 60% pre-sold"></label>
       <label class="field full">Highlights (one per line, 3–6) <textarea class="textarea" name="highlights" rows="4" placeholder="Land fully owned, no debt&#10;Branded operator signed&#10;…">${esc(v.highlights || '')}</textarea></label>
@@ -223,6 +231,7 @@ function edit(d) {
       <label class="field">Timeline <input class="input" name="timeline" value="${esc(v.timeline || '')}" placeholder="e.g. first close Q1 2027"></label>
       <label class="field">Contact on the teaser <select class="select" name="contact">${opts(Object.keys(TITLES), contactOf(v))}</select></label>
       <label class="field full">Ideal investor <input class="input" name="ideal_investor" value="${esc(v.ideal_investor || '')}" placeholder="e.g. family offices, $5–15M tickets, 5-year hold"></label>
+      </div></details>
       <h4 class="dlFormH full">Documents</h4>
       <label class="field full">Upload their teaser, CIM or model (PDF or image, up to 25 MB each) <input class="input" type="file" name="files" multiple accept="application/pdf,image/png,image/jpeg,image/webp"></label>
       ${(v.doc_links || []).filter(x => x.path).length ? `<div class="field full">Uploaded <div class="checks">${v.doc_links.filter(x => x.path).map(x => `<label><input type="checkbox" name="keep" value="${esc(x.path)}" checked> ${esc(x.label || x.path)}</label>`).join('')}</div></div>` : ''}
@@ -253,9 +262,50 @@ function edit(d) {
       }
       toast(d ? 'Saved' : 'Deal added for Peter to review');
       draw();
+      // Imported from a PDF and no teaser yet: Claude writes ours from the full document in the background.
+      const saved = rows.find(r => r.id === id);
+      if (imported && saved && !saved.teaser && !saved.teaser_html && !saved.teaser_job_id) writeWithClaude(saved, imported.text, true);
     },
   });
+  const form = m.el, msg = $('[data-msg]', form), input = $('[data-pdf]', form), drop = $('[data-drop]', form);
+  let imported = null;
+  const say = (t, cls = '') => { msg.className = 'dlImportMsg show ' + cls; msg.textContent = t; };
+  const set = (name, val) => {
+    const f = form.elements[name]; if (!f || !val) return false;
+    if (f.tagName === 'SELECT' && ![...f.options].some(o => o.value === val)) return false;
+    f.value = val; f.classList.add('dlFilled'); setTimeout(() => f.classList.remove('dlFilled'), 2000); return true;
+  };
+  const run = async file => {
+    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { say('That isn\'t a PDF.', 'bad'); return; }
+    if (file.size > 25 * 1048576) { say('That PDF is over 25 MB.', 'bad'); return; }
+    drop.classList.add('busy');
+    try {
+      const f = await importDealPdf(file, t => say(t));
+      imported = f;
+      const got = [];
+      const fin = [f.revenue && `Revenue $${displayAmount(f.revenue)}`, f.ebitda && `EBITDA $${displayAmount(f.ebitda)}`].filter(Boolean).join(', ');
+      if (!d || !form.elements.codename.value) set('codename', f.title) && got.push('codename');
+      if (set('deal_type', dealType(f.transactionType, f.sector))) got.push('type');
+      if (f.dealSize && set('ask_text', '$' + displayAmount(f.dealSize))) got.push('ask');
+      if (set('sector', f.sector)) got.push('sector');
+      if (set('geography', f.geography)) got.push('geography');
+      if (set('financials', fin)) got.push('financials');
+      if (set('summary', f.summary)) got.push('summary');
+      try { const dt = new DataTransfer(); [...form.elements.files.files].forEach(x => dt.items.add(x)); dt.items.add(file); form.elements.files.files = dt.files; } catch { }
+      say(`Filled ${got.join(', ') || 'nothing'} from ${f.pageCount} page${f.pageCount === 1 ? '' : 's'}. ${f.dealSize ? '' : 'No clear raise amount found, so Ask is blank. '}Check the codename (anonymise NDA deals), then Add deal. The PDF is attached.`, 'good');
+    } catch (e) { console.error(e); say(e.message || 'Could not read this PDF.', 'bad'); }
+    finally { drop.classList.remove('busy'); }
+  };
+  $('[data-pick]', form).onclick = e => { e.stopPropagation(); input.click(); };
+  drop.onclick = () => input.click();
+  drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } };
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add('drag'); };
+  drop.ondragleave = () => drop.classList.remove('drag');
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove('drag'); const f = e.dataTransfer.files[0]; if (f) run(f); };
+  input.onchange = () => { if (input.files[0]) run(input.files[0]); input.value = ''; };
 }
+const dealType = (t, sector) => /debt|structured/i.test(t) ? 'Debt / private credit' : /sale|acquisition/i.test(t) ? 'M&A sell-side'
+  : /real estate|hospitality/i.test(sector) && !t ? 'Real estate' : /equity|strategic|joint/i.test(t) ? 'Equity raise' : '';
 
 // ---- Teaser popup: saved edits > Claude's version > drafted from the deal's fields ----
 function showTeaser(d) {
@@ -266,18 +316,21 @@ function showTeaser(d) {
     onSave: async html => { if (await save(d.id, { teaser_html: html })) draw(); },
     actions: [
       ...(d.teaser_html || d.teaser ? [{ label: 'Rebuild from deal fields', onClick: async (m, close) => { if (await save(d.id, { teaser_html: null, teaser: null, teaser_job_id: null }, true)) { close(); draw(); showTeaser(d); } } }] : []),
-      { label: d.teaser ? 'Rewrite with Claude' : 'Write with Claude', onClick: async (m, close) => {
-        if (brief(d).length < 120) { toast('Add a summary and a few facts first (Edit).'); return; }
-        const { data, error } = await sb.functions.invoke('resource-request', { body: { action: 'teaser', teaser: {
-          source_text: brief(d), notes: [d.fee_terms && `Our fee (do not put on the teaser): ${d.fee_terms}`, d.source_name && `Provided to us by ${d.source_name} (do not name them)`].filter(Boolean).join('\n'),
-          codename: d.codename, contact: contactOf(d), side: 'sell', anonymise: true, opportunity_id: d.opportunity_id || '', deal_id: d.id } } });
-        let msg = data?.error; if (error) { try { msg = (await error.context?.json?.())?.error; } catch { } msg = msg || error.message; }
-        if (msg) { toast(msg); return; }
-        const job = data?.id || data?.job_id || null;
-        if (await save(d.id, { teaser_job_id: job, teaser: null, teaser_html: null }, true)) { toast('Claude is writing it (a few minutes). The deal shows when it is ready.'); close(); draw(); watch(d.id); }
-      } },
+      { label: d.teaser ? 'Rewrite with Claude' : 'Write with Claude', onClick: async (m, close) => { if (await writeWithClaude(d)) close(); } },
     ],
   });
+}
+// Fires the teaser routine. docText = the uploaded PDF's text (only right after an import).
+async function writeWithClaude(d, docText = '', quiet = false) {
+        if (!docText && brief(d).length < 120) { toast('Add a summary and a few facts first (Edit).'); return false; }
+        const { data, error } = await sb.functions.invoke('resource-request', { body: { action: 'teaser', teaser: {
+          source_text: (brief(d) + (docText ? '\n\nFull text of their teaser/CIM:\n' + docText : '')).slice(0, 20000), notes: [d.fee_terms && `Our fee (do not put on the teaser): ${d.fee_terms}`, d.source_name && `Provided to us by ${d.source_name} (do not name them)`].filter(Boolean).join('\n'),
+          codename: d.codename, contact: contactOf(d), side: 'sell', anonymise: true, opportunity_id: d.opportunity_id || '', deal_id: d.id } } });
+        let msg = data?.error; if (error) { try { msg = (await error.context?.json?.())?.error; } catch { } msg = msg || error.message; }
+        if (msg) { if (!quiet) toast(msg); else console.warn('Auto teaser:', msg); return false; }
+        const job = data?.id || data?.job_id || null;
+        if (await save(d.id, { teaser_job_id: job, teaser: null, teaser_html: null }, true)) { toast(quiet ? 'Deal added. Claude is writing our teaser from their PDF (a few minutes).' : 'Claude is writing it (a few minutes). The deal shows when it is ready.'); draw(); watch(d.id); return true; }
+        return false;
 }
 // Poll a few times for the Claude teaser while the tab is open.
 function watch(id) {

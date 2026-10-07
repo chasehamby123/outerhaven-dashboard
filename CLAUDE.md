@@ -82,6 +82,11 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   Seeded from the Sell Side `opportunities` (linked by `opportunity_id`). RLS admin. Migration `supabase/2026-10-07-deals.sql`.
   Own sidebar page (Peter asked for a page, not a tab), larger type (`.dealsPage` CSS); nav badge = deals to review
   (`refreshDealsBadge`); old `#/pipeline/deals` redirects to `#/deals`. NDA deals use codenames (never the Mauritius brand).
+- **Add a deal = upload their teaser** (7 Oct 2026, Chase: "too many questions"): drop zone at the top of the form, `hq/deal-import.js`
+  (port of the originator portal's PDF intelligence: pdf.js + tesseract OCR from jsdelivr, all in the browser, no cost) fills codename,
+  type, ask (raise only, never project value/valuation), sector, geography, financials, summary, and attaches the PDF. Only codename,
+  type, ask, from, owner, summary show; the rest is under "More details". A new deal added from a PDF auto-fires "Write with Claude"
+  with the PDF text (`writeWithClaude(d, docText, quiet)`).
 - **Teasers on deals:** "View teaser" opens the branded A4 teaser popup (`openTeaserPage` in teasers.js: edit in place, Save edits →
   `deals.teaser_html`, Download PDF). Source order: saved edits > Claude's teaser (`deals.teaser`) > drafted instantly from the deal's
   fields (`autoTeaser`: headline, highlights, financials, use of funds, timeline, ideal investor, contact). Each card shows how many of the
