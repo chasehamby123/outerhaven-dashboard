@@ -11,11 +11,11 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "daily | live | fund1 | check | recheck | credit | ucc | probe | study1 | study2 | selftest | audit | adviser | adviserprobe"
+        description: "daily | live | fund1 | check | recheck | credit | ucc | uccprobe | probe | study1 | study2 | selftest | audit | adviser | adviserprobe"
         default: daily
         required: true
       from:
-        description: "Start date YYYY-MM-DD (live / fund1 backfills); probe: names separated by ;"
+        description: "Start date YYYY-MM-DD (live / fund1 backfills); probe: names separated by ;  uccprobe/ucc: registries e.g. FL,OR"
         required: false
       to:
         description: "End date YYYY-MM-DD"
@@ -58,9 +58,10 @@ jobs:
           else
             MODE="$IN_MODE"
           fi
-          case "$MODE" in daily|live|fund1|check|recheck|credit|ucc|probe|study1|study2|selftest|audit|adviser|adviserprobe) ;; *) echo "unknown mode $MODE"; exit 1;; esac
+          case "$MODE" in daily|live|fund1|check|recheck|credit|ucc|uccprobe|probe|study1|study2|selftest|audit|adviser|adviserprobe) ;; *) echo "unknown mode $MODE"; exit 1;; esac
           if [ "$MODE" = "credit" ]; then python scripts/credit_signals.py; exit $?; fi
-          if [ "$MODE" = "ucc" ]; then python scripts/ucc_signals.py; exit $?; fi
+          if [ "$MODE" = "ucc" ]; then python scripts/ucc_signals.py --only "$IN_FROM"; exit $?; fi
+          if [ "$MODE" = "uccprobe" ]; then python scripts/ucc_signals.py --dry --only "$IN_FROM"; exit $?; fi
           if [ "$MODE" = "adviserprobe" ]; then python scripts/adviser_aum.py --mode probe --q "${IN_FROM:-Solomon Hess}"; exit $?; fi
           if [ "$MODE" = "adviser" ]; then python scripts/adviser_aum.py --mode run --full; exit $?; fi
           set -- --mode "$MODE"
@@ -74,6 +75,6 @@ jobs:
           if [ "$MODE" = "daily" ]; then python scripts/credit_signals.py || rc=$?; fi
           # ...and sizes every fund lead's manager from the SEC adviser files (Form ADV; refreshed monthly by the SEC).
           if [ "$MODE" = "daily" ]; then python scripts/adviser_aum.py --mode run || rc=$?; fi
-          # ...and private companies from state UCC lien filings (CT, CO open data) sized by PPP loans.
+          # ...and private companies from state UCC lien filings (CT, CO, OR open data + Florida federal tax liens) sized by PPP loans.
           if [ "$MODE" = "daily" ]; then python scripts/ucc_signals.py || rc=$?; fi
           exit $rc

@@ -10,9 +10,15 @@ of who lends to private companies. One filing means little (every business lease
   * IRS, state tax and labor-department liens, judgment liens: cash strain;
   * an active bank / agent lien that lapses in 3–12 months with no continuation: the facility is likely up for renewal.
 
-Sources (free, public, refreshed nightly by the states; only states that publish open UCC data):
-  Connecticut  data.ct.gov xfev-8smz (one table: lien, debtor, secured party, lapse, status)
-  Colorado     data.colorado.gov wffy-3uut (filings), 8upq-58vz (debtors), ap62-sav4 (secured parties)
+Sources (free, public; every state that publishes UCC data at no cost, checked 7 Oct 2026):
+  Connecticut  data.ct.gov xfev-8smz (one table: lien, debtor, secured party, lapse, status), nightly
+  Colorado     data.colorado.gov wffy-3uut (filings), 8upq-58vz (debtors), ap62-sav4 (secured parties), nightly
+  Oregon       data.oregon.gov snfi-f79b: LAST MONTH's filings only (all lien types, debtors + secured parties). Each run
+               stores them in ucc_filing_archive (edge function kind archive_put) so the history builds up; older months
+               are backfilled once from Wayback Machine copies of the CSV export.
+  Florida      federal tax liens only (Florida's UCC registry is privatised): free SFTP sftp.floridados.gov (user Public,
+               password published by the state), quarterly full file doc/quarterly/flr + daily files doc/flr/*.
+  Not free: Vermont (free weekly bulk promised, no download found), West Virginia (subscription), Texas ($1,150 master).
 UCC filings sit in the state where the company is ORGANIZED, so a Delaware LLC based in Connecticut files in Delaware
 (no open data) and is missed.
 
@@ -21,12 +27,15 @@ Size: UCC filings carry no revenue, so every debtor is matched by normalized nam
 Only companies with a PPP loan of $500K+ are considered (≈ $7M+ revenue); the rules decide what is big enough.
 Needs env: FUND_INGEST_KEY (same secret as fund signals).
 """
+import argparse
 import csv
 import datetime as dt
+import io
 import os
 import re
 import sys
 import time
+import zipfile
 
 import httpx
 
@@ -39,6 +48,7 @@ WINDOW_DAYS = 912          # look back 30 months for distress filings
 PAGE = 50_000
 TODAY = dt.date.today()
 STATS = {"errors": []}
+DRY = False                # --dry: read sources and print counts, post nothing
 
 
 def log(*a):
@@ -52,6 +62,7 @@ SUFFIX = re.compile(r"\b(INCORPORATED|INC|CORPORATION|CORP|COMPANY|CO|LIMITED|LT
 def biz_key(name):
     s = (name or "").upper()
     s = re.split(r"\s+(D/?B/?A|A/?K/?A|F/?K/?A|T/?A)\b", s)[0]          # "ACME INC DBA ACME TOOLS" -> ACME
+    s = re.sub(r",?\s+(A|AN)\s+([A-Z]+\s+){0,3}(CORPORATION|CORP|COMPANY|PARTNERSHIP|LLC|L\.L\.C\.)\b.*$", "", s)   # Oregon: "ACME INC, A CORPORATION"
     s = s.replace("&", " AND ")
     s = re.sub(r"[^A-Z0-9 ]+", " ", s)
     s = SUFFIX.sub(" ", s)
@@ -290,6 +301,200 @@ def co_filings(idx, by_key, cut, refi_from, refi_to):
     return out
 
 
+# ---------- archive (rolling-window states) ----------
+def archive_put(src, filings):
+    rows = [{**f, "filed": str(f["filed"]) if f["filed"] else None, "lapse": str(f["lapse"]) if f["lapse"] else None} for f in filings]
+    for i in range(0, len(rows), 1000):
+        if not DRY:
+            post({"action": "ingest", "kind": "archive_put", "items": rows[i:i + 1000]})
+
+
+def archive_get(src, since):
+    out, off, months = [], 0, []
+    while True:
+        j = post({"action": "ingest", "kind": "archive_get", "src": src, "since": since, "offset": off})
+        if off == 0:
+            months = j.get("months") or []
+        out += j.get("rows") or []
+        if len(j.get("rows") or []) < 1000:
+            break
+        off += 1000
+    for f in out:
+        f["filed"], f["lapse"] = day(f["filed"]), day(f["lapse"])
+    return out, set(months)
+
+
+def any_day(v):
+    v = (v or "").strip()
+    if not v:
+        return None
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%d", "%m/%d/%Y", "%m/%d/%Y %I:%M:%S %p", "%Y%m%d", "%m%d%Y"):
+        try:
+            return dt.datetime.strptime(v[:26] if "T" in v else v, fmt).date()
+        except ValueError:
+            pass
+    return day(v)
+
+
+# ---------- Oregon ----------
+OR_CSV = "https://data.oregon.gov/api/views/snfi-f79b/rows.csv?accessType=DOWNLOAD"
+OR_SKIP = {"EFS"}                         # farm-products effective financing statements
+
+
+def or_rows_to_filings(rows):
+    """Oregon rows are one per party (DB debtor / SP secured party) per file number."""
+    by = {}
+    for r in rows:
+        n = {re.sub(r"[^a-z0-9]+", "_", (k or "").strip().lower()).strip("_"): (v if isinstance(v, str) else (v or "")) for k, v in r.items()}
+        lt = (n.get("lien_type") or "").upper()
+        if lt in OR_SKIP:
+            continue
+        fno = n.get("original_file_number") or (n.get("file_number") or "").split("-")[0]
+        g = by.setdefault(fno, {"db": [], "sp": [], "lt": lt, "initial": False, "filed": None, "lapse": None, "released": False})
+        ft = (n.get("file_type") or "").upper()
+        if ft == "INITIAL":
+            g["initial"], g["lt"] = True, lt
+            g["filed"] = any_day(n.get("filing_date"))
+        if lt.endswith("-X"):                      # IRS-X: release of a federal tax lien
+            g["released"] = True
+        g["lapse"] = any_day(n.get("lapse_date")) or g["lapse"]
+        if ft != "INITIAL":
+            continue
+        ent = (n.get("entity") or "").strip()
+        if (n.get("party_type") or "").upper() == "SP":
+            g["sp"].append(ent)
+        elif (n.get("party_type") or "").upper() == "DB" and (n.get("entity_type") or "").upper() == "ORG":
+            g["db"].append({"debtor": ent, "state": (n.get("st_cd_txt") or n.get("state") or "OR").strip().upper()[:2] or "OR",
+                            "city": (n.get("city_descr") or n.get("city") or "").title(), "address": n.get("mail_addr_1") or "",
+                            "zip": (n.get("zip_code_txt") or n.get("zip_code") or "")[:5]})
+    out = []
+    for fno, g in by.items():
+        if not g["initial"] or not g["db"]:
+            continue
+        for party in g["sp"] or [""]:
+            cls = "irs" if g["lt"].startswith("IRS") else classify(party)
+            if g["lt"] not in ("UCC", "IRS") and cls not in ("irs", "state_tax", "local_tax"):
+                cls = "statutory"
+            for d in g["db"]:
+                out.append({"src": "OR", "no": fno, "kind": g["lt"].lower() or "ucc", "cls": cls, "party": party[:120], "filed": g["filed"],
+                            "lapse": g["lapse"], "status": "released" if g["released"] else "active", **d})
+    return out
+
+
+def or_filings(cut):
+    current = soda("data.oregon.gov", "snfi-f79b", "1=1", "*")
+    got = or_rows_to_filings(current)
+    log(f"or: {len(current)} rows last month -> {len(got)} business filings")
+    archive_put("OR", got)
+    have = archive_get("OR", cut)[1] if not DRY else set()
+    # One-time backfill from Wayback Machine copies of the monthly CSV (only months the archive doesn't have yet).
+    try:
+        caps = client.get("https://web.archive.org/cdx/search/cdx", params={"url": "data.oregon.gov/api/views/snfi-f79b/rows.csv*", "output": "json",
+                                                                           "filter": "statuscode:200", "from": cut[:4]}).json()[1:]
+    except Exception as e:  # noqa: BLE001
+        caps = []
+        log("or: wayback unavailable:", e)
+    for cap in caps:
+        ts, orig = cap[1], cap[2]
+        month = (dt.date(int(ts[:4]), int(ts[4:6]), 1) - dt.timedelta(days=1)).strftime("%Y-%m")   # the CSV holds the previous month
+        if month in have or month < cut[:7]:
+            continue
+        try:
+            r = client.get(f"https://web.archive.org/web/{ts}id_/{orig}", follow_redirects=True)
+            rows = list(csv.DictReader(io.StringIO(r.text)))
+            back = or_rows_to_filings(rows)
+            archive_put("OR", back)
+            have |= {f["filed"].strftime("%Y-%m") for f in back if f["filed"]}
+            log(f"or: backfilled {ts} -> {len(back)} filings")
+        except Exception as e:  # noqa: BLE001
+            log("or: backfill failed", ts, e)
+    if DRY:
+        return got
+    rows, months = archive_get("OR", cut)
+    STATS["or_months"] = sorted(months)
+    log(f"or: {len(rows)} archived filings since {cut} ({len(months)} months)")
+    return rows
+
+
+# ---------- Florida (federal tax liens) ----------
+FL_HOST = "sftp.floridados.gov"
+
+
+def fl_filings(cut):
+    import paramiko
+    t = paramiko.Transport((FL_HOST, 22))
+    t.connect(username="Public", password=os.environ.get("FL_SFTP_PASSWORD", "PubAccess1845!"))   # published on dos.fl.gov
+    sftp = paramiko.SFTPClient.from_transport(t)
+    root = next((p for p in ("/Public/doc", "/doc", "doc", "Public/doc") if _isdir(sftp, p)), None)
+    if not root:
+        raise RuntimeError("FL: doc folder not found; top level = " + ",".join(sftp.listdir(".")))
+    os.makedirs("data/fl", exist_ok=True)
+    cutd = dt.date.fromisoformat(cut)
+    filings, debtors = {}, {}
+
+    def read_lines(name, data):
+        if name.lower().endswith(".zip"):
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                for m in z.namelist():
+                    yield m, z.read(m).decode("latin-1").splitlines()
+        else:
+            yield name, data.decode("latin-1").splitlines()
+
+    def take(name, lines):
+        base = os.path.basename(name).lower().split(".")[0]
+        kind = base[-1:]
+        for ln in lines:
+            if kind == "f" and len(ln) >= 56:
+                if ln[31:32] != "F":
+                    continue
+                filings[ln[0:12].strip()] = {"filed": any_day(ln[12:20]), "status": ln[30:31], "exp": any_day(ln[48:56])}
+            elif kind == "d" and len(ln) >= 196:
+                if ln[68:69] != "C":
+                    continue
+                debtors.setdefault(ln[1:13].strip(), []).append({"debtor": ln[13:68].strip(), "address": ln[69:113].strip(), "city": ln[157:185].strip().title(),
+                                                                "state": ln[185:187].strip().upper() or "FL", "zip": ln[187:192].strip()})
+
+    qdir = f"{root}/quarterly/flr"
+    qfiles = sorted(sftp.listdir_attr(qdir), key=lambda a: a.st_mtime)
+    log("fl: quarterly", [(a.filename, a.st_size) for a in qfiles])
+    q_time = 0
+    for a in qfiles:
+        buf = io.BytesIO(); sftp.getfo(f"{qdir}/{a.filename}", buf)
+        for m, lines in read_lines(a.filename, buf.getvalue()):
+            take(m, lines)
+        q_time = max(q_time, a.st_mtime)
+    for sub in ("filings", "debtors"):
+        d = f"{root}/flr/{sub}"
+        try:
+            daily = [a for a in sftp.listdir_attr(d) if a.st_mtime >= q_time - 86400]
+        except OSError as e:
+            log("fl: no daily folder", d, e); continue
+        for a in sorted(daily, key=lambda a: a.filename):
+            buf = io.BytesIO(); sftp.getfo(f"{d}/{a.filename}", buf)
+            for m, lines in read_lines(a.filename, buf.getvalue()):
+                take(m, lines)
+        log(f"fl: {len(daily)} daily {sub} files")
+    sftp.close(); t.close()
+    out = []
+    for no, f in filings.items():
+        if not f["filed"] or f["filed"] < cutd:
+            continue
+        for d in debtors.get(no, []):
+            out.append({"src": "FL", "no": no, "kind": "lien_irs", "cls": "irs", "party": "Internal Revenue Service", "filed": f["filed"],
+                        "lapse": f["exp"], "status": "active" if f["status"] == "A" else "released", **d})
+    STATS["fl_liens"] = len(out)
+    log(f"fl: {len(filings)} federal tax liens on file, {len(out)} business debtor rows since {cut}")
+    return out
+
+
+def _isdir(sftp, p):
+    try:
+        sftp.listdir(p)
+        return True
+    except OSError:
+        return False
+
+
 # ---------- per company ----------
 def companies(filings, idx, by_key, listed=None):
     listed = listed or {}
@@ -346,19 +551,34 @@ def run():
     # A UCC-1 lapses 5 years after filing; originals filed 4–4.75 years ago lapse in the next 3–12 months.
     refi_from, refi_to = (TODAY + dt.timedelta(days=90) - dt.timedelta(days=1826)).isoformat(), (TODAY + dt.timedelta(days=365) - dt.timedelta(days=1826)).isoformat()
     idx, by_key = load_ppp()
-    filings, ok = [], True
-    for name, fn in (("CT", lambda: ct_filings(cut, lapse_from, lapse_to)), ("CO", lambda: co_filings(idx, by_key, cut, refi_from, refi_to))):
+    filings, ok = [], not ONLY
+    sources = (("CT", lambda: ct_filings(cut, lapse_from, lapse_to)), ("CO", lambda: co_filings(idx, by_key, cut, refi_from, refi_to)),
+               ("OR", lambda: or_filings(cut)), ("FL", lambda: fl_filings(cut)))
+    for name, fn in sources:
+        if ONLY and name not in ONLY:
+            continue
         try:
             got = fn()
             filings += got
             log(f"{name}: {len(got)} filings kept")
+            STATS.setdefault("by_source", {})[name] = len(got)
+            if DRY:
+                print(f"::notice title=ucc {name}::{len(got)} filings; " + str({k: v for k, v in STATS.items() if k.lower().startswith(name.lower())}), flush=True)
         except Exception as e:  # noqa: BLE001
             ok = False
+            print(f"::error title=ucc {name}::{e}", flush=True)
             STATS["errors"].append(f"{name}: {e}")
             log(f"{name} FAILED:", e)
     items = companies(filings, idx, by_key, public_names())
     STATS.update({"filings": len(filings), "companies": len(items), "window_from": cut})
     log(f"companies with a trigger and a size match: {len(items)}")
+    if DRY:
+        by = {}
+        for it in items:
+            for src in it["sources"]:
+                by[src] = by.get(src, 0) + 1
+        print(f"::notice title=ucc dry run::{len(filings)} filings, {len(items)} sized companies with a trigger, by source {by}", flush=True)
+        return
     sent = 0
     for i in range(0, len(items), 150):
         r = post({"action": "ingest", "kind": "ucc", "items": items[i:i + 150], "run": run_id})
@@ -366,11 +586,19 @@ def run():
         log(f"  sent {sent} (new {r.get('added')})")
     r = post({"action": "ingest", "kind": "ucc_done", "run": run_id, "complete": ok, "items": sent, "stats": STATS})
     log(f"done: {sent} companies, dropped {r.get('dropped')}")
-    if not ok:
+    if STATS["errors"]:
         sys.exit("a source failed: " + "; ".join(STATS["errors"]))
 
 
+ONLY = set()
+
 if __name__ == "__main__":
-    if not KEY:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", default="", help="comma-separated registries, e.g. FL,OR (a partial run never drops companies)")
+    ap.add_argument("--dry", action="store_true", help="read and count only; post nothing")
+    a = ap.parse_args()
+    ONLY = {x.strip().upper() for x in a.only.split(",") if x.strip()}
+    DRY = a.dry
+    if not KEY and not DRY:
         sys.exit("Set the FUND_INGEST_KEY secret in GitHub.")
     run()

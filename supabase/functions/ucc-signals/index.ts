@@ -60,6 +60,25 @@ async function ingest(body: any) {
     await sb.from("ucc_signal_runs").insert({ run: body.run, items: body.items || 0, stats: { ...(body.stats || {}), complete: !!body.complete, dropped } });
     return { dropped };
   }
+  // Rolling-window states (Oregon publishes only last month): the script stores every filing here and reads the history back.
+  if (body.kind === "archive_put") {
+    const A = ["src", "no", "debtor", "party", "kind", "cls", "filed", "lapse", "status", "state", "city", "address", "zip"];
+    const seen = new Set<string>();
+    const rows = (Array.isArray(body.items) ? body.items.slice(0, 2000) : []).filter((it: any) => it?.src && it?.no && it?.debtor)
+      .map((it: any) => ({ ...Object.fromEntries(A.map(k => [k, it[k] ?? null])), party: it.party || "" }))
+      .filter((r: any) => { const k = `${r.src}|${r.no}|${r.debtor}|${r.party}`; return !seen.has(k) && seen.add(k); });
+    if (rows.length) { const up = await sb.from("ucc_filing_archive").upsert(rows, { onConflict: "src,no,debtor,party" }); if (up.error) throw new Error(up.error.message); }
+    return { stored: rows.length };
+  }
+  if (body.kind === "archive_get") {
+    const from = Number(body.offset) || 0;
+    let q = sb.from("ucc_filing_archive").select("src,no,debtor,party,kind,cls,filed,lapse,status,state,city,address,zip").eq("src", body.src).order("id").range(from, from + 999);
+    if (body.since) q = q.gte("filed", body.since);
+    const r = await q;
+    if (r.error) throw new Error(r.error.message);
+    const months = body.offset ? undefined : ((await sb.rpc("ucc_archive_months", { p_src: body.src })).data || []);
+    return { rows: r.data || [], months };
+  }
   throw new Error("Unknown ingest kind");
 }
 
