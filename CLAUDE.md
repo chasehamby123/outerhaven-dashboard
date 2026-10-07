@@ -81,6 +81,13 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   Fit / Maybe / Pass + peter_notes + next_step). Verdict moves status (Fit → Interested, Pass → Passed, Maybe → Need info).
   Seeded from the Sell Side `opportunities` (linked by `opportunity_id`). RLS admin. Migration `supabase/2026-10-07-deals.sql`.
   Tab badge = deals to review. Deep link `#/pipeline/deals`. NDA deals use codenames (never the Mauritius brand).
+- **Teasers on deals:** "View teaser" opens the branded A4 teaser popup (`openTeaserPage` in teasers.js: edit in place, Save edits →
+  `deals.teaser_html`, Download PDF). Source order: saved edits > Claude's teaser (`deals.teaser`) > drafted instantly from the deal's
+  fields (`autoTeaser`: headline, highlights, financials, use of funds, timeline, ideal investor, contact). Each card shows how many of the
+  8 teaser facts are filled (`NEEDS`). "Write with Claude" sends a deal brief to resource-request action `teaser` (same routine),
+  stores `teaser_job_id`, and HQ copies `payload.teaser` onto the deal when the job is ready. Uploaded teasers/CIMs go to the private
+  bucket `deal-docs` (`<deal id>/<ts>-<file>`, doc_links `{label, path}`) and open in a popup through a 1-hour signed link; Drive/Docs
+  links open as /preview.
 
 ## Fund signals (Pipeline → Fund signals tab, `hq/funds.js`, admin only)
 - Finds US funds raising now (Form D, II/III in the name, pooled fund, $50–250M, <60% sold, no sales commissions) and Fund I / Fund II

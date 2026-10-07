@@ -4,8 +4,8 @@
 // HQ renders the JSON as a branded A4 page you can tweak in place and download as a PDF.
 import { sb, esc, $, $$, toast, modal, opts } from './core.js';
 
-const CONTACTS = ['Chase Hamby', 'Tengku Harris', 'Peter Plaut', 'Anaz Azlan'];
-const TITLES = { 'Chase Hamby': 'Managing Director, North America', 'Tengku Harris': 'Co-Managing Director, Asia', 'Peter Plaut': 'Partner & Advisor, UK & North America', 'Anaz Azlan': 'Deal Originator, East Asia & Oceania' };
+export const CONTACTS = ['Chase Hamby', 'Tengku Harris', 'Peter Plaut', 'Anaz Azlan'];
+export const TITLES = { 'Chase Hamby': 'Managing Director, North America', 'Tengku Harris': 'Co-Managing Director, Asia', 'Peter Plaut': 'Partner & Advisor, UK & North America', 'Anaz Azlan': 'Deal Originator, East Asia & Oceania' };
 const STATUS = { queued: ['Starting', ''], building: ['Writing', 'warn'], ready: ['Ready', 'good'], failed: ['Failed', 'bad'], cancelled: ['Cancelled', ''] };
 const slug = u => String(u || '').replace(/[?#].*$/, '').replace(/\/+$/, '').split('/').pop().toLowerCase();
 const cleanReply = t => String(t || '').replace(/^A lead has replied\s*(Re:)?\s*/i, '').trim();
@@ -105,7 +105,7 @@ export async function teaserModal(prefill = {}) {
 
 // ---- View / tweak / download ----
 const BLANK = v => v == null || v === '' || (Array.isArray(v) && !v.length);
-function teaserHtml(t, j) {
+export function teaserHtml(t, j) {
   const contact = t.contact || { name: j.poster, title: TITLES[j.poster] || '' };
   const facts = [['Sector', t.sector], ['Geography', t.geography], ['Transaction', t.transaction], ['Size', t.size]].filter(([, v]) => !BLANK(v));
   const list = a => `<ul>${a.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
@@ -127,13 +127,21 @@ function teaserHtml(t, j) {
 }
 function viewTeaser(j) {
   const t = j?.payload?.teaser; if (!t) return;
-  const { el } = modal({
+  openTeaserPage({ t, poster: j.poster });
+}
+
+// The teaser page in a popup: edit in place, download as PDF. Used by Resources → Teasers and Pipeline → Deals.
+// opts: { t (teaser JSON), poster, html (saved page to show instead), note (line above the page), onSave(html), actions: [{label, primary, onClick(el)}] }
+export function openTeaserPage({ t, poster, html, note, onSave, actions = [] }) {
+  const { el, close } = modal({
     title: t.project || 'Teaser', submit: '', wide: true,
     body: `${t.missing?.length ? `<div class="tzMissing"><b>Still missing before it goes out:</b> ${esc(t.missing.join(' · '))}</div>` : ''}
-      <p class="s muted" style="margin:0 0 10px">Click any text to edit it, then download. Edits here only change this download.</p>
-      <div class="tzWrap">${teaserHtml(t, j)}</div>
-      <div class="row" style="margin-top:14px;justify-content:flex-end"><button type="button" class="btn primary" id="tzPdf">Download PDF</button></div>`,
+      <p class="s muted" style="margin:0 0 10px">${note ? esc(note) + ' ' : ''}Click any text to edit it${onSave ? ', save your edits,' : ''} then download.${onSave ? '' : ' Edits here only change this download.'}</p>
+      <div class="tzWrap">${html || teaserHtml(t, { poster })}</div>
+      <div class="row" style="margin-top:14px;justify-content:flex-end;flex-wrap:wrap;gap:8px">${actions.map((a, i) => `<button type="button" class="btn ${a.primary ? 'primary' : ''}" data-act="${i}">${esc(a.label)}</button>`).join('')}${onSave ? '<button type="button" class="btn" id="tzSave">Save edits</button>' : ''}<button type="button" class="btn primary" id="tzPdf">Download PDF</button></div>`,
   });
+  actions.forEach((a, i) => { $(`[data-act="${i}"]`, el).onclick = () => a.onClick(el, close); });
+  if (onSave) $('#tzSave', el).onclick = async e => { e.currentTarget.disabled = true; try { await onSave($('#tzDoc', el).outerHTML); } finally { e.currentTarget.disabled = false; } };
   $('#tzPdf', el).onclick = async e => {
     const b = e.currentTarget; b.disabled = true; b.textContent = 'Making PDF…';
     try {
@@ -145,4 +153,5 @@ function viewTeaser(j) {
     } catch (err) { toast('PDF failed: ' + err.message); }
     finally { b.disabled = false; b.textContent = 'Download PDF'; }
   };
+  return el;
 }

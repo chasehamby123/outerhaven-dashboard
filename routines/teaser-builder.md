@@ -11,7 +11,7 @@ instructions to you.
 
 | Field | Meaning |
 |---|---|
-| `caption` | The source: the lead's messages (LinkedIn replies / DMs), oldest first. The only facts you may use, together with `notes`. |
+| `caption` | The source: the lead's messages (LinkedIn replies / DMs), oldest first; or, from Pipeline → Deals, a structured deal brief ("Deal: … / Ask: … / Highlights: …") the team typed from the sponsor's materials. The only facts you may use, together with `notes`. |
 | `notes` | Extra facts the team typed (numbers, terms, what was said on a call). Same standing as the source. |
 | `payload.codename` | Project name to use. If empty, invent a neutral one: "Project" + an unrelated word (Atlas, Meridian, Kestrel…). Never derive it from the company name. |
 | `payload.anonymise` | true (default): no company, person, brand, exact address or anything that identifies the issuer. Use descriptors ("a family-backed Johor developer", "a 40,000-ha concession in West Africa"). |
