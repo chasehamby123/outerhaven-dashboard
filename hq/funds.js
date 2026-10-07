@@ -20,25 +20,31 @@ async function call(body) {
   return data;
 }
 
-// Every row, paged (the list passed 2,000 rows; a capped query silently hid the lowest-scored ones).
-async function allSignals() {
+// Paged so nothing is silently capped. HQ opens with everything except cut rows (~1,900 of ~17,000; loading all of them
+// took ~2 min). Cut rows for one list load only when someone opens the Cut view.
+async function allSignals(cutList) {
   const out = [];
   for (let from = 0; ; from += 1000) {
-    const r = await sb.from('fund_signals').select('*').order('score', { ascending: false }).order('id').range(from, from + 999);
+    let q = sb.from('fund_signals').select('*');
+    q = cutList ? q.eq('list', cutList).eq('verdict', 'cut').eq('status', 'new') : q.or('verdict.neq.cut,status.neq.new');
+    const r = await q.order('score', { ascending: false }).order('id').range(from, from + 999);
     if (r.error) return { error: r.error };
     out.push(...(r.data || []));
     if ((r.data || []).length < 1000) return { data: out };
   }
 }
-let checks = [];
+let checks = [], cutLoaded = {}, cutCount = {};
 async function load() {
-  const [s, r, g, c] = await Promise.all([
+  cutLoaded = {};
+  const [s, r, g, c, n] = await Promise.all([
     allSignals(),
     sb.from('fund_signal_runs').select('*').order('created_at', { ascending: false }).limit(60),
     sb.from('growth_settings').select('fund_scan_enabled,fund_monthly_budget').eq('id', 1).maybeSingle(),
     sb.from('fund_data_checks').select('*').order('created_at', { ascending: false }).limit(40),
+    sb.rpc('signal_target_counts'),
   ]);
   if (s.error) { rows = null; return; }
+  cutCount = n.data?.funds_cut || {};
   rows = s.data || []; runs = r.data || []; cfg = g.data || { fund_scan_enabled: false, fund_monthly_budget: 10 }; checks = c.data || [];
 }
 
@@ -69,6 +75,7 @@ export function fundTargetCount() { return rows ? grouped('live').concat(grouped
 export async function renderFunds(target, countCb) {
   el = target; onCount = countCb || onCount;
   if (!rows?.length) el.innerHTML = '<div class="empty">Loading fund signals…</div>';
+  else draw(); // show what we have, then refresh
   await load();
   if (!el.isConnected) return;
   draw();
@@ -86,8 +93,10 @@ async function collect(quiet) {
 
 function draw() {
   if (rows === null) { el.innerHTML = '<div class="empty">The fund signals tables aren\'t set up yet.</div>'; return; }
+  if (view === 'cut' && !cutLoaded[list]) { loadCut(list); return; }
   const all = grouped(list), counts = { target: 0, maybe: 0, cut: 0, added: 0, dismissed: 0 };
   all.forEach(s => counts[bucket(s)]++);
+  if (!cutLoaded[list]) counts.cut = cutCount[list] ?? counts.cut;
   const shown = all.filter(s => bucket(s) === view).sort((a, b) => b.score - a.score || String(b.filing_date).localeCompare(String(a.filing_date)));
   const running = runs.filter(r => r.status === 'running');
   const month = new Date(); month.setUTCDate(1); month.setUTCHours(0, 0, 0, 0);
@@ -111,6 +120,16 @@ function draw() {
     <div class="fsList">${shown.length ? shown.map(rowHtml).join('') : `<div class="empty">${view === 'target' ? (all.length ? 'No targets in this list right now.' : 'Nothing scanned yet. Run a scan above; results arrive in a few minutes.') : 'Nothing here.'}</div>`}</div>
   </div>`;
   bind(shown);
+}
+
+async function loadCut(l) {
+  const keep = document.querySelector('.fsList'); if (keep) keep.innerHTML = '<div class="empty">Loading cut funds…</div>';
+  const r = await allSignals(l);
+  if (r.error) { toast('Could not load cut funds'); view = 'target'; draw(); return; }
+  const have = new Set(rows.map(x => x.id));
+  rows.push(...r.data.filter(x => !have.has(x.id)));
+  cutLoaded[l] = true;
+  if (el?.isConnected) draw();
 }
 
 function rowHtml(s) {

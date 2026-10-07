@@ -130,6 +130,9 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   Hard checks in `fund_data_checks`: `selftest` (KNOWN cases in fund_signals.py vs live SEC data, run first in daily; failure = red
   GitHub run) and `audit` (every non-vehicle row re-verified against the SEC filing index, stale rows fixed; after daily/fund1/live).
   Add every hand-caught error to KNOWN. HQ shows the latest self-test and audit above the list.
+- **Load speed (8 Oct 2026):** HQ loads every fund_signals row EXCEPT cut ones (`or('verdict.neq.cut,status.neq.new')`, ~1,900 of ~17,000;
+  loading all took ~2 min). Cut rows for a list load when the Cut view opens (`loadCut`); its count comes from RPC `signal_target_counts()`
+  (also gives Pipeline's Fund/Credit/UCC tab counts before a tab is opened). Migration `supabase/2026-10-08-signal-counts.sql`.
 - Apify actor `logiover/sec-edgar-form-d-scraper` is a fallback only (it silently returned a partial list on 2 Oct 2026); weekly Apify
   scan stays off (`growth_settings.fund_scan_enabled`), budget `fund_monthly_budget`.
 - Tables `fund_signals` (one row per filing, `fund_key` groups feeder/parallel vehicles) and `fund_signal_runs` (`params.source='github'`
