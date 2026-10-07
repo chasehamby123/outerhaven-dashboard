@@ -4,6 +4,7 @@ import { sb, state, esc, $, $$, toast, fail, modal, opts, avatar, firstName, fmt
 import { teaserModal } from './teasers.js';
 import { renderFunds, fundTargetCount } from './funds.js';
 import { renderCredit, creditTargetCount } from './credit.js';
+import { renderDeals, dealsToReviewCount, prefetchDeals } from './deals.js';
 
 const BUY = ['New Relationship', 'Diligence Call Complete', 'NDA Signed + Thesis Captured', 'Relevant Deal Identified', 'Interest Meeting Held', 'Buyer Interest Confirmed', 'Engagement Active', 'Closed'];
 const SELL = ['New Relationship', 'Diligence Call Complete', 'NDA Signed + Buy-Side Thesis Shared', 'Opportunity Received', 'Initial Interest Identified', 'Buy-Side Interest Confirmed', 'Engagement Active', 'Closed'];
@@ -124,7 +125,7 @@ export async function refreshPipelineBadge() {
 // ---- Render ----
 export async function renderPipeline(r, sub) {
   root = r;
-  if (['leads', 'funds', 'credit'].includes(sub) && tab !== sub) { tab = sub; flt = null; history.replaceState(null, '', '#/pipeline'); }
+  if (['leads', 'deals', 'funds', 'credit'].includes(sub) && tab !== sub) { tab = sub; flt = null; history.replaceState(null, '', '#/pipeline'); }
   const fresh = D && Date.now() - loadedAt < 8000;
   if (!D) root.innerHTML = '<div class="empty">Loading pipeline…</div>';
   if (!fresh) {
@@ -157,8 +158,8 @@ function draw() {
   const parked = [...D.opps.filter(o => o.pipeline_active === false).map(o => ({ kind: 'deal', id: o.id, name: o.title, sub: o.side })), ...D.people.filter(p => p.pipeline_active === false && !D.opps.some(o => o.person_id === p.id && o.pipeline_active !== false)).map(p => ({ kind: 'rel', id: p.id, name: p.name, sub: p.primary_side || '' }))];
 
   const inFlt = new Set((flt && flt !== 'leads' ? need : []).map(i => i.kind + ':' + i.id));
-  const tabs = [['need', flt && flt !== 'leads' ? { us: 'Our move', them: 'Chase them', nonext: 'No next step', overdue: 'Overdue' }[flt] : 'Needs you', need.length], ['leads', 'LinkedIn leads', leads.length], ['funds', 'Fund signals', fundTargetCount()], ['credit', 'Credit signals', creditTargetCount()], ...(parked.length ? [['parked', 'Parked', parked.length]] : [])];
-  const panel = tab === 'funds' ? '<div id="fsPanel"></div>' : tab === 'credit' ? '<div id="crPanel"></div>' : tab === 'leads'
+  const tabs = [['need', flt && flt !== 'leads' ? { us: 'Our move', them: 'Chase them', nonext: 'No next step', overdue: 'Overdue' }[flt] : 'Needs you', need.length], ['leads', 'LinkedIn leads', leads.length], ['deals', 'Deals', dealsToReviewCount()], ['funds', 'Fund signals', fundTargetCount()], ['credit', 'Credit signals', creditTargetCount()], ...(parked.length ? [['parked', 'Parked', parked.length]] : [])];
+  const panel = tab === 'deals' ? '<div id="dlPanel"></div>' : tab === 'funds' ? '<div id="fsPanel"></div>' : tab === 'credit' ? '<div id="crPanel"></div>' : tab === 'leads'
     ? `<p class="pHint">${qualified} qualified${leads.length - qualified ? `, ${leads.length - qualified} still to review` : ''}. Add them before they go cold.</p>
       <div class="pList">${leads.length ? leads.slice(0, showAllLeads ? 300 : 8).map(leadHtml).join('') : '<div class="empty">Inbox is clear.</div>'}</div>
       ${leads.length > 8 ? `<footer class="pMore"><button class="btn sm" data-more>${showAllLeads ? 'Show fewer' : `Show all ${leads.length}`}</button></footer>` : ''}`
@@ -182,6 +183,8 @@ function draw() {
   </div>`;
   bind(all);
   if (tab === 'funds') renderFunds($('#fsPanel'), n => { const em = $('[data-tab="funds"] em', root); if (em) em.textContent = n; });
+  const dealBadge = n => { const em = $('[data-tab="deals"] em', root); if (em) em.textContent = n; };
+  if (tab === 'deals') renderDeals($('#dlPanel'), dealBadge); else prefetchDeals(dealBadge);
   if (tab === 'credit') renderCredit($('#crPanel'), n => { const em = $('[data-tab="credit"] em', root); if (em) em.textContent = n; });
 }
 

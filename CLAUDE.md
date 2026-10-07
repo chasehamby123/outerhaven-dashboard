@@ -74,6 +74,14 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Leads are ranked by `leadHeat()` (pipeline.js): asks for a call / gives contact = "Wants to talk", deal words = "Has a deal", polite no = "Looks like a no". Chase's inbox tasks on Today show unanswered outreach replies per account (by `source_account` slug).
 - Outbound reality (Oct 2026): Peter, Tengku, Chase run campaigns in Prosp (replies arrive in `lead_intake` via webhook; sends are not tracked); the other 6 accounts are manual in AdsPower.
 
+## Deals (Pipeline → Deals tab, `hq/deals.js`, admin only; 7 Oct 2026)
+- Deals PROVIDED to us (mandates, teasers, CIMs from sponsors / banks / introducers) for Peter to review. Not outbound targets.
+  Table `deals` (codename, source, type, ask_text/ask_amount (USD only, `parseAsk`), valuation, structure, fee terms, summary,
+  doc_links [{label,url}], NDA, status To review / Need info / Interested / Shopping to buyers / Passed / Closed, peter_verdict
+  Fit / Maybe / Pass + peter_notes + next_step). Verdict moves status (Fit → Interested, Pass → Passed, Maybe → Need info).
+  Seeded from the Sell Side `opportunities` (linked by `opportunity_id`). RLS admin. Migration `supabase/2026-10-07-deals.sql`.
+  Tab badge = deals to review. Deep link `#/pipeline/deals`. NDA deals use codenames (never the Mauritius brand).
+
 ## Fund signals (Pipeline → Fund signals tab, `hq/funds.js`, admin only)
 - Finds US funds raising now (Form D, II/III in the name, pooled fund, $50–250M, <60% sold, no sales commissions) and Fund I / Fund II
   managers inside the next-fund window who haven't filed their next fund under any name (list `fund1` holds both; `fund_no` tells them apart).

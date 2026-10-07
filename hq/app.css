@@ -1040,3 +1040,24 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .hqForm textarea{flex:1;resize:none;min-height:24px;max-height:140px;padding:6px 0;border:0;outline:0;font:inherit;font-size:var(--fs);line-height:1.45;background:transparent;color:var(--ink)}.hqForm textarea::placeholder{color:var(--faint)}
 .hqSend{flex:none;width:34px;height:34px;border-radius:50%;border:0;background:var(--inv);color:var(--inv-ink);display:grid;place-items:center;cursor:pointer}.hqSend:hover{background:var(--inv-hover)}.hqSend:disabled{background:var(--line-2);color:var(--surface);cursor:default}
 @media (max-width:640px){.hqChatPanel,.hqChatPanel.wide{right:8px;left:8px;width:auto;bottom:calc(80px + env(safe-area-inset-bottom));height:min(78vh,calc(100vh - 100px));border-radius:16px}.hqChatBtn{right:14px}.hqChatPanel header [data-act=wide]{display:none}.czOverlay{padding:10px}.czOverlay .cz{padding:16px}}
+
+/* ---- Pipeline → Deals (hq/deals.js): deals provided to us, for Peter ---- */
+.dlTitle{margin:0;font:600 17px/1.2 var(--serif);color:var(--ink)}
+.dl .fsScore b{font-size:17px}
+.dlMeta{margin-top:4px;font-size:var(--fs-xs)}
+.dlMeta b{color:var(--ink-2)}
+.dlSum{margin:8px 0 0;font-size:var(--fs-s);line-height:1.5;color:var(--ink-2);white-space:pre-line}
+.dlReview{display:grid;gap:8px;margin-top:12px;padding:10px 12px;border-radius:var(--r);background:var(--sunk)}
+.dlVerdict{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.dlVerdict>span{font-size:var(--fs-xs);font-weight:600;color:var(--ink-2);margin-right:4px}
+.dlVerdict em{font-style:normal;font-size:var(--fs-xs);color:var(--faint);margin-left:4px}
+.dlVerdict button{height:28px;padding:0 12px;border:1px solid var(--line-2);border-radius:6px;background:var(--surface);color:var(--muted);font:inherit;font-size:var(--fs-xs);font-weight:600;cursor:pointer}
+.dlVerdict button.on[data-tone=good]{border-color:var(--good);background:var(--good-bg);color:var(--good)}
+.dlVerdict button.on[data-tone=warn]{border-color:var(--warn);background:var(--warn-bg);color:var(--warn)}
+.dlVerdict button.on[data-tone=bad]{border-color:var(--bad);background:var(--bad-bg);color:var(--bad)}
+.dlReview .textarea{min-height:54px;background:var(--surface)}
+.dlNext{display:flex;align-items:center;gap:8px;font-size:var(--fs-xs);font-weight:500;color:var(--ink-2)}
+.dlNext .input{flex:1;background:var(--surface)}
+.dlRow .fsMain h4 .pFlag{font:600 var(--fs-xs)/1 var(--sans);margin-left:6px;vertical-align:middle}
+.fsViews button.on[data-tone=warn]{border-color:var(--warn);background:var(--warn-bg);color:var(--warn)}
+@media(max-width:700px){.dlForm{grid-template-columns:1fr}.dlNext{flex-wrap:wrap}}
