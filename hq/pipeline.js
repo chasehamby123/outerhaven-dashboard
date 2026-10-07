@@ -123,8 +123,20 @@ export async function refreshPipelineBadge() {
 }
 
 // ---- Render ----
+// Tab counts for the signal tabs straight from the database, so they show before a tab is opened.
+let sigCounts = {}, sigAt = 0;
+async function refreshSigCounts() {
+  if (Date.now() - sigAt < 60000) return;
+  sigAt = Date.now();
+  const { data } = await sb.rpc('signal_target_counts');
+  if (!data) return;
+  sigCounts = data;
+  for (const k of ['funds', 'credit', 'ucc']) { const em = root?.querySelector(`[data-tab="${k}"] em`); if (em && em.textContent === '0') em.textContent = data[k] ?? 0; }
+}
+
 export async function renderPipeline(r, sub) {
   root = r;
+  refreshSigCounts();
   if (['leads', 'funds', 'credit', 'ucc'].includes(sub) && tab !== sub) { tab = sub; flt = null; history.replaceState(null, '', '#/pipeline'); }
   const fresh = D && Date.now() - loadedAt < 8000;
   if (!D) root.innerHTML = '<div class="empty">Loading pipeline…</div>';
@@ -158,7 +170,7 @@ function draw() {
   const parked = [...D.opps.filter(o => o.pipeline_active === false).map(o => ({ kind: 'deal', id: o.id, name: o.title, sub: o.side })), ...D.people.filter(p => p.pipeline_active === false && !D.opps.some(o => o.person_id === p.id && o.pipeline_active !== false)).map(p => ({ kind: 'rel', id: p.id, name: p.name, sub: p.primary_side || '' }))];
 
   const inFlt = new Set((flt && flt !== 'leads' ? need : []).map(i => i.kind + ':' + i.id));
-  const tabs = [['need', flt && flt !== 'leads' ? { us: 'Our move', them: 'Chase them', nonext: 'No next step', overdue: 'Overdue' }[flt] : 'Needs you', need.length], ['leads', 'LinkedIn leads', leads.length], ['funds', 'Fund signals', fundTargetCount()], ['credit', 'Credit signals', creditTargetCount()], ['ucc', 'UCC signals', uccTargetCount()], ...(parked.length ? [['parked', 'Parked', parked.length]] : [])];
+  const tabs = [['need', flt && flt !== 'leads' ? { us: 'Our move', them: 'Chase them', nonext: 'No next step', overdue: 'Overdue' }[flt] : 'Needs you', need.length], ['leads', 'LinkedIn leads', leads.length], ['funds', 'Fund signals', fundTargetCount() || sigCounts.funds || 0], ['credit', 'Credit signals', creditTargetCount() || sigCounts.credit || 0], ['ucc', 'UCC signals', uccTargetCount() || sigCounts.ucc || 0], ...(parked.length ? [['parked', 'Parked', parked.length]] : [])];
   const panel = tab === 'funds' ? '<div id="fsPanel"></div>' : tab === 'credit' ? '<div id="crPanel"></div>' : tab === 'ucc' ? '<div id="ucPanel"></div>' : tab === 'leads'
     ? `<p class="pHint">${qualified} qualified${leads.length - qualified ? `, ${leads.length - qualified} still to review` : ''}. Add them before they go cold.</p>
       <div class="pList">${leads.length ? leads.slice(0, showAllLeads ? 300 : 8).map(leadHtml).join('') : '<div class="empty">Inbox is clear.</div>'}</div>
