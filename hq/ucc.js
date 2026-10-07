@@ -1,5 +1,6 @@
 // Pipeline → UCC signals: sizable PRIVATE companies that need private credit (Peter's lane), from state UCC lien filings
-// (Connecticut + Colorado open data) sized by their SBA PPP loan. Filled daily by scripts/ucc_signals.py on GitHub; judged
+// (Connecticut, Colorado, Oregon open data + Florida federal tax liens) sized by their SBA PPP loan. Filters: state, size,
+// signal, sector, recency, registry (kept in localStorage 'hq-ucc-filters'). Filled daily by scripts/ucc_signals.py on GitHub; judged
 // on the server (classifyUcc in supabase/functions/ucc-signals/rules.js). Every verdict shows its reasons.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
 
@@ -33,21 +34,78 @@ export async function renderUcc(target, countCb) {
   if (el.isConnected) draw();
 }
 
+// Filters (kept per browser). Geography = the company's state; registry = which state's UCC data it came from.
+const SIGNALS = { mca: ['Merchant cash advance', f => f.mca_12m || f.mca_18m], rep: ['Hidden-lender filings (agent)', f => f.rep_12m || f.rep_18m],
+  irs: ['IRS tax lien', f => f.irs_24m], state_tax: ['State tax / labor lien', f => f.state_tax_24m], judgment: ['Judgment lien', f => f.judgment_24m],
+  refi: ['Facility up for refinancing', f => (f.refi || []).length], factoring: ['Factoring', f => f.factoring_24m], fintech: ['Platform loan', f => f.fintech_18m],
+  nonbank: ['Already uses a non-bank lender', f => f.agent_active] };
+const SIZES = { '': 'Any size', '10-20': '$10–20M', '20-50': '$20–50M', '50-100': '$50–100M', '100-': '$100M+', '20-': '$20M+', '50-': '$50M+' };
+const RECENT = { '': 'Any time', 90: 'Last 90 days', 182: 'Last 6 months', 365: 'Last 12 months' };
+const SORTS = { score: 'Score', rev: 'Revenue', new: 'Newest filing' };
+const NOF = { q: '', st: '', src: '', size: '', sec: '', sig: '', rec: '', sort: 'score' };
+let F = { ...NOF };
+try { F = { ...NOF, ...JSON.parse(localStorage.getItem('hq-ucc-filters') || '{}') }; } catch { /* private window */ }
+const saveF = () => { try { localStorage.setItem('hq-ucc-filters', JSON.stringify(F)); } catch { /* ignore */ } };
+const active = () => Object.keys(NOF).filter(k => k !== 'sort' && F[k]).length;
+
+function passes(s) {
+  const f = s.facts || {}, est = s.est_revenue || 0;
+  if (F.q) { const q = F.q.toLowerCase(); if (![s.company_name, s.city, s.ppp?.name].some(x => String(x || '').toLowerCase().includes(q))) return false; }
+  if (F.st && s.state !== F.st) return false;
+  if (F.src && !(s.sources || []).includes(F.src)) return false;
+  if (F.size) { const [lo, hi] = F.size.split('-').map(x => x ? +x * 1e6 : null); if (est < lo || (hi && est >= hi)) return false; }
+  if (F.sec && sector(s) !== F.sec) return false;
+  if (F.sig && !SIGNALS[F.sig]?.[1](f)) return false;
+  if (F.rec && !(s.latest_filing && Date.now() - Date.parse(s.latest_filing) <= +F.rec * 864e5)) return false;
+  return true;
+}
+const sorter = { score: (a, b) => b.score - a.score || (b.est_revenue || 0) - (a.est_revenue || 0), rev: (a, b) => (b.est_revenue || 0) - (a.est_revenue || 0),
+  new: (a, b) => String(b.latest_filing || '').localeCompare(String(a.latest_filing || '')) };
+
+function selectHtml(key, label, entries) {
+  return `<label class="ucF"><span>${label}</span><select class="select" data-f="${key}">${entries.map(([v, t]) => `<option value="${esc(v)}"${String(F[key]) === String(v) ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`;
+}
+const tally = fn => { const m = {}; rows.forEach(s => [].concat(fn(s)).forEach(v => { if (v) m[v] = (m[v] || 0) + 1; })); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
+
 function draw() {
   if (rows === null) { el.innerHTML = '<div class="empty">The UCC signals table isn\'t set up yet.</div>'; return; }
-  const counts = { target: 0, maybe: 0, cut: 0, added: 0, dismissed: 0 };
-  rows.forEach(s => counts[bucket(s)]++);
-  const shown = rows.filter(s => bucket(s) === view).sort((a, b) => b.score - a.score || (b.est_revenue || 0) - (a.est_revenue || 0));
   const last = runs[0], st = last?.stats || {};
-  onCount(counts.target);
+  const regs = tally(s => s.sources || []).map(([k]) => k).sort();
   el.innerHTML = `<div class="fs">
     <div class="fsTop"><p class="pHint" style="padding:0;margin:0;max-width:680px">Private companies with roughly $20M+ revenue whose lien filings show they need money: stacked merchant cash advances, tax or judgment liens, or a bank facility about to lapse. Private credit is the natural fix, and Peter's lane.</p>
       <div class="row fsBtns"><a class="btn sm primary" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a><button class="btn sm ghost" id="ucHow">How it works</button></div></div>
-    <p class="pHint">Source: Connecticut and Colorado UCC open data, sized by SBA PPP loans. Refreshed daily on GitHub, free.${last ? ` Last run <b>${new Date(last.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>${st.filings ? ` · ${Number(st.filings).toLocaleString()} filings on sized companies read` : ''}${st.complete === false ? ' · <b style="color:var(--bad)">a state failed to load</b>' : ''}.` : ' Not run yet: on GitHub choose Run workflow, mode <b>ucc</b>.'}</p>
-    <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed']].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
-    <div class="fsList">${shown.length ? shown.slice(0, 200).map(rowHtml).join('') : `<div class="empty">${rows.length ? 'Nothing here.' : 'No companies yet. Run the scan on GitHub (mode ucc); the first run takes about 10–15 minutes.'}</div>`}</div>
-    ${shown.length > 200 ? `<p class="pHint">Showing the top 200 of ${shown.length}.</p>` : ''}
+    <p class="pHint">Source: ${regs.length ? regs.join(', ') : 'state'} UCC data (Florida = federal tax liens only), sized by SBA PPP loans. Refreshed daily on GitHub, free.${last ? ` Last run <b>${new Date(last.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>${st.filings ? ` · ${Number(st.filings).toLocaleString()} filings on sized companies read` : ''}${st.complete === false ? ' · <b style="color:var(--bad)">not every state loaded</b>' : ''}.` : ' Not run yet: on GitHub choose Run workflow, mode <b>ucc</b>.'}</p>
+    <div class="ucFilters">
+      <label class="ucF ucQ"><span>Search</span><input class="input" data-f="q" type="search" placeholder="Company or city" value="${esc(F.q)}"></label>
+      ${selectHtml('st', 'State', [['', 'All states'], ...tally(s => s.state).map(([k, n]) => [k, `${k} (${n})`])])}
+      ${selectHtml('size', 'Revenue (est.)', Object.entries(SIZES))}
+      ${selectHtml('sig', 'Signal', [['', 'Any signal'], ...Object.entries(SIGNALS).map(([k, v]) => [k, v[0]])])}
+      ${selectHtml('sec', 'Sector', [['', 'All sectors'], ...tally(s => sector(s)).map(([k, n]) => [k, `${k} (${n})`])])}
+      ${selectHtml('rec', 'Newest filing', Object.entries(RECENT))}
+      ${regs.length > 1 ? selectHtml('src', 'UCC registry', [['', 'All registries'], ...regs.map(k => [k, k])]) : ''}
+      ${selectHtml('sort', 'Sort by', Object.entries(SORTS))}
+      <button type="button" class="btn sm ghost ucReset" id="ucReset"${active() ? '' : ' hidden'}>Clear filters</button>
+    </div>
+    <div id="ucBody"></div>
   </div>`;
+  $('#ucHow', el).onclick = howModal;
+  $$('[data-f]', el).forEach(i => { i.oninput = i.onchange = () => { F[i.dataset.f] = i.value; saveF(); $('#ucReset', el).hidden = !active(); drawList(); }; });
+  $('#ucReset', el).onclick = () => { F = { ...NOF, sort: F.sort }; saveF(); draw(); };
+  drawList();
+}
+
+function drawList() {
+  const body = $('#ucBody', el); if (!body) return;
+  const counts = { target: 0, maybe: 0, cut: 0, added: 0, dismissed: 0 }, all = { target: 0 };
+  const pass = rows.filter(passes);
+  rows.forEach(s => { if (bucket(s) === 'target') all.target++; });
+  pass.forEach(s => counts[bucket(s)]++);
+  onCount(all.target);
+  const shown = pass.filter(s => bucket(s) === view).sort(sorter[F.sort] || sorter.score);
+  body.innerHTML = `<div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed']].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
+    ${active() ? `<p class="pHint" style="margin:0">${pass.length.toLocaleString()} of ${rows.length.toLocaleString()} companies match the filters.</p>` : ''}
+    <div class="fsList">${shown.length ? shown.slice(0, 200).map(rowHtml).join('') : `<div class="empty">${rows.length ? (active() ? 'Nothing matches these filters.' : 'Nothing here.') : 'No companies yet. Run the scan on GitHub (mode ucc); the first run takes about 10–15 minutes.'}</div>`}</div>
+    ${shown.length > 200 ? `<p class="pHint">Showing the top 200 of ${shown.length}. Narrow it with the filters.</p>` : ''}`;
   bind(shown);
 }
 
@@ -90,8 +148,7 @@ function opener(s, name = '') {
 
 function bind(shown) {
   const find = id => shown.find(s => s.id === id) || rows.find(s => s.id === id);
-  $$('[data-view]', el).forEach(b => b.onclick = () => { view = b.dataset.view; draw(); });
-  $('#ucHow', el).onclick = howModal;
+  $$('[data-view]', el).forEach(b => b.onclick = () => { view = b.dataset.view; drawList(); });
   $$('[data-copy]', el).forEach(b => b.onclick = async () => {
     const t = opener(find(b.dataset.copy));
     try { await navigator.clipboard.writeText(t); toast('Opener copied. Put their name in before sending.'); } catch { modal({ title: 'Opener', submit: '', body: `<textarea class="input" rows="6" style="width:100%">${esc(t)}</textarea>` }); }
@@ -99,7 +156,7 @@ function bind(shown) {
   $$('[data-dismiss],[data-undo]', el).forEach(b => b.onclick = async () => {
     const id = b.dataset.dismiss || b.dataset.undo, st = b.dataset.dismiss ? 'dismissed' : 'new';
     if (fail(await sb.from('ucc_signals').update({ status: st, updated_at: new Date().toISOString() }).eq('id', id), 'Update')) return;
-    const r = rows.find(x => x.id === id); if (r) r.status = st; draw();
+    const r = rows.find(x => x.id === id); if (r) r.status = st; drawList();
   });
   $$('[data-add]', el).forEach(b => b.onclick = () => addModal(find(b.dataset.add)));
 }
@@ -122,7 +179,7 @@ function addModal(s) {
       await sb.from('ucc_signals').update({ status: 'added', person_id: r.data.id, updated_at: now }).eq('id', s.id);
       s.status = 'added'; s.person_id = r.data.id;
       try { await navigator.clipboard.writeText(opener(s, name)); toast(`${name} added. Opener copied with their name.`); } catch { toast(`${name} added to Pipeline → Sell side`); }
-      draw();
+      drawList();
     },
   });
 }
@@ -133,7 +190,7 @@ function howModal() {
     body: `<div class="fsHow">
       <h4>1. Who this finds</h4><p>Private companies big enough for a private credit facility (roughly $20M+ revenue) that are paying too much for money or under cash strain. They never file with the SEC, so Credit signals can't see them.</p>
       <h4>2. Where the data comes from</h4>
-      <ul><li><b>UCC filings</b>: a lender's public notice that it has a lien on a company's assets. Connecticut and Colorado publish every filing as free open data, refreshed nightly. Last 30 months, plus bank liens about to lapse.</li>
+      <ul><li><b>UCC filings</b>: a lender's public notice that it has a lien on a company's assets. Every state that gives the data away free is in: Connecticut and Colorado (every filing, nightly), Oregon (publishes only last month's filings, so HQ keeps its own archive and the history grows each month; older months backfilled from web archive copies) and Florida (federal tax liens only: Florida privatised its UCC registry). Last 30 months, plus bank liens about to lapse (CT, CO).</li>
       <li><b>Size</b>: filings carry no revenue, so each company is matched by name and state (same state only) to the SBA's PPP loan data (2020–21). The loan was about 2.5 months of payroll; revenue is estimated from that and the jobs reported. Only loans of $500K+ are considered.</li></ul>
       <h4>3. What counts as a signal (score)</h4><ul>
       <li><b>+45</b> stacking: 2+ filings by named merchant cash advance funders in 18 months; <b>+30</b> one in the last 12 months.</li>
@@ -143,7 +200,7 @@ function howModal() {
       <li><b>+15</b> factoring, <b>+10</b> platform loans (WebBank, Shopify, PayPal), <b>+5</b> already borrows from an agent or asset-based lender.</li>
       <li><b>+20</b> estimated revenue $50M+, <b>+12</b> $20–50M; <b>+10</b> newest distress filing in the last 90 days.</li></ul>
       <p>Target = estimated revenue $20M+ and a strong signal (named cash advance, 4+ agent filings, tax, judgment), or $50M+ with a maturing facility. Public companies are cut (they're in Credit signals). $10–20M or weaker signals = Maybe. Lenders, public bodies, non-profits and anything under $10M are cut.</p>
-      <h4>4. What it can't see</h4><ul><li>Companies organized in other states: a UCC is filed where the company is incorporated, so a Delaware LLC based in Connecticut is missed. More states can be added where they publish data (Vermont, West Virginia, Oregon) or by buying bulk files (Texas, Ohio).</li>
+      <h4>4. What it can't see</h4><ul><li>Companies organized in other states: a UCC is filed where the company is incorporated, so a Delaware LLC based in Connecticut is missed. No other state publishes UCC data free; the rest sell it (Texas full file about $1,150 one-time).</li>
       <li>Loan amounts: UCC filings don't say how much was borrowed.</li><li>Size is a 2020 estimate: check the website and LinkedIn headcount before calling.</li></ul>
       <p class="s muted">The opener never mentions liens. They are public, but naming them in a first message reads as surveillance.</p></div>`,
   });

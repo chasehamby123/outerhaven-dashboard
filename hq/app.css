@@ -1096,3 +1096,10 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .ucLiens{margin:8px 0 2px;font-size:var(--fs-s)}.ucLiens summary{cursor:pointer;color:var(--ink-2);font-weight:500}
 .ucLiens table{width:100%;border-collapse:collapse;margin-top:6px}.ucLiens td{padding:5px 8px 5px 0;border-top:1px solid var(--line);vertical-align:top}.ucLiens td:first-child{white-space:nowrap;color:var(--muted)}
 @media (max-width:640px){.ucLiens td:nth-child(4){display:none}}
+/* UCC signals filters */
+.ucFilters{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 10px;align-items:end;padding:8px 20px 12px}
+.ucF{display:flex;flex-direction:column;gap:3px;min-width:0;font-size:var(--fs-xs,12px);color:var(--muted)}
+.ucF .select,.ucF .input{width:100%;min-width:0}
+.ucQ{grid-column:span 2}
+.ucReset{align-self:end;justify-self:start}
+@media (max-width:420px){.ucFilters{grid-template-columns:1fr 1fr;padding:8px 16px 12px}.ucQ{grid-column:1/-1}}
