@@ -248,6 +248,12 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   GitHub compare link, never main, never live (no migrations applied, no deploys). Ops role = ask only (`payload.access`).
   Untested end to end against the live routine: first real message is the test.
 
+## Team access + sign-in (7 Oct 2026; `hq/team.js`, `supabase/functions/team-admin`)
+- Sign-in page has "Email me a sign-in link instead" (magic link, `signInWithOtp`, only for emails in `dashboard_access`; lands on /hq.html).
+- HQ → Team access (admin only): lists `dashboard_access` admin/ops rows with login status; "Set password" / "Add team member" call
+  edge function `team-admin` (verify_jwt=false, checks admin JWT): creates or updates the auth user with the admin-typed password,
+  confirms the email, adds the access row. No email is sent. The admin types the password; Claude never does.
+
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.
 - Never enter passwords, API keys or tokens for the user, even with permission. Point them to the HQ field.

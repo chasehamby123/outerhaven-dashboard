@@ -10,6 +10,7 @@ import { renderPipeline, refreshPipelineBadge } from './pipeline.js';
 import { renderDealsPage, refreshDealsBadge } from './deals.js';
 import { mountChat } from './chat.js';
 import { renderChaseDaily } from './chase-daily.js';
+import { renderTeam } from './team.js';
 
 const ROUTES = {
   today: { label: 'Today', render: r => renderToday(r), ops: true },
@@ -19,6 +20,7 @@ const ROUTES = {
   pipeline: { label: 'Pipeline', render: (r, sub) => renderPipeline(r, sub) },
   deals: { label: 'Deals', render: r => renderDealsPage(r) },
   resources: { label: 'Resources', render: (r, sub) => renderResources(r, sub), ops: true },
+  team: { label: 'Team access', render: r => renderTeam(r) },
   'chase-daily': { label: 'My Daily Ops', render: r => renderChaseDaily(r), chaseOnly: true },
 };
 
@@ -49,6 +51,7 @@ const ICON = {
   schedule: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/><rect x="7" y="13" width="5" height="4" rx="1"/></svg>',
   resources: '<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>',
   deals: '<svg viewBox="0 0 24 24"><path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M4 12h16"/></svg>',
+  team: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><rect x="15" y="11" width="6.5" height="5" rx="1"/><path d="M16.5 11V9.5a1.75 1.75 0 0 1 3.5 0V11"/></svg>',
   pipeline: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="6" rx="1.5"/></svg>',
 };
 const THEMES = [['light', 'Light', '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>'], ['dark', 'Dark', '<svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>'], ['tan', 'Tan', '<i></i>']];
@@ -75,6 +78,7 @@ function shell() {
         ${navLink('deals', '#/deals', 'Deals')}
         ${navLink('growth', '#/growth/posts', 'Growth')}
         ${navLink('resources', '#/resources', 'Resources')}
+        ${navLink('team', '#/team', 'Team access')}
         ${String(state.user?.email || '').toLowerCase() === 'chasehamby@chproduction.org' ? navLink('chase-daily', '#/chase-daily', 'My Daily Ops') : ''}
         <small>Legacy</small>
         <a href="/shared.html">${ICON.pipeline}<span>Old pipeline board</span><em>↗</em></a>`}
@@ -94,7 +98,21 @@ function authScreen(msg = '') {
     <form id="authForm"><label class="field">Email<input class="input" id="aEmail" type="email" autocomplete="email" required></label>
     <label class="field">Password<input class="input" id="aPass" type="password" autocomplete="current-password" required></label>
     <div class="msg" id="aMsg">${esc(msg)}</div><button class="btn primary" type="submit">Sign in</button>
+    <button type="button" class="btn" id="aLink">Email me a sign-in link instead</button>
     <button type="button" class="link s" id="aForgot" style="justify-self:start">Forgot password?</button></form></div></div>`;
+  // Passwordless: one-tap link by email. Only emails on the access list get one.
+  $('#aLink').onclick = async e => {
+    const email = $('#aEmail').value.trim().toLowerCase(), m = $('#aMsg'), b = e.currentTarget;
+    m.style.color = '';
+    if (!email) { m.textContent = 'Type your email above first.'; $('#aEmail').focus(); return; }
+    b.disabled = true;
+    const { data: ok } = await sb.rpc('is_dashboard_email_allowed', { input_email: email });
+    if (ok !== true) { m.textContent = 'This email is not on the approved access list.'; b.disabled = false; return; }
+    const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: location.origin + '/hq.html' } });
+    b.disabled = false;
+    m.style.color = error ? '' : 'var(--good)';
+    m.textContent = error ? error.message : `Sign-in link sent to ${email}. Open it on this device (check spam too).`;
+  };
   $('#aForgot').onclick = async () => {
     const email = $('#aEmail').value.trim().toLowerCase(), m = $('#aMsg');
     if (!email) { m.textContent = 'Type your email above first.'; return; }
@@ -131,8 +149,10 @@ async function start() {
     await sb.auth.getSession(); // lets supabase-js consume the token from the link
     return recoveryScreen();
   }
+  const linkErr = /error_description=([^&]+)/.exec(location.hash);
   const r = await authenticate();
-  if (!r.ok) return authScreen(r.msg);
+  if (/access_token=|error_description=/.test(location.hash)) history.replaceState(null, '', '/hq.html');
+  if (!r.ok) return authScreen(r.msg || (linkErr ? decodeURIComponent(linkErr[1].replace(/\+/g, ' ')) + '. Ask for a new link.' : ''));
   shell();
   mountChat();
   $('#view').innerHTML = '<div class="empty">Loading…</div>';
