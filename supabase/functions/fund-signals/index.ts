@@ -244,7 +244,7 @@ async function ingest(body: any) {
   if (body.kind === "adviser_todo") {
     const out: any[] = [];
     for (let from = 0; ; from += 1000) {
-      const r = await sb.from("fund_signals").select("id,list,company_name,manager_key,check_keyword,executives_text,state,city").in("list", ["live", "fund1"]).neq("verdict", "cut").range(from, from + 999);
+      const r = await sb.from("fund_signals").select("id,list,cik,company_name,manager_key,check_keyword,executives_text,state,city,adviser_checked_at,manager_formd_total").in("list", ["live", "fund1"]).neq("verdict", "cut").range(from, from + 999);
       if (r.error) throw new Error(r.error.message);
       out.push(...(r.data || []));
       if ((r.data || []).length < 1000) break;
@@ -254,14 +254,19 @@ async function ingest(body: any) {
   if (body.kind === "adviser") {
     const rows = (Array.isArray(body.rows) ? body.rows.slice(0, 300) : []).filter((x: any) => x && x.id);
     if (!rows.length) return { updated: 0 };
-    const sigs = (await sb.from("fund_signals").select("id,manager_key,executives,city").in("id", rows.map((x: any) => x.id))).data || [];
+    const sigs = (await sb.from("fund_signals").select("id,manager_key,executives,city,manager_formd_total,manager_formd_funds").in("id", rows.map((x: any) => x.id))).data || [];
     const keys = [...new Set(sigs.map((x: any) => x.manager_key).filter(Boolean))];
     const peers: any[] = [];
     for (let i = 0; i < keys.length; i += 100) peers.push(...((await sb.from("fund_signals").select("id,manager_key,company_name,fund_no,sold,executives,city").in("manager_key", keys.slice(i, i + 100))).data || []));
     const num = (v: any) => v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
     await Promise.all(rows.map(async (a: any) => {
       const s = sigs.find((x: any) => x.id === a.id); if (!s) return;
-      const fd = formDTotal(s, peers);
+      // Earlier funds found on EDGAR by the GitHub job (extras): same manager name AND a shared named person, judged by formDTotal.
+      const extras = Array.isArray(a.extras) ? a.extras.slice(0, 40).filter((it: any) => it && it.companyName).map((it: any) => ({ id: `x:${it.accessionNumber || it.companyName}`, ...normalize(it, "fund1") })) : null;
+      const got = formDTotal(s, extras ? [...peers, ...extras] : peers);
+      // Without an EDGAR lookup this run, keep the larger total found before (a daily run never shrinks it).
+      const keep = !extras && (Number(s.manager_formd_total) || 0) > got.total;
+      const fd = keep ? { total: Number(s.manager_formd_total), funds: s.manager_formd_funds || got.funds } : got;
       const raum = num(a.adviser_raum), gav = num(a.adviser_pf_gav), adv = Math.max(raum || 0, gav || 0);
       const total = Math.max(adv, fd.total);
       const src = !total ? null : adv >= fd.total
@@ -269,7 +274,8 @@ async function ingest(body: any) {
         : `Form D raises across ${fd.funds} fund${fd.funds === 1 ? "" : "s"}`;
       await sb.from("fund_signals").update({ adviser_crd: a.adviser_crd || null, adviser_name: a.adviser_name || null, adviser_type: a.adviser_type || null,
         adviser_raum: raum, adviser_pf_gav: gav, adviser_pf_count: num(a.adviser_pf_count), adviser_match: a.adviser_match || null,
-        adviser_filed: a.adviser_filed || null, adviser_checked_at: now, manager_total: total || null, manager_total_src: src }).eq("id", a.id);
+        adviser_filed: a.adviser_filed || null, adviser_checked_at: now, manager_total: total || null, manager_total_src: src,
+        manager_formd_total: fd.total || null, manager_formd_funds: fd.funds || null }).eq("id", a.id);
     }));
     await judge((await sb.from("fund_signals").select("*").in("id", rows.map((x: any) => x.id))).data || []);
     return { updated: rows.length };

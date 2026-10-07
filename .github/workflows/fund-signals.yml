@@ -55,7 +55,7 @@ jobs:
           case "$MODE" in daily|live|fund1|check|recheck|credit|probe|study1|study2|selftest|audit|adviser|adviserprobe) ;; *) echo "unknown mode $MODE"; exit 1;; esac
           if [ "$MODE" = "credit" ]; then python scripts/credit_signals.py; exit $?; fi
           if [ "$MODE" = "adviserprobe" ]; then python scripts/adviser_aum.py --mode probe --q "${IN_FROM:-Solomon Hess}"; exit $?; fi
-          if [ "$MODE" = "adviser" ]; then python scripts/adviser_aum.py --mode run; exit $?; fi
+          if [ "$MODE" = "adviser" ]; then python scripts/adviser_aum.py --mode run --full; exit $?; fi
           set -- --mode "$MODE"
           if [ "$MODE" = "probe" ]; then python scripts/fund_signals.py --mode probe --from "$IN_FROM"; exit $?; fi
           if [[ "$IN_FROM" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then set -- "$@" --from "$IN_FROM"; fi

@@ -11,3 +11,7 @@ alter table public.fund_signals add column if not exists adviser_filed date;    
 alter table public.fund_signals add column if not exists adviser_checked_at timestamptz;
 alter table public.fund_signals add column if not exists manager_total numeric;      -- the size the rule uses
 alter table public.fund_signals add column if not exists manager_total_src text;     -- where it came from
+-- 7 Oct: Form D total across ALL the manager's funds on EDGAR (earlier funds too, found by name search + shared people),
+-- kept between runs so a daily run without the EDGAR lookup never shrinks it.
+alter table public.fund_signals add column if not exists manager_formd_total numeric;
+alter table public.fund_signals add column if not exists manager_formd_funds int;

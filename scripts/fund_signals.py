@@ -394,15 +394,36 @@ def gather(s):
     return items
 
 
+def search_ok():
+    """Canary for the SEC full-text search. On 6 Oct 2026 it returned nothing for an hour (self-test red): a check run in
+    that state reads "no later fund" for everyone. Known answers: Electric Capital has 10+ original Form Ds."""
+    try:
+        return sum(1 for r in efts('"Electric Capital"')[1] if r.form == "D") >= 10
+    except Exception as e:  # noqa: BLE001
+        log("search canary failed:", e)
+        return False
+
+
 def check():
-    """For each queued / unchecked Fund I target: gather() later filings, the server judges them."""
+    """For each queued / unchecked Fund I target: gather() later filings, the server judges them.
+    Never runs while the SEC full-text search is down (it would clear funds that did raise again)."""
+    if not search_ok():
+        post({"action": "ingest", "kind": "data_check", "check": "check halted", "ok": False,
+              "failures": ["SEC full-text search returned nothing for a known name: no checks run, retried next hour"]})
+        log("check: SEC full-text search is down, nothing checked")
+        return
     todo = post({"action": "ingest", "kind": "todo"}).get("signals", [])
     groups = {}
     for s in todo:
         groups.setdefault(s["manager_key"], []).append(s)
     log(f"check: {len(todo)} signals, {len(groups)} managers")
-    for key, group in groups.items():
+    down = False
+    for n, (key, group) in enumerate(groups.items()):
         s = group[0]
+        if down or (n and n % 40 == 0 and not search_ok()):
+            down = True  # search went down mid-run: hand the rest back as errors (retried after an hour), never as "clear"
+            post({"action": "ingest", "kind": "check_error", "signal_ids": [x["id"] for x in group], "error": "SEC full-text search down during the check"})
+            continue
         try:
             items = gather(s)
             post({"action": "ingest", "kind": "check", "signal_ids": [x["id"] for x in group], "items": items})

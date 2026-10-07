@@ -219,7 +219,50 @@ def match(s, by_crd, by_name):
     return None, None
 
 
-def run():
+FUNDS = {}
+
+
+def manager_funds(kw, own_cik):
+    """Every pooled fund on EDGAR whose name carries the manager's name (Fund I before our scan window, renamed funds too):
+    the newest filing per fund (cumulative amount raised). The server keeps only those sharing a named person with this
+    fund (formDTotal), so a stranger with a similar name never adds up. None = lookup failed or the name is too common."""
+    import fund_signals as fs  # edgartools + SEC retries + full-text search (one form per call)
+    if kw not in FUNDS:
+        try:
+            total, results = fs.efts(f'"{kw}"', None, limit=100)
+        except Exception as e:  # noqa: BLE001
+            log("  EDGAR search failed", kw, str(e)[:80])
+            return None
+        if total > 150:
+            FUNDS[kw] = None  # too generic a name to add up safely
+        else:
+            newest = {}
+            for r in results:
+                if kw.lower() not in (r.company or "").lower():
+                    continue
+                if str(r.cik) not in newest or str(r.filed) > str(newest[str(r.cik)].filed):
+                    newest[str(r.cik)] = r
+            items = []
+            for r in sorted(newest.values(), key=lambda r: str(r.filed), reverse=True)[:15]:
+                try:
+                    f = fs.sec(r.get_filing)
+                    it = fs.item_from(f, fs.sec(f.obj))
+                    if it.get("industryGroup") in (None, "", "Pooled Investment Fund"):
+                        items.append(it)
+                except Exception as e:  # noqa: BLE001
+                    log("  could not open", r.company, str(e)[:80])
+            FUNDS[kw] = items
+    got = FUNDS[kw]
+    return None if got is None else [it for it in got if str(it.get("cik") or "").lstrip("0") != str(own_cik or "").lstrip("0")]
+
+
+def run(full=False):
+    if True:
+        import fund_signals as fs
+        fs.set_identity(os.environ.get("SEC_IDENTITY") or UA)
+        if not fs.search_ok():
+            note("adviser run", ["SEC full-text search down: earlier-fund lookup skipped this run"])
+            full = None
     date, by_crd, by_name = load_advisers()
     todo = post({"action": "ingest", "kind": "adviser_todo"}).get("rows", [])
     log(f"{len(todo)} fund rows to size")
@@ -237,7 +280,14 @@ def run():
         else:
             stats["none"] += 1
             batch.append({"id": s["id"]})
-        if len(batch) >= 200:
+        # Earlier funds on EDGAR (Fund I + II added up) for managers without Form ADV numbers: on a full run, or the first
+        # time a fund is sized. Kept on the row, so daily runs without the lookup don't shrink the total.
+        if full is not None and not (rec and (rec.get("raum") or rec.get("gav"))) and (full or not s.get("adviser_checked_at")) and s.get("check_keyword"):
+            ex = manager_funds(s["check_keyword"], s.get("cik"))
+            if ex is not None:
+                batch[-1]["extras"] = ex
+                stats["edgar"] = stats.get("edgar", 0) + 1
+        if len(batch) >= 50:  # small batches: rows can carry up to 15 earlier filings each
             post({"action": "ingest", "kind": "adviser", "rows": batch})
             batch = []
         if i % 200 == 0:
@@ -255,10 +305,11 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", default="probe")
     ap.add_argument("--q", default="Solomon Hess")
+    ap.add_argument("--full", action="store_true", help="look up every manager's earlier funds on EDGAR, not just new rows")
     a = ap.parse_args()
     if a.mode == "probe":
         probe(a.q)
     elif a.mode == "run":
-        run()
+        run(full=a.full)
     else:
         sys.exit("unknown mode")
