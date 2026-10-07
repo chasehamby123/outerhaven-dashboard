@@ -1,4 +1,4 @@
-# Fund signals + credit signals: reads SEC data with edgartools and sends it to HQ (Pipeline → Fund signals / Credit signals).
+# Fund signals + credit signals + UCC signals: reads SEC data with edgartools and sends it to HQ (Pipeline → Fund signals / Credit signals).
 # Free (public repo). Needs two repository secrets (Settings → Secrets and variables → Actions → New repository secret):
 #   FUND_INGEST_KEY  copy it from HQ → Pipeline → Fund signals → Settings
 #   SEC_IDENTITY     your name and email, e.g. "OuterHaven Advisory ops@yourdomain.com" (the SEC asks every tool to identify itself)
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "daily | live | fund1 | check | recheck | credit | probe | study1 | study2 | selftest | audit | adviser | adviserprobe"
+        description: "daily | live | fund1 | check | recheck | credit | ucc | probe | study1 | study2 | selftest | audit | adviser | adviserprobe"
         default: daily
         required: true
       from:
@@ -36,6 +36,12 @@ jobs:
           cache: pip
           cache-dependency-path: scripts/requirements-fund-signals.txt
       - run: pip install -r scripts/requirements-fund-signals.txt
+      # SBA PPP loan file (450 MB, final release Sept 2024) used to size private companies in UCC signals. Downloaded once.
+      - uses: actions/cache@v4
+        if: github.event.schedule != '10 * * * *'
+        with:
+          path: data/ppp
+          key: ppp-public-150k-plus-240930
       - name: Run
         env:
           FUND_INGEST_KEY: ${{ secrets.FUND_INGEST_KEY }}
@@ -52,8 +58,9 @@ jobs:
           else
             MODE="$IN_MODE"
           fi
-          case "$MODE" in daily|live|fund1|check|recheck|credit|probe|study1|study2|selftest|audit|adviser|adviserprobe) ;; *) echo "unknown mode $MODE"; exit 1;; esac
+          case "$MODE" in daily|live|fund1|check|recheck|credit|ucc|probe|study1|study2|selftest|audit|adviser|adviserprobe) ;; *) echo "unknown mode $MODE"; exit 1;; esac
           if [ "$MODE" = "credit" ]; then python scripts/credit_signals.py; exit $?; fi
+          if [ "$MODE" = "ucc" ]; then python scripts/ucc_signals.py; exit $?; fi
           if [ "$MODE" = "adviserprobe" ]; then python scripts/adviser_aum.py --mode probe --q "${IN_FROM:-Solomon Hess}"; exit $?; fi
           if [ "$MODE" = "adviser" ]; then python scripts/adviser_aum.py --mode run --full; exit $?; fi
           set -- --mode "$MODE"
@@ -67,4 +74,6 @@ jobs:
           if [ "$MODE" = "daily" ]; then python scripts/credit_signals.py || rc=$?; fi
           # ...and sizes every fund lead's manager from the SEC adviser files (Form ADV; refreshed monthly by the SEC).
           if [ "$MODE" = "daily" ]; then python scripts/adviser_aum.py --mode run || rc=$?; fi
+          # ...and private companies from state UCC lien filings (CT, CO open data) sized by PPP loans.
+          if [ "$MODE" = "daily" ]; then python scripts/ucc_signals.py || rc=$?; fi
           exit $rc
