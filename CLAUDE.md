@@ -156,8 +156,18 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Sizable PRIVATE companies that need private credit (Peter's lane; Credit signals only sees SEC filers). `scripts/ucc_signals.py`
   (GitHub workflow mode `ucc`, also in daily) reads free state UCC open data: Connecticut `data.ct.gov` xfev-8smz (one table) and
   Colorado `data.colorado.gov` wffy-3uut (filings) + 8upq-58vz (debtors) + ap62-sav4 (secured parties); last 30 months of filings plus
-  liens lapsing in 3–12 months. UCC filings sit in the state of ORGANIZATION, so Delaware entities are missed. More open states:
-  Vermont, West Virginia, Oregon (monthly only); paid bulk: Texas, Ohio, North Dakota, Idaho.
+  liens lapsing in 3–12 months. UCC filings sit in the state of ORGANIZATION, so Delaware entities are missed.
+  Also (added 7 Oct 2026): **Oregon** `data.oregon.gov` snfi-f79b = LAST MONTH only (party rows DB/SP, lien_type UCC/IRS/…; EFS skipped);
+  every run stores it in `ucc_filing_archive` (service-only table; edge kinds `archive_put` / `archive_get`, RPC `ucc_archive_months`) so
+  history grows, and older months are backfilled once from Wayback Machine copies of the CSV. **Florida** = federal tax liens only (its UCC
+  registry is privatised): free SFTP `sftp.floridados.gov` (user Public, password published by the state), quarterly full `doc/quarterly/flr`
+  + daily `doc/flr/{filings,debtors}`, fixed-width (layout dos.sunbiz.org/data-definitions/lien.html), paramiko. No other free states
+  (checked 7 Oct 2026: Vermont promises a free weekly bulk but no download found; West Virginia = paid subscription). Cheapest paid:
+  **California master unload $100 + weekly data downloads FREE** (SOS fee schedule; bizfile Online → BE & UCC Bulk Orders, needs a
+  logged-in account the user creates), Texas master $1,150 one-time (+ $65 daily updates), ND / WI / WA $500, IL $2,500 + $200/week,
+  Ohio = cost + 10% by statute (ask). Loaders for bought files get written once a real file is in hand (formats differ). `--only FL,OR` (workflow `from`) runs a subset (never drops companies); mode `uccprobe` = dry run that
+  reports counts as run annotations.
+- HQ filters (UCC tab): search, state, revenue band, signal, sector, newest filing, registry, sort; kept in localStorage `hq-ucc-filters`.
 - Size: every business debtor is matched by `biz_key()` name + same state (strict; name-only matches across states were wrong) to the
   SBA PPP file (`public_150k_plus_240930.csv`, 450 MB, cached by actions/cache, loans ≥ $500K). Revenue est = avg(loan × 15, jobs × $180K).
   SEC `company_tickers.json` names mark public companies (cut).

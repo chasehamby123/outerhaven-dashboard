@@ -393,7 +393,8 @@ def or_filings(cut):
                                                                            "filter": "statuscode:200", "from": cut[:4]}).json()[1:]
     except Exception as e:  # noqa: BLE001
         caps = []
-        log("or: wayback unavailable:", e)
+        print(f"::warning title=ucc OR backfill::Wayback index unavailable: {e}", flush=True)
+    STATS["or_wayback_captures"] = len(caps)
     for cap in caps:
         ts, orig = cap[1], cap[2]
         month = (dt.date(int(ts[:4]), int(ts[4:6]), 1) - dt.timedelta(days=1)).strftime("%Y-%m")   # the CSV holds the previous month
@@ -405,9 +406,10 @@ def or_filings(cut):
             back = or_rows_to_filings(rows)
             archive_put("OR", back)
             have |= {f["filed"].strftime("%Y-%m") for f in back if f["filed"]}
+            STATS.setdefault("or_backfill", {})[month] = len(back)
             log(f"or: backfilled {ts} -> {len(back)} filings")
         except Exception as e:  # noqa: BLE001
-            log("or: backfill failed", ts, e)
+            print(f"::warning title=ucc OR backfill::{ts}: {e}", flush=True)
     if DRY:
         return got
     rows, months = archive_get("OR", cut)
@@ -564,6 +566,8 @@ def run():
             STATS.setdefault("by_source", {})[name] = len(got)
             if DRY:
                 print(f"::notice title=ucc {name}::{len(got)} filings; " + str({k: v for k, v in STATS.items() if k.lower().startswith(name.lower())}), flush=True)
+            elif name == "OR":
+                print(f"::notice title=ucc OR::{len(got)} archived filings; wayback captures {STATS.get('or_wayback_captures')}, backfilled {STATS.get('or_backfill')}", flush=True)
         except Exception as e:  # noqa: BLE001
             ok = False
             print(f"::error title=ucc {name}::{e}", flush=True)
