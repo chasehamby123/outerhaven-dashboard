@@ -74,13 +74,14 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Leads are ranked by `leadHeat()` (pipeline.js): asks for a call / gives contact = "Wants to talk", deal words = "Has a deal", polite no = "Looks like a no". Chase's inbox tasks on Today show unanswered outreach replies per account (by `source_account` slug).
 - Outbound reality (Oct 2026): Peter, Tengku, Chase run campaigns in Prosp (replies arrive in `lead_intake` via webhook; sends are not tracked); the other 6 accounts are manual in AdsPower.
 
-## Deals (Pipeline → Deals tab, `hq/deals.js`, admin only; 7 Oct 2026)
+## Deals (sidebar page `#/deals`, `hq/deals.js` `renderDealsPage`, admin only; 7 Oct 2026)
 - Deals PROVIDED to us (mandates, teasers, CIMs from sponsors / banks / introducers) for Peter to review. Not outbound targets.
   Table `deals` (codename, source, type, ask_text/ask_amount (USD only, `parseAsk`), valuation, structure, fee terms, summary,
   doc_links [{label,url}], NDA, status To review / Need info / Interested / Shopping to buyers / Passed / Closed, peter_verdict
   Fit / Maybe / Pass + peter_notes + next_step). Verdict moves status (Fit → Interested, Pass → Passed, Maybe → Need info).
   Seeded from the Sell Side `opportunities` (linked by `opportunity_id`). RLS admin. Migration `supabase/2026-10-07-deals.sql`.
-  Tab badge = deals to review. Deep link `#/pipeline/deals`. NDA deals use codenames (never the Mauritius brand).
+  Own sidebar page (Peter asked for a page, not a tab), larger type (`.dealsPage` CSS); nav badge = deals to review
+  (`refreshDealsBadge`); old `#/pipeline/deals` redirects to `#/deals`. NDA deals use codenames (never the Mauritius brand).
 - **Teasers on deals:** "View teaser" opens the branded A4 teaser popup (`openTeaserPage` in teasers.js: edit in place, Save edits →
   `deals.teaser_html`, Download PDF). Source order: saved edits > Claude's teaser (`deals.teaser`) > drafted instantly from the deal's
   fields (`autoTeaser`: headline, highlights, financials, use of funds, timeline, ideal investor, contact). Each card shows how many of the

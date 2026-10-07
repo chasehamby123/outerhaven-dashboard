@@ -1068,3 +1068,26 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .dlViewer{height:min(75vh,900px);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--sunk)}
 .dlViewer iframe{width:100%;height:100%;border:0;background:#fff}
 .dlViewer img{display:block;max-width:100%;max-height:100%;margin:auto;object-fit:contain}
+
+/* Deals page (sidebar): larger type and controls for easy reading */
+.dealsPage{display:grid;gap:16px;max-width:1100px}
+.dealsPage .dlCard{padding:0;overflow:hidden}
+.dealsPage .pHint{font-size:15px;line-height:1.5;padding-top:10px}
+.dealsPage .dlTitle{font-size:20px}
+.dealsPage .fsViews button{height:38px;padding:0 16px;font-size:15px}
+.dealsPage .fsRow{grid-template-columns:84px minmax(0,1fr) 180px;padding:22px 24px;gap:20px}
+.dealsPage .fsScore{padding:12px 0}
+.dealsPage .fsScore b{font-size:20px}
+.dealsPage .fsScore span{font-size:12px}
+.dealsPage .fsMain h4{font-size:21px;margin-bottom:8px}
+.dealsPage .fsFacts{font-size:16px;gap:6px 18px}
+.dealsPage .dlMeta{font-size:14px}
+.dealsPage .dlSum{font-size:16px;line-height:1.6}
+.dealsPage .btn.sm,.dealsPage .dlVerdict button{height:38px;padding:0 16px;font-size:15px}
+.dealsPage .dlDocs .pFlag{font-size:14px}
+.dealsPage .dlVerdict>span{font-size:15px}
+.dealsPage .dlReview{padding:14px 16px;gap:10px}
+.dealsPage .dlReview .textarea{font-size:15px;min-height:70px}
+.dealsPage .dlNext{font-size:14px}
+.dealsPage .dlNext .input,.dealsPage .select.sm{height:38px;font-size:15px}
+@media(max-width:700px){.dealsPage .fsRow{grid-template-columns:64px minmax(0,1fr);padding:16px}.dealsPage .fsMain h4{font-size:19px}}

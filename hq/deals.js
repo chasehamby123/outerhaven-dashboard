@@ -64,6 +64,23 @@ export async function prefetchDeals(cb) {
   if (!r.error) { rows = r.data || []; cb?.(dealsToReviewCount()); }
 }
 
+// Sidebar badge: deals waiting for Peter.
+export async function refreshDealsBadge() {
+  const a = document.querySelector('.nav a[data-page="deals"]'); if (!a) return;
+  const r = await sb.from('deals').select('id', { count: 'exact', head: true }).in('status', ['To review', 'Need info']);
+  const n = r.count || 0;
+  let b = a.querySelector('.badge'); if (!b) { b = document.createElement('span'); a.appendChild(b); }
+  b.className = 'badge'; b.textContent = n || ''; b.title = n ? `${n} deal${n === 1 ? '' : 's'} to review` : '';
+  if (!n) b.remove();
+}
+
+// Its own page in the sidebar (Peter): bigger type, one column.
+export async function renderDealsPage(main) {
+  main.innerHTML = `<div class="dealsPage"><div class="pTop"><div class="pTitleRow"><h1>Deals</h1><span class="muted s">Deals sent to us by sponsors, banks and introducers</span></div></div>
+    <section class="card dlCard" id="dlPanel"></section></div>`;
+  await renderDeals($('#dlPanel', main), () => refreshDealsBadge());
+}
+
 export async function renderDeals(target, countCb) {
   el = target; onCount = countCb || onCount;
   el.innerHTML = '<div class="empty">Loading deals…</div>';
@@ -93,7 +110,7 @@ function draw() {
   const f = VIEWS.find(v => v[0] === view)[2];
   const shown = rows.filter(d => f(d.status));
   el.innerHTML = `<div class="fs dl">
-    <div class="fsTop"><h3 class="dlTitle">Deals provided to us</h3><div class="row fsBtns"><button class="btn sm primary" id="dlAdd">Add a deal</button></div></div>
+    <div class="fsTop"><h3 class="dlTitle">Your deals</h3><div class="row fsBtns"><button class="btn sm primary" id="dlAdd">Add a deal</button></div></div>
     <p class="pHint">Mandates, teasers and CIMs that sponsors, banks and introducers sent us. Peter reviews each one: Fit, Maybe or Pass, with notes. Outbound targets live in Fund signals and Credit signals.</p>
     <div class="fsViews">${VIEWS.map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'review' ? 'warn' : k === 'live' ? 'good' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
     <div class="fsList">${shown.length ? shown.map(rowHtml).join('') : `<div class="empty">${view === 'review' ? 'Nothing waiting for Peter.' : 'Nothing here.'} <button class="btn sm" data-add>Add a deal</button></div>`}</div>
