@@ -1,6 +1,6 @@
 // UCC signals rules: which sizable private companies are worth Peter's call. Pure JS (no imports) so HQ and tests can read it.
 // Input: a ucc_signals row (facts from scripts/ucc_signals.py, ppp = matched SBA PPP loan). Every verdict stores its reasons.
-export const UCC_RULES_VERSION = 1;
+export const UCC_RULES_VERSION = 2;
 
 export const SECTOR = { 11: 'Agriculture', 21: 'Mining, oil & gas', 22: 'Utilities', 23: 'Construction', 31: 'Manufacturing', 32: 'Manufacturing', 33: 'Manufacturing', 42: 'Wholesale', 44: 'Retail', 45: 'Retail', 48: 'Transport & logistics', 49: 'Transport & logistics', 51: 'Media & telecom', 52: 'Finance & insurance', 53: 'Real estate', 54: 'Professional services', 55: 'Holding company', 56: 'Business services', 61: 'Education', 62: 'Healthcare', 71: 'Leisure', 72: 'Hospitality & food', 81: 'Other services', 92: 'Public administration' };
 export const sectorOf = naics => SECTOR[String(naics || '').slice(0, 2)] || null;
@@ -31,8 +31,11 @@ export function classifyUcc(s) {
   else if (est >= 10e6) reasons.push({ tone: 'maybe', text: `${size}: on the small side for a private credit facility.` });
   else { reasons.push({ tone: 'cut', text: `${size}: too small.` }); return out('cut', 0); }
 
-  if (f.mca_18m >= 2) { score += 45; strong = any = true; reasons.push({ tone: 'good', text: `Stacking: ${f.mca_18m} merchant cash advance / alternative lender filings in 18 months. Expensive short-term money one facility can replace.` }); }
-  else if (f.mca_12m >= 1) { score += 30; strong = any = true; reasons.push({ tone: 'good', text: 'Took a merchant cash advance / alternative lender in the last 12 months.' }); }
+  if (f.mca_18m >= 2) { score += 45; strong = any = true; reasons.push({ tone: 'good', text: `Stacking: ${f.mca_18m} named merchant cash advance filings in 18 months. Expensive short-term money one facility can replace.` }); }
+  else if (f.mca_12m >= 1) { score += 30; strong = any = true; reasons.push({ tone: 'good', text: 'Took a merchant cash advance from a named funder in the last 12 months.' }); }
+  if (!f.mca_12m && !f.mca_18m && f.rep_18m >= 4) { score += 30; strong = any = true; reasons.push({ tone: 'good', text: `${f.rep_18m} liens in 18 months filed through agents that hide the lender (CSC / CT Corporation "as representative"): that pace is the pattern of stacked short-term funding.` }); }
+  else if (!f.mca_12m && !f.mca_18m && f.rep_18m === 3) { score += 20; any = true; reasons.push({ tone: 'good', text: `${f.rep_18m} liens in 18 months filed through agents that hide the lender (CSC / CT Corporation "as representative"): typical of cash-advance funders, though equipment lessors use them too.` }); }
+  else if (!f.mca_12m && !f.mca_18m && f.rep_12m) { score += 8; any = true; reasons.push({ tone: 'maybe', text: 'A lien filed through an agent that hides the lender in the last 12 months (could be a cash advance, could be equipment).' }); }
   if (f.irs_24m) { score += 35; strong = any = true; reasons.push({ tone: 'good', text: `Federal tax lien (IRS) in the last 2 years${f.irs_24m > 1 ? ` (${f.irs_24m})` : ''}: cash strain.` }); }
   if (f.state_tax_24m) { score += 25; strong = any = true; reasons.push({ tone: 'good', text: 'State tax or labor-department lien in the last 2 years.' }); }
   if (f.judgment_24m) { score += 20; strong = any = true; reasons.push({ tone: 'good', text: 'Judgment lien in the last 2 years.' }); }

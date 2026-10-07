@@ -61,15 +61,20 @@ def biz_key(name):
 # ---------- secured party classes (order matters) ----------
 CLASSES = [
     ("irs", r"INTERNAL REVENUE|\bIRS\b|DEPARTMENT OF THE TREASURY|UNITED STATES OF AMERICA"),
-    ("state_tax", r"DEPARTMENT OF REVENUE|DEPT\.? OF REVENUE|REVENUE SERVICES|DEPARTMENT OF LABOR|DEPT\.? OF LABOR|EMPLOYMENT SECURITY|UNEMPLOYMENT|LABOR AND EMPLOYMENT|DEPARTMENT OF TAXATION|FRANCHISE TAX|STATE OF (CONNECTICUT|CT|COLORADO)"),
+    ("state_tax", r"DEPARTMENT OF REVENUE|DEPT\.? OF REVENUE|REVENUE SERVICES|DEPARTMENT OF LABOR|DEPT\.? OF LABOR|EMPLOYMENT SECURITY|UNEMPLOYMENT|LABOR AND EMPLOYMENT|DEPARTMENT OF TAXATION|FRANCHISE TAX"),
     ("local_tax", r"TAX COLLECTOR|COLLECTOR OF (TAXES|REVENUE)|^(CITY|TOWN|BOROUGH|COUNTY|VILLAGE) OF\b|TREASURER|ASSESSOR"),
     ("sba", r"SMALL BUSINESS ADMINISTRATION"),
-    ("fintech", r"WEBBANK|SHOPIFY|PAYPAL|SQUARE (CAPITAL|FINANCIAL)|\bBLOCK,? INC|AMAZON|STRIPE|CELTIC BANK|FUNDBOX|BLUEVINE|KABBAGE|ON ?DECK|LENDIO|FUNDING CIRCLE|INTUIT|QUICKBOOKS|CLEARCO|WAYFLYER|PARAFIN"),
-    ("mca", r"AS (SECURED PARTY )?REPRESENTATIVE|MERCHANT|CASH ADVANCE|\bFUNDING\b|\bFUNDERS?\b|LCF GROUP|EQUITY BASED CAPITAL|YELLOWSTONE|PEARL (DELTA|CAPITAL)|LIBERTAS|KAPITUS|FORA FINANCIAL|CREDIBLY|MULLIGAN|EVEREST BUSINESS|VELOCITY CAPITAL|RAPID FINANCE|CFG MERCHANT|ITRIA|FOX CAPITAL|WYNWOOD|CAPYTAL|GREENBOX|SPARTAN CAPITAL|1ST GLOBAL|CLOUDFUND|IOU (CENTRAL|FINANCIAL)|BYZFUNDER|EBF HOLDINGS|FUNDKITE|IRUKA|PARKVIEW ADVANCE|MANTIS|ROK FINANCIAL|NEWCO CAPITAL|BRIGHT ?SPOT|BIZ2CREDIT|NATIONAL BUSINESS CAPITAL"),
+    ("fintech", r"WEBBANK|SHOPIFY|PAYPAL|SQUARE (CAPITAL|FINANCIAL)|\bBLOCK,? INC|AMAZON|STRIPE|CELTIC BANK|FUNDBOX|BLUEVINE|KABBAGE|ON ?DECK|LENDIO|FUNDING CIRCLE|INTUIT|QUICKBOOKS|CLEARCO|WAYFLYER|PARAFIN|HEADWAY CAPITAL"),
+    # Equipment and vehicle finance before the cash-advance names: "LEAF Capital Funding" and "Med One Capital Funding" are lessors.
+    ("equipment", r"LEASING|LEASE|CREDIT CORP|CAPITAL FUNDING|\bLEAF\b|MED ONE|SNAP.ON|KUBOTA|DEERE|CATERPILLAR|\bDLL\b|DE LAGE|TOYOTA|FORD MOTOR|DAIMLER|PACCAR|VOLVO|NAVISTAR|CNH |KOMATSU|XEROX|CANON|RICOH|GOODLEAP|SUNRUN|SUNNOVA|EVERBRIGHT|IGS |ENFIN|VENDOR FIN|EQUIPMENT|SHEFFIELD|MARLIN|NAVITAS|ASCENTIUM|BALBOA|DELL FIN|CISCO|HITACHI|MITSUBISHI HC|ISUZU|HYUNDAI|MERCEDES|BMW FIN|HONDA|NISSAN|ALLY|SANTANDER CONSUMER|CREDIT ACCEPTANCE|CAPITAL ONE AUTO|PAWNEE|TIME PAYMENT|AMUR|CLICKLEASE|STEARNS BANK"),
+    # Named merchant cash advance / revenue-based funders (strong signal).
+    ("mca", r"MERCHANT|CASH ADVANCE|ADVANCE (LLC|INC|GROUP)|\bFUNDING (GROUP|SOLUTIONS|EXPERTS|PARTNERS|SOURCE|NOW)|LCF GROUP|YELLOWSTONE|PEARL (DELTA|CAPITAL)|LIBERTAS|KAPITUS|FORA FINANCIAL|CREDIBLY|MULLIGAN|EVEREST BUSINESS|\bEBF\b|VELOCITY CAPITAL|RAPID FINANCE|CFG MERCHANT|ITRIA|FOX (CAPITAL|BUSINESS FUNDING)|WYNWOOD|CAPYTAL|GREENBOX|SPARTAN CAPITAL|1ST GLOBAL|CLOUDFUND|IOU (CENTRAL|FINANCIAL)|BYZFUNDER|FUNDKITE|IRUKA|PARKVIEW ADVANCE|MANTIS|ROK FINANCIAL|NEWCO CAPITAL|BITTY|LENDINI|LAST CHANCE FUNDING|UNIQUE FUNDING|VOX FUNDING|LEGEND FUNDING|FUNDFI|BLUETAPE|EXPANSION CAPITAL|FORWARD FINANCING|NATIONAL FUNDING|NATIONAL BUSINESS CAPITAL|BIZ2CREDIT|TBF GROUP|ELEVATE FUNDING|GOLDEN PEAK|LG FUNDING|SAMSON|PIRS CAPITAL|DIAMOND CAPITAL|AMERICAN CAPITAL ADVANCE|FUNDAMENTAL CAPITAL|ESSENTIAL FUNDING|STREAMLINE FUNDING|FINANCIAL PACIFIC|QUICK BRIDGE|SECURE ACCOUNT|BREAKOUT CAPITAL|BEST BUSINESS FUNDING|EQUITY BASED CAPITAL"),
+    # Filing agents that hide the real lender ("CSC / CT Corporation / First Corporate Solutions, as representative"): cash-advance
+    # funders use them a lot, but so do equipment lessors and banks. Weak on its own; several in a short time is a pattern.
+    ("rep", r"AS (SECURED PARTY )?REPRESENTATIVE"),
     ("factoring", r"FACTOR|RECEIVABLES? (FINANCE|FUNDING|PURCHAS)|INVOICE"),
     ("agent", r"AS (ADMINISTRATIVE |COLLATERAL )?AGENT\b"),
     ("abl", r"CAPITAL FINANCE|BUSINESS CREDIT|COMMERCIAL FINANCE|ASSET.BASED|BUSINESS CAPITAL|CREDIT PARTNERS|CAPITAL PARTNERS|DIRECT LENDING|PRIVATE CREDIT|MEZZANINE"),
-    ("equipment", r"LEASING|LEASE|CREDIT CORP|SNAP.ON|KUBOTA|DEERE|CATERPILLAR|\bDLL\b|DE LAGE|TOYOTA|FORD MOTOR|DAIMLER|PACCAR|VOLVO|NAVISTAR|CNH |KOMATSU|XEROX|CANON|RICOH|GOODLEAP|SUNRUN|SUNNOVA|EVERBRIGHT|IGS |ENFIN|VENDOR FIN|EQUIPMENT|SHEFFIELD|MARLIN|NAVITAS|ASCENTIUM|BALBOA|DELL FIN|CISCO|HITACHI|MITSUBISHI HC|ISUZU|HYUNDAI|MERCEDES|BMW FIN|HONDA|NISSAN|ALLY|SANTANDER CONSUMER|CREDIT ACCEPTANCE|CAPITAL ONE AUTO"),
     ("bank", r"\bBANK\b|\bN\.? ?A\.?$|,? N\.A\.|SAVINGS|CREDIT UNION|BANCORP|BANCSHARES|TRUST COMPANY|BANKING|FARM CREDIT"),
 ]
 CLASSES = [(k, re.compile(p)) for k, p in CLASSES]
@@ -183,10 +188,7 @@ def match(idx, by_key, name, state):
     rec = idx.get((k, state))
     if rec:
         return k, rec
-    sts = by_key.get(k) or []
-    if len(sts) == 1 and len(k) >= 10:      # distinctive name, one PPP borrower nationwide: the address on the UCC can differ
-        return k, idx[(k, sts[0])]
-    return k, None
+    return k, None      # same name in another state is too often a different company (checked 7 Oct 2026)
 
 
 # ---------- sources -> filings ----------
@@ -295,12 +297,13 @@ def companies(filings, idx, by_key):
         refi = [f for f in live if f["cls"] in LENDERS and f["lapse"] and 90 <= (f["lapse"] - TODAY).days <= 365]
         facts = {"mca_12m": cnt("mca", 365), "mca_18m": len(mca18), "irs_24m": cnt("irs", 730), "state_tax_24m": cnt("state_tax", 730),
                  "judgment_24m": cnt("judgment", 730), "factoring_24m": cnt("factoring", 730), "fintech_18m": cnt("fintech", 548),
+                 "rep_12m": cnt("rep", 365), "rep_18m": len({(f["src"], f["no"]) for f in live if f["cls"] == "rep" and within(f, 548)}),
                  "sba": sum(1 for f in live if f["cls"] == "sba"), "bank_active": sum(1 for f in live if f["cls"] == "bank"),
                  "agent_active": sum(1 for f in live if f["cls"] in ("agent", "abl")),
                  "refi": [{"party": f["party"], "filed": str(f["filed"]), "lapse": str(f["lapse"])} for f in refi[:3]],
                  "released_24m": sum(1 for f in fl if f["status"] == "released" and f["cls"] in ("irs", "state_tax", "mca", "judgment") and within(f, 730))}
         trigger = facts["mca_12m"] or facts["mca_18m"] or facts["irs_24m"] or facts["state_tax_24m"] or facts["judgment_24m"] \
-            or facts["factoring_24m"] or facts["fintech_18m"] or facts["refi"]
+            or facts["factoring_24m"] or facts["fintech_18m"] or facts["refi"] or facts["rep_12m"]
         if not trigger:
             continue
         shown = [f for f in fl if f["cls"] not in ("equipment", "local_tax", "other")][:25]
