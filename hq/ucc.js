@@ -139,10 +139,10 @@ function howModal() {
       <li><b>+45</b> stacking: 2+ filings by named merchant cash advance funders in 18 months; <b>+30</b> one in the last 12 months.</li>
       <li><b>+30</b> 4+ liens in 18 months filed through agents that hide the lender (CSC, CT Corporation, First Corporate Solutions "as representative"). Cash-advance funders use these agents a lot, but so do equipment lessors, so 3 counts <b>+20</b> and 1 only <b>+8</b>.</li>
       <li><b>+35</b> IRS tax lien, <b>+25</b> state tax or labor-department lien, <b>+20</b> judgment lien (last 2 years).</li>
-      <li><b>+20</b> a bank or agent lien that lapses in 3–12 months with no continuation: the facility is likely up for renewal.</li>
+      <li><b>+15</b> a bank or agent facility filed about 5 years ago whose lien lapses in 3–12 months: often near maturity. Alone it makes a Target only at $50M+ revenue. Liens continued for decades don't count.</li>
       <li><b>+15</b> factoring, <b>+10</b> platform loans (WebBank, Shopify, PayPal), <b>+5</b> already borrows from an agent or asset-based lender.</li>
-      <li><b>+20</b> estimated revenue $50M+, <b>+12</b> $20–50M; <b>+10</b> newest filing in the last 90 days.</li></ul>
-      <p>Target = estimated revenue $20M+ and a strong signal (named cash advance, 4+ agent filings, tax, judgment) or a lapsing facility. $10–20M or weaker signals = Maybe. Lenders, public bodies, non-profits and anything under $10M are cut.</p>
+      <li><b>+20</b> estimated revenue $50M+, <b>+12</b> $20–50M; <b>+10</b> newest distress filing in the last 90 days.</li></ul>
+      <p>Target = estimated revenue $20M+ and a strong signal (named cash advance, 4+ agent filings, tax, judgment), or $50M+ with a maturing facility. Public companies are cut (they're in Credit signals). $10–20M or weaker signals = Maybe. Lenders, public bodies, non-profits and anything under $10M are cut.</p>
       <h4>4. What it can't see</h4><ul><li>Companies organized in other states: a UCC is filed where the company is incorporated, so a Delaware LLC based in Connecticut is missed. More states can be added where they publish data (Vermont, West Virginia, Oregon) or by buying bulk files (Texas, Ohio).</li>
       <li>Loan amounts: UCC filings don't say how much was borrowed.</li><li>Size is a 2020 estimate: check the website and LinkedIn headcount before calling.</li></ul>
       <p class="s muted">The opener never mentions liens. They are public, but naming them in a first message reads as surveillance.</p></div>`,

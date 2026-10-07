@@ -152,6 +152,26 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   `credit_done`, which sets `on_latest=false` (cut) on rows that run didn't send; tickers ending in Q (Chapter 11) are cut. Migration:
   `supabase/2026-10-02-credit-signals.sql`.
 
+## UCC signals (Pipeline → UCC signals tab, `hq/ucc.js`, admin only; 7 Oct 2026)
+- Sizable PRIVATE companies that need private credit (Peter's lane; Credit signals only sees SEC filers). `scripts/ucc_signals.py`
+  (GitHub workflow mode `ucc`, also in daily) reads free state UCC open data: Connecticut `data.ct.gov` xfev-8smz (one table) and
+  Colorado `data.colorado.gov` wffy-3uut (filings) + 8upq-58vz (debtors) + ap62-sav4 (secured parties); last 30 months of filings plus
+  liens lapsing in 3–12 months. UCC filings sit in the state of ORGANIZATION, so Delaware entities are missed. More open states:
+  Vermont, West Virginia, Oregon (monthly only); paid bulk: Texas, Ohio, North Dakota, Idaho.
+- Size: every business debtor is matched by `biz_key()` name + same state (strict; name-only matches across states were wrong) to the
+  SBA PPP file (`public_150k_plus_240930.csv`, 450 MB, cached by actions/cache, loans ≥ $500K). Revenue est = avg(loan × 15, jobs × $180K).
+  SEC `company_tickers.json` names mark public companies (cut).
+- Secured party classes in the script (order matters): irs, state_tax, local_tax (ignored), sba, fintech, equipment (incl. LEAF / Med One
+  "Capital Funding" lessors), mca (NAMED funders only), rep ("as representative" via CSC / CT Corp / First Corporate Solutions /
+  Middesk: hides the lender; cash-advance funders AND lessors use it, so weak unless 4+ in 18 months), factoring, agent, abl, bank.
+  Refi window = bank/agent/abl lien on its FIRST lapse (filed ~5 years earlier) in 3–12 months; decades-old continued liens don't count.
+- Edge function `ucc-signals` (verify_jwt=false; ingest `x-fund-ingest` = FUND_INGEST_SECRET, kinds `ucc` / `ucc_done`; admin action
+  `rejudge`) → `ucc_signals` (one row per company_key = name_key|state; status/person/notes kept) + `ucc_signal_runs`. Judged by
+  `classifyUcc()` in `supabase/functions/ucc-signals/rules.js` (bump `UCC_RULES_VERSION`; `ucc_done` re-judges stale rows; deploy index.ts
+  + rules.js together). Target = est revenue ≥ $20M + strong signal (named MCA, 4+ agent filings, IRS/state tax/judgment lien), or
+  ≥ $50M + maturing facility. Opener never mentions liens. First runs 7 Oct 2026: ~1,100 sized companies with a trigger, ~170 targets.
+- Migration `supabase/2026-10-07-ucc-signals.sql`.
+
 ## Resources (lead magnets)
 - HQ → Resources: queue of posts needing a resource, library (generated + manual links), Generate form.
 - Generate → edge function `resource-request` (daily cap, fires the routine) → Claude Code routine

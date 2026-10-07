@@ -181,6 +181,21 @@ def load_ppp(path=PPP_PATH):
     return idx, by_key
 
 
+def public_names():
+    """Names of SEC-listed companies (they belong in Credit signals, and their liens are often securitisations)."""
+    try:
+        r = client.get("https://www.sec.gov/files/company_tickers.json", headers={"User-Agent": os.environ.get("SEC_IDENTITY") or "OuterHaven HQ ops@outerhaven.example"})
+        r.raise_for_status()
+        out = {}
+        for v in r.json().values():
+            out.setdefault(biz_key(v.get("title")), v.get("ticker"))
+        log(f"sec: {len(out)} listed company names")
+        return out
+    except Exception as e:  # noqa: BLE001
+        log("sec tickers unavailable:", e)
+        return {}
+
+
 def match(idx, by_key, name, state):
     k = biz_key(name)
     if not k:
@@ -276,7 +291,8 @@ def co_filings(idx, by_key, cut, refi_from, refi_to):
 
 
 # ---------- per company ----------
-def companies(filings, idx, by_key):
+def companies(filings, idx, by_key, listed=None):
+    listed = listed or {}
     groups = {}
     for f in filings:
         k, rec = match(idx, by_key, f["debtor"], f["state"])
@@ -294,7 +310,10 @@ def companies(filings, idx, by_key):
 
         cnt = lambda cls, days: sum(1 for f in live if f["cls"] == cls and within(f, days))  # noqa: E731
         mca18 = {(f["src"], f["no"]) for f in live if f["cls"] == "mca" and within(f, 548)}   # separate filings (one agent files for many funders)
-        refi = [f for f in live if f["cls"] in LENDERS and f["lapse"] and 90 <= (f["lapse"] - TODAY).days <= 365]
+        # First lapse only (filed ~5 years before it lapses): a 5-year-old facility is often reaching maturity. A lien that has
+        # been continued for decades is an evergreen bank relationship, not a maturity, so it doesn't count.
+        refi = [f for f in live if f["cls"] in LENDERS and f["lapse"] and f["filed"] and 90 <= (f["lapse"] - TODAY).days <= 365
+                and (f["lapse"] - f["filed"]).days <= 1860]
         facts = {"mca_12m": cnt("mca", 365), "mca_18m": len(mca18), "irs_24m": cnt("irs", 730), "state_tax_24m": cnt("state_tax", 730),
                  "judgment_24m": cnt("judgment", 730), "factoring_24m": cnt("factoring", 730), "fintech_18m": cnt("fintech", 548),
                  "rep_12m": cnt("rep", 365), "rep_18m": len({(f["src"], f["no"]) for f in live if f["cls"] == "rep" and within(f, 548)}),
@@ -313,7 +332,7 @@ def companies(filings, idx, by_key):
             names[f["debtor"]] = names.get(f["debtor"], 0) + 1
         items.append({"company_key": ck, "company_name": max(names, key=names.get), "name_key": g["key"], "state": first["state"],
                       "city": first["city"] or g["rec"]["city"], "address": first["address"], "zip": first["zip"] or g["rec"]["zip"],
-                      "sources": sorted({f["src"] for f in fl}), "ppp": g["rec"], "naics": g["rec"]["naics"], "facts": facts,
+                      "sources": sorted({f["src"] for f in fl}), "ppp": g["rec"] | ({"ticker": listed[g["key"]]} if g["key"] in listed else {}), "naics": g["rec"]["naics"], "facts": facts,
                       "latest_filing": str(max((f["filed"] for f in fl if f["cls"] not in ("equipment", "local_tax", "other", "bank") and f["filed"]), default=first["filed"])),
                       "liens": [{"src": f["src"], "no": f["no"], "class": f["cls"], "party": f["party"], "filed": str(f["filed"]) if f["filed"] else None,
                                  "lapse": str(f["lapse"]) if f["lapse"] else None, "status": f["status"], "kind": f["kind"]} for f in shown]})
@@ -337,7 +356,7 @@ def run():
             ok = False
             STATS["errors"].append(f"{name}: {e}")
             log(f"{name} FAILED:", e)
-    items = companies(filings, idx, by_key)
+    items = companies(filings, idx, by_key, public_names())
     STATS.update({"filings": len(filings), "companies": len(items), "window_from": cut})
     log(f"companies with a trigger and a size match: {len(items)}")
     sent = 0
