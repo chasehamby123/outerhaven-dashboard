@@ -78,7 +78,7 @@ export function strategyOf(s) {
   if (/\b(credit|lending|loans?|debt|income|mezz\w*|direct lend\w*|specialty finance|asset[- ]based)\b/.test(t)) return 'credit';
   if (/\b(real estate|realty|propert\w*|multi-?family|apartments?|housing|residential|homes|land|reit|self[- ]storage|hospitality|hotels?|opportunity zone|qof|industrial outdoor)\b/.test(t)) return 'real_estate';
   if (/\b(infrastructure|infra|energy|power|renewables?|solar|wind|transition|climate)\b/.test(t)) return 'infra';
-  if (/\b(venture|vc|seed|pre-?seed|founders?|labs|angels?|accelerator|studio)\b/.test(t)) return 'venture';
+  if (/\b(ventures?|vc|seed|pre-?seed|founders?|labs|angels?|accelerator|studios?)\b/.test(t)) return 'venture';
   if (/\b(buyout|private equity|equity partners|growth equity|search fund|lower middle market|lmm)\b/.test(t)) return 'buyout';
   return 'other';
 }
