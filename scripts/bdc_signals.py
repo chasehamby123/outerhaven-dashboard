@@ -363,6 +363,9 @@ def control_flags(t, affil):
 
 # ---------------------------------------------------------------- main
 
+LOADED = []
+
+
 def load(months):
     """Latest and previous quarter of every BDC across the last `months` monthly zips."""
     by_period = defaultdict(list)      # (cik, period) -> rows
@@ -385,6 +388,7 @@ def load(months):
             by_period[k].append(r)
             n += 1
         log(f"  {name}: {n} rows")
+        LOADED.append(f"{name}:{n}")
     latest, prev = {}, {}
     periods = defaultdict(set)
     for (cik, period) in by_period:
@@ -572,7 +576,7 @@ def main():
         sizes = Counter("<10M" if i["facility"] < 10e6 else "10-75M" if i["facility"] < 75e6 else "75-150M" if i["facility"] < 150e6 else ">150M"
                         for i in items)
         multi = sum(1 for i in items if i["lenders"] > 1)
-        note("bdc dry stats", f"{len(latest)} BDCs; {len(items)} borrowers ({multi} with 2+ BDC lenders); sizes {dict(sizes)}; sent {len(send)}; "
+        note("bdc dry stats", f"zips {LOADED}; {len(latest)} BDCs; {len(items)} borrowers ({multi} with 2+ BDC lenders); sizes {dict(sizes)}; sent {len(send)}; "
              f"public matches {sum(1 for i in items if i['public_ticker'])}; no maturity {sum(1 for i in items if not i['maturity'])}; "
              f"controlled {sum(1 for i in items if i['controlled'])}, affiliated {sum(1 for i in items if i['affiliated'])}, "
              f"nonaccrual {sum(1 for i in items if i['nonaccrual'])}, pik {sum(1 for i in items if i['pik'])}")
@@ -600,4 +604,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:  # noqa: BLE001  (raw logs are unreadable from the session, so failures go out as an annotation)
+        import traceback
+        note("bdc failed", traceback.format_exc()[-3000:], "error")
+        raise
