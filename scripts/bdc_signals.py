@@ -284,7 +284,7 @@ def _before_suffix(t, m):
     if not name or all(w.lower().strip(",.") in VOCAB | GENERIC for w in ws):
         return ""
     sfx = m.group(0).lstrip(", ").strip()
-    return f"{name}, {sfx}"
+    return f"{name} {sfx}" if sfx.lower() in ("company", "corporation", "incorporated", "limited") else f"{name}, {sfx}"
 
 
 def _no_suffix(t):
@@ -453,7 +453,7 @@ def rows_to_holdings(rows):
                           or (debt and r["nonincome"].lower() == "true"),
             "controlled": controlled, "affiliated": affiliated,
             "country": cm.group(1) if cm and not cm.group(1).startswith("United States") else None,
-            "industry": im.group(1) if im else (r["industry_axis"].replace("[Member]", "").strip() or None),
+            "industry": im.group(1) if im else (re.sub(r"\s*Sector$", "", r["industry_axis"].replace("[Member]", "").strip()) or None),
         })
     return out
 
@@ -464,9 +464,18 @@ def vote_names(holdings):
     for h in holdings:
         for o in name_options(h["cand"]):
             fams[key_of(o)].add(family(h["bdc"]))
+    def safe_drop(full, short_):
+        """Words dropped from the front must be industry / vocabulary / country, unless the short form is distinctive and
+        widely shared (Apollo writes '<brand> <legal name>'). Stops 'GrapeTree Medical Staffing' merging into 'Medical Staffing'."""
+        dropped = full[:len(full) - len(short_)].strip()
+        if not dropped or not strip_lead(dropped + " X").strip() or strip_lead(dropped + " X") == "X":
+            return True
+        core = [w for w in key_of(short_).split() if w not in BUSINESS and len(w) > 2]
+        return len(core) >= 2 and len(fams[key_of(short_)]) >= 3
+
     for h in holdings:
         opts = name_options(h["cand"])
-        pick = next((o for o in opts if len(fams[key_of(o)]) >= 2 and len(key_of(o)) >= 3), None)
+        pick = next((o for o in opts if len(fams[key_of(o)]) >= 2 and len(key_of(o)) >= 3 and safe_drop(opts[0], o)), None)
         h["name"] = pick or opts[0]
         h["key"] = key_of(h["name"])
 

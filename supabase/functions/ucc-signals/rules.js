@@ -1,6 +1,8 @@
 // UCC signals rules: which sizable private companies are worth Peter's call. Pure JS (no imports) so HQ and tests can read it.
 // Input: a ucc_signals row (facts from scripts/ucc_signals.py, ppp = matched SBA PPP loan). Every verdict stores its reasons.
-export const UCC_RULES_VERSION = 3;
+// v4 (8 Oct 2026): demoted after the BDC lane went live. Peter's floor is ~$10M of debt (~$2-3M EBITDA, ~$30M+ revenue), and
+// merchant-cash-advance or tax-lien borrowers mostly suit asset-based / factoring lenders, not direct lenders: points cut, size floor up.
+export const UCC_RULES_VERSION = 4;
 
 export const SECTOR = { 11: 'Agriculture', 21: 'Mining, oil & gas', 22: 'Utilities', 23: 'Construction', 31: 'Manufacturing', 32: 'Manufacturing', 33: 'Manufacturing', 42: 'Wholesale', 44: 'Retail', 45: 'Retail', 48: 'Transport & logistics', 49: 'Transport & logistics', 51: 'Media & telecom', 52: 'Finance & insurance', 53: 'Real estate', 54: 'Professional services', 55: 'Holding company', 56: 'Business services', 61: 'Education', 62: 'Healthcare', 71: 'Leisure', 72: 'Hospitality & food', 81: 'Other services', 92: 'Public administration' };
 export const sectorOf = naics => SECTOR[String(naics || '').slice(0, 2)] || null;
@@ -28,18 +30,19 @@ export function classifyUcc(s) {
   let score = 0, strong = false, any = false;
   const size = `~${m(est)} revenue (est. from ${ppp.jobs ? `${ppp.jobs} jobs and ` : ''}a ${m(ppp.amount)} PPP loan in 2020–21)`;
   if (est >= 50e6) { score += 20; reasons.push({ tone: 'good', text: size }); }
-  else if (est >= 20e6) { score += 12; reasons.push({ tone: 'good', text: size }); }
-  else if (est >= 10e6) reasons.push({ tone: 'maybe', text: `${size}: on the small side for a private credit facility.` });
+  else if (est >= 30e6) { score += 12; reasons.push({ tone: 'good', text: size }); }
+  else if (est >= 10e6) reasons.push({ tone: 'maybe', text: `${size}: likely under the ~$10M facility floor.` });
   else { reasons.push({ tone: 'cut', text: `${size}: too small.` }); return out('cut', 0); }
 
-  if (f.mca_18m >= 2) { score += 45; strong = any = true; reasons.push({ tone: 'good', text: `Stacking: ${f.mca_18m} named merchant cash advance filings in 18 months. Expensive short-term money one facility can replace.` }); }
-  else if (f.mca_12m >= 1) { score += 30; strong = any = true; reasons.push({ tone: 'good', text: 'Took a merchant cash advance from a named funder in the last 12 months.' }); }
-  if (!f.mca_12m && !f.mca_18m && f.rep_18m >= 4) { score += 30; strong = any = true; reasons.push({ tone: 'good', text: `${f.rep_18m} liens in 18 months filed through agents that hide the lender (CSC / CT Corporation "as representative"): that pace is the pattern of stacked short-term funding.` }); }
-  else if (!f.mca_12m && !f.mca_18m && f.rep_18m === 3) { score += 20; any = true; reasons.push({ tone: 'good', text: `${f.rep_18m} liens in 18 months filed through agents that hide the lender (CSC / CT Corporation "as representative"): typical of cash-advance funders, though equipment lessors use them too.` }); }
+  const big = est >= 50e6; // cash-advance borrowers under ~$50M revenue are asset-based / factoring deals, not Peter's lenders
+  if (f.mca_18m >= 2) { score += 20; any = true; strong = strong || big; reasons.push({ tone: 'good', text: `Stacking: ${f.mca_18m} named merchant cash advance filings in 18 months. Expensive short-term money one facility can replace.` }); }
+  else if (f.mca_12m >= 1) { score += 12; any = true; strong = strong || big; reasons.push({ tone: 'good', text: 'Took a merchant cash advance from a named funder in the last 12 months.' }); }
+  if (!f.mca_12m && !f.mca_18m && f.rep_18m >= 4) { score += 15; any = true; strong = strong || big; reasons.push({ tone: 'good', text: `${f.rep_18m} liens in 18 months filed through agents that hide the lender (CSC / CT Corporation "as representative"): that pace is the pattern of stacked short-term funding.` }); }
+  else if (!f.mca_12m && !f.mca_18m && f.rep_18m === 3) { score += 10; any = true; reasons.push({ tone: 'good', text: `${f.rep_18m} liens in 18 months filed through agents that hide the lender (CSC / CT Corporation "as representative"): typical of cash-advance funders, though equipment lessors use them too.` }); }
   else if (!f.mca_12m && !f.mca_18m && f.rep_12m) { score += 8; any = true; reasons.push({ tone: 'maybe', text: 'A lien filed through an agent that hides the lender in the last 12 months (could be a cash advance, could be equipment).' }); }
-  if (f.irs_24m) { score += 35; strong = any = true; reasons.push({ tone: 'good', text: `Federal tax lien (IRS) in the last 2 years${f.irs_24m > 1 ? ` (${f.irs_24m})` : ''}: cash strain.` }); }
-  if (f.state_tax_24m) { score += 25; strong = any = true; reasons.push({ tone: 'good', text: 'State tax or labor-department lien in the last 2 years.' }); }
-  if (f.judgment_24m) { score += 20; strong = any = true; reasons.push({ tone: 'good', text: 'Judgment lien in the last 2 years.' }); }
+  if (f.irs_24m) { score += 20; strong = any = true; reasons.push({ tone: 'good', text: `Federal tax lien (IRS) in the last 2 years${f.irs_24m > 1 ? ` (${f.irs_24m})` : ''}: cash strain. The IRS ranks ahead of a new lender, so it's usually an asset-based deal that pays the IRS off.` }); }
+  if (f.state_tax_24m) { score += 15; strong = any = true; reasons.push({ tone: 'good', text: 'State tax or labor-department lien in the last 2 years.' }); }
+  if (f.judgment_24m) { score += 12; strong = any = true; reasons.push({ tone: 'good', text: 'Judgment lien in the last 2 years.' }); }
   if (f.factoring_24m) { score += 15; any = true; reasons.push({ tone: 'good', text: 'Selling or pledging receivables to a factor.' }); }
   if (f.fintech_18m) { score += 10; any = true; reasons.push({ tone: 'good', text: 'Platform loan (WebBank, Shopify, PayPal and similar) in the last 18 months.' }); }
   const refi = (f.refi || [])[0];
@@ -49,5 +52,5 @@ export function classifyUcc(s) {
   if (f.released_24m) reasons.push({ tone: 'maybe', text: `${f.released_24m} earlier distress lien${f.released_24m > 1 ? 's' : ''} since released.` });
   if (!any) { reasons.push({ tone: 'cut', text: 'No trigger.' }); return out('cut', 0); }
   // A maturing facility alone is a target only for the bigger companies; with any distress signal it already is one.
-  return out(est >= 20e6 && (strong || (refi && est >= 50e6)) ? 'target' : 'maybe', score);
+  return out(est >= 30e6 && (strong || (refi && est >= 50e6)) ? 'target' : 'maybe', score);
 }

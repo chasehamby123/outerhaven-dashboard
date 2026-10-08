@@ -9,7 +9,7 @@ import bdc_signals as b  # noqa: E402
 CASES = [  # (identifier text, expected name, expected maturity or None)
     ("Investments - non-controlled/non-affiliated Secured Debt Insurance AMBA Buyer, Inc. Asset Type First Lien Term Loan Reference Rate and Spread S + 5.25% Interest Rate 9.00% Maturity Date 7/30/2027 One", "AMBA Buyer, Inc.", "2027-07-30"),
     ("Investment in Senior Secured Loan -178.8% Florida Food Products, LLC Food Products Interest Rate 9.15% Reference Rate and Spread S + 5.50% Floor 2.00% Maturity 10/15/2030", "Florida Food Products, LLC", "2030-10-15"),
-    ("Debt Investments United Kingdom 1st Lien/Senior Secured Debt Consilio Midco Limited (dba Cyncly) Industry Software Interest Rate 8.48% Reference Rate and Spread S + 4.75% Initial Acquisition Date 04/08/25 Maturity 04/16/32 One", "Consilio Midco, Limited", "2032-04-16"),
+    ("Debt Investments United Kingdom 1st Lien/Senior Secured Debt Consilio Midco Limited (dba Cyncly) Industry Software Interest Rate 8.48% Reference Rate and Spread S + 4.75% Initial Acquisition Date 04/08/25 Maturity 04/16/32 One", "Consilio Midco Limited", "2032-04-16"),
     ("Debt Investments - Diversified telecommunication services - Network Connex (f/k/a NTI Connect, LLC) - First lien senior secured loan - Interest Rate 8.57% - Spread 4.90% - Reference SOFR(Q) - Maturity Date 7/31/2027", "Network Connex", "2027-07-31"),
     ("NCNA Brdy Sdct Lns Automobile Components Clarios Global LP (fka Power Solutions) Type Term loan, first lien senior secured Acquisition date 5/21/2026", "Clarios Global, LP", None),
     ("Portfolio Company Debt Investments Aerospace and Defense Peraton Corp. Investment First Lien Senior Secured Loan Interest Rate 7.51% (S +CSA + 3.75%)", "Peraton, Corp.", None),
@@ -25,7 +25,7 @@ CASES = [  # (identifier text, expected name, expected maturity or None)
     ("Debt Investment, Automobile Components, Fenix Intermediate LLC, Acquisition Date 03/28/24 Investment Term Loan B - 10.74% (SOFR + 7.00%, 1.75% Floor)", "Fenix Intermediate, LLC", None),
     ("Bank Debt/Senior Secured Loans  233.6% | Blazing Star Parent, LLC | Consumer Staples Distribution & Retail | S+700 | 1.00% | 10.67% | 8/2025 | 8/2030", "Blazing Star Parent, LLC", "2030-08-28"),
     ("First Lien Senior Secured Canadian Debt Information Tulip.io Inc. Facility Type Term Loan All in Rate 16.50% Benchmark P Spread 4.00% PIK 4.50% Floor", "Tulip.io, Inc.", None),
-    ("AB Centers Acquisition Corporation First Lien Secured Revolving Loan", "AB Centers Acquisition, Corporation", None),
+    ("AB Centers Acquisition Corporation First Lien Secured Revolving Loan", "AB Centers Acquisition Corporation", None),
     ("Investments At Fair Value | First Lien Loans | Advertising | Tranzact", "Tranzact", None),
     ("Accurate Neuromonitoring Unitranche DDTL Maturity 3/13/2031", "Accurate Neuromonitoring", "2031-03-13"),
     ("NCNA Debt Inv. | FLSS | Advertising | Amplify Buyer, Inc. Term Loan | RR & S/F | 3M SOFR + 4.75% / 0.75% | Cash IR / PIK Rate | 8.42% | MD | 9/17/2032", "Amplify Buyer, Inc.", "2032-09-17"),
@@ -47,6 +47,12 @@ for text, name, mat in CASES:
     print(("ok  " if ok else "BAD ") + f"{got!r} (want {name!r})  mat {m} (want {mat})")
 assert b.key_of("Curium BidCo S.a.r.l.") == b.key_of("Curium Bidco, S.a.r.l."), b.key_of("Curium BidCo S.a.r.l.")
 assert b.key_of("TITAN BW BORROWER, L.P.") == b.key_of("Titan BW Borrower L.P.")
+hs = [{"cand": "GrapeTree Medical Staffing, LLC", "bdc": "CRESCENT CAPITAL BDC"}, {"cand": "Medical Staffing, LLC", "bdc": "ARES CAPITAL"},
+      {"cand": "Medical Staffing, LLC", "bdc": "GOLUB CAPITAL BDC"}, {"cand": "Insurance AMBA Buyer, Inc.", "bdc": "ANTARES X"},
+      {"cand": "AMBA Buyer, Inc.", "bdc": "HPS CORPORATE LENDING"}]
+b.vote_names(hs)
+assert hs[0]["name"] == "GrapeTree Medical Staffing, LLC", hs[0]["name"]   # different company, not merged
+assert hs[3]["name"] == "AMBA Buyer, Inc.", hs[3]["name"]                  # industry word dropped
 assert b.name_options("Zeta Technologies, Inc.") == ["Zeta Technologies, Inc."]  # never shortened to a bare business word
 print(f"{len(CASES) - bad}/{len(CASES)} ok")
 sys.exit(1 if bad else 0)
