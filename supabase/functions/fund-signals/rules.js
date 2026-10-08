@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 14;
+export const RULES_VERSION = 15;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -73,10 +73,13 @@ export function normalize(it, list) {
 }
 
 // Strategy from the fund name (Form D has no strategy field). Order matters: "Real Estate Credit" is credit.
+// The adviser's name counts too ("EV3 Fund II LP" says nothing; its adviser "EV3 Ventures LLC" does). "Income" alone is credit
+// only when nothing says real estate ("Multifamily Income Fund" is real estate).
 export function strategyOf(s) {
-  const t = `${s.company_name || ''} ${s.industry || ''}`.toLowerCase();
-  if (/\b(credit|lending|loans?|debt|income|mezz\w*|direct lend\w*|specialty finance|asset[- ]based)\b/.test(t)) return 'credit';
+  const t = `${s.company_name || ''} ${s.industry || ''} ${s.adviser_name || ''}`.toLowerCase();
+  if (/\b(credit|lending|loans?|debt|mezz\w*|direct lend\w*|specialty finance|asset[- ]based)\b/.test(t)) return 'credit';
   if (/\b(real estate|realty|propert\w*|multi-?family|apartments?|housing|residential|homes|land|reit|self[- ]storage|hospitality|hotels?|opportunity zone|qof|industrial outdoor)\b/.test(t)) return 'real_estate';
+  if (/\bincome\b/.test(t)) return 'credit';
   if (/\b(infrastructure|infra|energy|power|renewables?|solar|wind|transition|climate)\b/.test(t)) return 'infra';
   if (/\b(ventures?|vc|seed|pre-?seed|founders?|labs|angels?|accelerator|studios?)\b/.test(t)) return 'venture';
   if (/\b(buyout|private equity|equity partners|growth equity|search fund|lower middle market|lmm)\b/.test(t)) return 'buyout';
@@ -88,7 +91,7 @@ export const STRATEGY_LABEL = { credit: 'Private credit', real_estate: 'Real est
 export function classify(s, now = Date.now()) {
   const R = [], add = (tone, text, pts = 0) => R.push({ tone, text, pts });
   const name = s.company_name || '';
-  let stage = s.list === 'live' ? 'raising' : null;
+  let stage = s.list === 'live' ? 'raising' : null, expected = null;
   if (VEHICLE.test(name)) add('cut', 'Single-deal vehicle (SPV, co-invest or series), not a fund raising from investors');
   if (BRANDS.test(name) || BRANDS.test(s.executives_text || '')) add('cut', 'Big brand or wealth platform: has its own fundraising team');
   if (s.commissions > 0) add('cut', `Already pays a placement agent (${money(s.commissions)} in sales commissions)`);
@@ -116,7 +119,7 @@ export function classify(s, now = Date.now()) {
     }
     if (!s.first_sale) add('good', 'Filed before taking any money: the earliest possible contact', 15);
     else if (months != null && months <= 1.5) add('good', 'Started raising in the last 6 weeks', 12);
-    if (months != null && months >= 6 && pctSold != null && pctSold < 0.3 && s.first_sale) add('good', `Stuck: only ${pctTxt(pctSold)} raised in ${Math.round(months)} months`, 40);
+    if (months != null && months >= 6 && pctSold != null && pctSold < 0.3 && s.first_sale) add('good', `Stuck: only ${pctTxt(pctSold)} raised in ${Math.round(months)} months. They need help, but ask why investors are passing (a stall is also a weaker story)`, 20);
     else if (months != null && months >= 12 && pctSold == null && s.first_sale) add('good', `Still raising ${Math.round(months)} months after the first sale`, 20);
   } else {
     // Next-fund watch (list 'fund1' holds Fund Is AND Fund IIs since 5 Oct 2026): a manager whose last fund is old enough
@@ -139,42 +142,67 @@ export function classify(s, now = Date.now()) {
     // (19-37). Only ~1 in 7 Fund I managers with no next fund at year 3 files one by year 5.
     const W = n === 2 ? { lo: 15, hi: 39, med: 28, q: '19-37' } : { lo: 12, hi: 36, med: 24, q: '16-35' };
     // Has the current fund finished raising? (8 Oct 2026, Peter call.) A Form D is filed within 15 days of the first sale and
-    // a fund usually takes 12-18 months (up to 24) to final close, so a Fund I filed a year ago is normally still raising
-    // Fund I: too early to pitch help on Fund II. Open offerings must file an amendment every year (Rule 503), so no filing
-    // for 13+ months means the raise has most likely ended.
+    // a fund usually takes 12-18 months (up to 24) to close. Open offerings must re-file every year (Rule 503), so no filing
+    // for 13+ months means the raise has most likely ended (or the manager stopped filing: ask).
     const lastAct = [s.filing_date, s.amended_at].filter(Boolean).sort().pop();
     const sinceAct = lastAct ? (now - Date.parse(lastAct)) / (30.44 * 864e5) : null;
     const known = !!(s.amended_at || ['clear', 'next', 'unsure'].includes(s.check_status));
     const full = s.offering > 0 && s.sold > 0 ? s.sold / s.offering : null;
-    // still_raising is stored at check time: it only counts while that filing is under 13 months old (else the yearly re-file lapsed).
+    // Audit 8 Oct 2026: of 273 targets, 78 showed raised = target to the dollar and none raised more. Managers usually amend the
+    // target down (or up) to the final size at close, so "100% of target" proves the fund closed, not that it hit its goal.
+    const reset = full != null && Math.abs(s.sold - s.offering) < 1;
+    // still_raising is stored at check time: it only counts while that filing is under 13 months old.
     stage = s.still_raising && sinceAct != null && sinceAct <= 13 ? 'raising' : full != null && full >= 0.95 ? 'closed' : known && sinceAct != null && sinceAct > 13 ? 'closed' : 'unclear';
     if (stage === 'raising') add('maybe', `Still raising ${nm} (${s.still_raising}): too early to pitch ${nextNm}. Revisit after it closes`);
-    else if (stage === 'closed' && full != null && full >= 0.95) add('good', `${nm} closed: raised ${pctTxt(full)} of its ${money(s.offering)} target`, 15);
+    else if (stage === 'closed' && full != null && full >= 0.95) add('good', `${nm} closed at ${money(s.sold)}${reset ? ' (the filing sets the target to the final size, so this proves it closed, not that it hit its first goal)' : ''}`, 12);
     else if (stage === 'closed') add('good', `${nm} raise has ended: no filing for ${Math.round(sinceAct)} months (open raises must re-file every year)`, 12);
     else add('info', `Not sure ${nm} has closed yet (last filing ${lastAct || 'unknown'}): confirm on the first call`);
 
-    if (months != null) {
-      const yrs = `${nm} is ${months < 24 ? Math.round(months) + ' months' : (months / 12).toFixed(1) + ' years'} old`;
-      if (months < W.lo) add('maybe', `${yrs}: early, most managers file their next fund at ${W.q} months (median ${W.med})`);
-      else if (months <= W.hi) add('good', `${yrs}: inside the window where most managers file their next fund (median ${W.med} months, middle half ${W.q})`, 15);
-      else if (months <= 60) add('info', `${yrs}: past the usual window; most who raise again have filed by now (stalled, or needs help most)`);
-      else add('maybe', `${yrs}: may have moved on or stopped`);
+    // The manager's own history (8 Oct 2026, Tengku: their own pace beats the market average, but check both).
+    const hist = s.history || [], myBase = base(s.company_name), myStart = s.first_sale || s.filing_date;
+    const earlier = hist.filter(h => h.fund_no && h.fund_no < n && h.first && myStart && h.first < myStart);
+    const prior = earlier.filter(h => h.fund_no === n - 1).sort((a, b) => (b.base === myBase) - (a.base === myBase) || b.sold - a.sold)[0] || null;
+    if (earlier.length) add('info', `Earlier funds: ${earlier.map(h => `${h.name} (${String(h.first).slice(0, 4)}${h.sold ? `, ${money(h.sold)}` : ''}${h.investors ? `, ${h.investors} investors` : ''})`).join('; ')}`);
+
+    // When is the next fund likely? Market: the cadence study (500 funds filed in 2019: Fund I -> II median 24 months, middle
+    // half 16-35; Fund II -> III median 28, 19-37). Own pace: the gap from their previous fund to this one. One gap is a single
+    // data point, so it is blended 50/50 with the market median rather than trusted alone; both are shown.
+    const ownGap = prior && myStart ? (Date.parse(myStart) - Date.parse(prior.first)) / (30.44 * 864e5) : null;
+    const useOwn = ownGap != null && ownGap >= 9 && ownGap <= 72;
+    const expM = useOwn ? (ownGap + W.med) / 2 : W.med;
+    const when = m => new Date(Date.parse(myStart) + m * 30.44 * 864e5).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+    if (months != null && myStart) {
+      expected = new Date(Date.parse(myStart) + expM * 30.44 * 864e5).toISOString().slice(0, 10);
+      const basis = `${useOwn ? `their own pace: ${romanOf(n - 1) ? `Fund ${romanOf(n - 1)}` : 'last fund'} to ${nm} took ${Math.round(ownGap)} months; ` : ''}market median ${W.med} months, middle half ${W.q}`;
+      const toGo = expM - months, est = `${nextNm} expected around ${when(expM)} (${basis})`;
+      if (months > 60) add('maybe', `${nm} is ${(months / 12).toFixed(1)} years old: most managers who raise again have done so by now`);
+      else if (toGo > 12) add('maybe', `Early: ${est}. Investor meetings usually start 6-12 months before launch`);
+      else if (toGo >= -9) add('good', `In the pre-launch window: ${est}`, 15);
+      else add('info', `Past the expected launch (${est}) with no ${nextNm} filed: stalled, or raising before filing. Ask`);
     }
 
-    // Track record we can see in public filings (real returns are never public for managers this size: ask on the first call).
-    // Peter: a weak Fund I is a weak story, hard to place with new investors. So a miss counts against, never for.
-    if (stage !== 'raising' && full != null && s.sold > 0) {
-      if (full >= 1) add('good', `Hit its ${nm} target: a clean story to take to new investors`, 12);
+    // Track record we can see in public filings (real returns are never public at this size: ask on the first call).
+    // Peter: a weak fund is a weak story, hard to place with new investors. So a miss counts against, never for.
+    if (stage !== 'raising' && full != null && s.sold > 0 && !reset) {
+      if (full >= 1) add('good', `Raised ${pctTxt(full)} of its ${nm} target: oversubscribed`, 12);
       else if (full >= 0.8) add('good', `Raised ${pctTxt(full)} of the ${nm} target`, 5);
       else if (full < 0.6 && stage === 'closed') add('maybe', `${nm} closed at only ${pctTxt(full)} of target: a weak story for new investors`, -10);
     }
-    if (stage === 'closed' && s.first_sale && s.amended_at && full != null && full >= 0.95) {
-      const took = (Date.parse(s.amended_at) - Date.parse(s.first_sale)) / (30.44 * 864e5);
-      if (took > 0 && took <= 12) add('good', `Filled ${nm} in about ${Math.round(took)} months: investors wanted in`, 6);
+    // Step-up: did the last fund's investors come back with more? The strongest public sign of how the last fund went.
+    let earnedTrack = n === 2;
+    if (prior && prior.sold > 0 && size) {
+      const x = size / prior.sold;
+      if (prior.sold < 5e6) { earnedTrack = false; add('info', `${romanOf(n - 1) ? `Fund ${romanOf(n - 1)}` : 'The last fund'} was only ${money(prior.sold)}, so ${nm} (${money(size)}) wasn't built on its returns. Ask what drove the jump`); }
+      else if (x >= 1.3) add('good', `${nm} is ${x.toFixed(1)}x the size of ${romanOf(n - 1) ? `Fund ${romanOf(n - 1)}` : 'the last fund'} (${money(prior.sold)}): earlier investors came back and new ones joined`, 8);
+      else if (x >= 0.8) add('info', `${nm} is about the same size as the last fund (${money(prior.sold)})`);
+      else { earnedTrack = false; add('maybe', `${nm} is smaller than the last fund (${money(size)} vs ${money(prior.sold)}): some investors didn't come back`, -5); }
     }
-    const inv = s.investors;
-    if (inv != null && inv > 0 && size >= 15e6 && inv <= 5) add('maybe', `Only ${inv} investor${inv === 1 ? '' : 's'} in ${money(size)}: one or two anchors carry it. Ask if they re-up`, -8);
-    else if (inv != null && inv >= 25) add('good', `${inv} investors: a real base of references (re-ups usually cover about half of the next fund; the rest must be new money)`, 6);
+    // Who the investors are, by average cheque: family offices write $1M+; under ~$250K is mostly individuals.
+    // Not the count alone (8 Oct 2026, Tengku/Peter): many investors can mean proof, or a base that refills the next fund unaided.
+    const inv = s.investors, avg = inv > 0 && size ? size / inv : null;
+    if (inv > 0 && inv <= 5 && size >= 15e6) add('info', `Only ${inv} investor${inv === 1 ? '' : 's'} (about ${money(avg)} each): one or two anchors carry it. Ask if the anchor re-ups`);
+    else if (avg != null && avg >= 1e6) add('good', `Average cheque about ${money(avg)} across ${inv} investors: family-office-sized backers`, 6);
+    else if (avg != null && avg < 250e3) add('info', `Average cheque about ${money(avg)} across ${inv} investors: mostly individuals. A weaker story, but they need us to reach family offices`);
 
     // Can they pay? Annual management fee is about 2% of the fund. Our retainer is $25-50K (Peter).
     if (size) {
@@ -184,7 +212,7 @@ export function classify(s, now = Date.now()) {
       // The ask for the next fund: managers usually aim 1.5-2x bigger; existing investors re-up roughly 60% of what they put in.
       if (stage !== 'raising') add('info', `Likely ${nextNm}: ${money(size * 1.5)}-${money(size * 2)}, of which roughly ${money(size * 0.9)}-${money(size * 1.4)} has to come from new investors`);
     }
-    if (n === 2) add('good', 'Fund II manager: has a track record to sell for Fund III', 5);
+    if (n === 2 && earnedTrack) add('good', 'Fund II manager: has a Fund I track record to show for Fund III', 5);
     if (s.check_status === 'clear' && !(s.sold > 0)) add('maybe', `No money reported raised, even in later filings: ${nm} may never have closed`);
     else if (s.check_status === 'clear') add('good', `No ${nextNm} or renamed next fund filed yet (checked ${String(s.checked_at || '').slice(0, 10)})`, 15);
     else if (s.check_status === 'next') add('cut', s.check_note || 'Already filed a later fund');
@@ -209,7 +237,7 @@ export function classify(s, now = Date.now()) {
 
   const verdict = R.some(r => r.tone === 'cut') ? 'cut' : R.some(r => r.tone === 'maybe') ? 'maybe' : 'target';
   const score = Math.max(0, Math.min(100, R.reduce((n, r) => n + r.pts, 0)));
-  return { verdict, score: verdict === 'cut' ? Math.min(score, 20) : score, reasons: R.map(({ tone, text }) => ({ tone, text })), stage, strategy };
+  return { verdict, score: verdict === 'cut' ? Math.min(score, 20) : score, reasons: R.map(({ tone, text }) => ({ tone, text })), stage, strategy, next_expected: expected };
 }
 
 // People on a filing, as comparable keys: "aman brar" → "a brar". Entities are already dropped by people().
@@ -221,6 +249,30 @@ function sharedPeople(ours, theirs) {
   const city = p => String(p.location || '').split(',')[0].trim().toLowerCase();
   const mine = new Map((ours || []).map(p => [key(p), p]));
   return (theirs || []).filter(p => key(p) && mine.has(key(p))).map(p => ({ name: p.name, sameCity: !!city(p) && city(p) === city(mine.get(key(p))) }));
+}
+
+// The manager's own funds, oldest first: one entry per fund (feeders, offshore twins and amendments folded together,
+// largest amount kept), counting only filings that share a named person with this one (or the same SEC company), so two
+// firms with similar names never mix. peers = our stored rows with the same manager_key + earlier funds the adviser job
+// found on EDGAR (s.prior_funds).
+const base = name => fundFamily(name).replace(/\b[ivx]+\b/g, ' ').replace(/\s+/g, ' ').trim();
+export function managerHistory(s, peers) {
+  const ours = personKeys(s.executives), city = String(s.city || '').toLowerCase(), fams = new Map();
+  for (const p of [...(peers || []), ...(s.prior_funds || [])]) {
+    if (!p || !p.company_name || VEHICLE.test(p.company_name)) continue;
+    const same = p.id === s.id || (s.cik && p.cik && Number(s.cik) === Number(p.cik)) || [...personKeys(p.executives)].some(k => ours.has(k)) || (!ours.size && city && String(p.city || '').toLowerCase() === city);
+    if (!same) continue;
+    // A fund's start = its earliest first sale; a filing date only when no filing gives one (a fund can file before any money).
+    const key = `${fundFamily(p.company_name)}#${p.fund_no || 0}`, sold = Number(p.sold) || 0;
+    const f = fams.get(key) || { name: p.company_name, fund_no: p.fund_no || 0, base: base(p.company_name), sale: null, filed: null, sold: 0, investors: null };
+    if (p.first_sale && (!f.sale || p.first_sale < f.sale)) f.sale = p.first_sale;
+    if (p.filing_date && (!f.filed || p.filing_date < f.filed)) f.filed = p.filing_date;
+    f.first = f.sale || f.filed;
+    if (sold > f.sold) { f.sold = sold; f.name = p.company_name; }
+    if (Number(p.investors) > (f.investors || 0)) f.investors = Number(p.investors);
+    fams.set(key, f);
+  }
+  return [...fams.values()].map(({ sale, filed, ...f }) => f).sort((a, b) => String(a.first).localeCompare(String(b.first)));
 }
 
 // Money raised across this manager's funds in our Form D data: the latest amount per fund (feeders and parallels folded
@@ -305,13 +357,14 @@ export function readCheck(s, items) {
 // ---- Credit signals: small US public companies that need private credit (Peter's lane) ----
 // Item from scripts/credit_signals.py: { cik, name, tickers, exchange, sic, sicDesc, state, periodEnd, debtCurrent,
 // debtNoncurrent, cash, revenue, publicFloat, flags: { going_concern?, forbearance? }, filingUrl }
-export const CREDIT_RULES_VERSION = 3;
+export const CREDIT_RULES_VERSION = 4;
 export function normalizeCredit(it) {
   return {
     cik: String(Number(it.cik)), company_name: it.name || 'Unknown', tickers: (it.tickers || []).join ? (it.tickers || []).join(', ') : it.tickers || null,
     exchange: (it.exchanges || []).join ? (it.exchanges || []).join(', ') : it.exchange || null, sic: it.sic ? String(it.sic) : null, sic_desc: it.sicDesc || null,
     state: it.state || null, period_end: isoDate(it.periodEnd), debt_current: num(it.debtCurrent), debt_noncurrent: num(it.debtNoncurrent), revolver_current: num(it.revolverCurrent),
     cash: num(it.cash), revenue: num(it.revenue), public_float: num(it.publicFloat), flags: it.flags || {}, filing_url: it.filingUrl || null,
+    ebitda: num(it.ebitda), interest_expense: num(it.interestExpense),
   };
 }
 export function classifyCredit(s) {
@@ -335,10 +388,24 @@ export function classifyCredit(s) {
   if (f.forbearance) { trigger = true; add('good', `Lender forbearance agreement (${f.forbearance.form} ${f.forbearance.date}): current lender is losing patience`, 30); }
   if (f.going_concern) { trigger = true; add('good', `Going-concern doubt disclosed (${f.going_concern.form} ${f.going_concern.date}): needs rescue or bridge financing`, 15); }
   if (s.revolver_current >= 5e6) add('info', `Plus ${money(s.revolver_current)} on a revolving line (classed as current but usually rolls over)`);
-  if (s.revenue >= 50e6 && s.revenue <= 1e9) add('good', `${money(s.revenue)} revenue: enough cash flow to support a private loan`, 7);
+  if (s.revenue >= 20e6 && s.revenue <= 200e6) add('good', `${money(s.revenue)} revenue: Peter's sweet spot ($20-200M), too small for the big advisers to chase`, 10);
+  else if (s.revenue > 200e6 && s.revenue <= 1e9) add('good', `${money(s.revenue)} revenue: enough cash flow for a private loan, but the big advisers may already be there`, 3);
   if (s.public_float != null && s.public_float <= 300e6) add('good', `Small cap (public float ${money(s.public_float)}): too small for the bond market`, 10);
   if (total >= 20e6 && total <= 300e6) add('good', `${money(total)} total debt: the size Peter's private credit lenders write`, 8);
-  if (!trigger) add('maybe', 'No refinancing deadline, forbearance or going-concern warning found');
+  // Peter's leverage screen (8 Oct 2026): debt against cash flow. Net debt over 7x EBITDA with interest covered under 2x
+  // usually ends in a restructuring or an expensive refinancing. And the audit's catch: a maturity alone means little when
+  // cash flow is strong (net debt under 3x, interest covered 4x+): the bank refinances it, so it drops down the list.
+  const e = s.ebitda, ix = s.interest_expense, net = total - (cash || 0);
+  const lev = e > 0 ? net / e : null, cover = e > 0 && ix > 0 ? e / ix : null;
+  if (e != null) {
+    if (e <= 0 && net > 20e6) { trigger = true; add('good', `Negative EBITDA (${money(e)}) with ${money(net)} net debt: a rescue, not a routine refinancing`, 10); }
+    else if (lev != null && lev >= 7 && (cover == null || cover < 2)) { trigger = true; add('good', `Net debt ${lev.toFixed(1)}x EBITDA${cover != null ? `, interest covered ${cover.toFixed(1)}x` : ''}: likely to need a restructuring or refinancing (Peter's screen)`, 25); }
+    else if (lev != null && lev >= 5) add('good', `Net debt ${lev.toFixed(1)}x EBITDA: highly levered`, 8);
+    else if (lev != null && lev < 3 && (cover == null || cover >= 4)) add('info', `Strong cash flow (net debt ${Math.max(lev, 0).toFixed(1)}x EBITDA${cover != null ? `, interest covered ${cover.toFixed(1)}x` : ''}): its bank will likely refinance, lower priority`, -15);
+  }
+  // Numbers more than ~9 months old: the problem may already be fixed.
+  if (s.period_end && Date.now() - Date.parse(s.period_end) > 270 * 864e5) add('info', `Balance sheet from ${s.period_end}: check the latest filing before calling`, -5);
+  if (!trigger) add('maybe', 'No refinancing deadline, leverage problem, forbearance or going-concern warning found');
   const verdict = R.some(r => r.tone === 'cut') ? 'cut' : R.some(r => r.tone === 'maybe') ? 'maybe' : 'target';
   const score = Math.max(0, Math.min(100, R.reduce((n, r) => n + r.pts, 0)));
   return { verdict, score: verdict === 'cut' ? Math.min(score, 20) : score, reasons: R.map(({ tone, text }) => ({ tone, text })) };

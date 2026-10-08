@@ -282,7 +282,10 @@ def run(full=False):
             batch.append({"id": s["id"]})
         # Earlier funds on EDGAR (Fund I + II added up) for managers without Form ADV numbers: on a full run, or the first
         # time a fund is sized. Kept on the row, so daily runs without the lookup don't shrink the total.
-        if full is not None and not (rec and (rec.get("raum") or rec.get("gav"))) and (full or not s.get("adviser_checked_at")) and s.get("check_keyword"):
+        # Also every Fund II on the next-fund list whose earlier funds were never looked up (8 Oct 2026): the edge function keeps
+        # them as prior_funds, so the rules can use the manager's own pace and the step-up from Fund I to Fund II.
+        need_hist = s.get("list") == "fund1" and (s.get("fund_no") or 0) >= 2 and not s.get("prior_checked")
+        if full is not None and s.get("check_keyword") and (need_hist or (not (rec and (rec.get("raum") or rec.get("gav"))) and (full or not s.get("adviser_checked_at")))):
             ex = manager_funds(s["check_keyword"], s.get("cik"))
             if ex is not None:
                 batch[-1]["extras"] = ex

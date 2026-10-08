@@ -33,6 +33,11 @@ REVOLVER = ["LinesOfCreditCurrent", "ShortTermBorrowings"]
 DEBT_NONCURRENT = ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations", "LongTermLineOfCredit",
                    "ConvertibleNotesPayableNoncurrent", "LongTermNotesPayable"]
 CASH = ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", "Cash"]
+# Peter's leverage screen (8 Oct 2026): EBITDA = operating income + depreciation & amortisation (last calendar year), and
+# interest expense, so a maturity can be judged against cash flow (a strong earner just refinances at its bank).
+OP_INCOME = ["OperatingIncomeLoss"]
+DA = ["DepreciationDepletionAndAmortization", "DepreciationAndAmortization", "DepreciationAmortizationAndAccretionNet"]
+INTEREST = ["InterestExpense", "InterestExpenseNonoperating", "InterestExpenseDebt", "InterestPaidNet"]
 REVENUE = ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet",
            "RevenueFromContractWithCustomerIncludingAssessedTax", "SalesRevenueGoodsNet", "RegulatedAndUnregulatedOperatingRevenue"]
 
@@ -201,22 +206,39 @@ def credit():
         period = periods[-1]
         cash = best(CASH, period)
     log(f"credit: balance sheet period {period}")
+    val = lambda m, c: m[c][0] if c in m else None
     dcur, dnon, rvl = best(DEBT_CURRENT, period), best(DEBT_NONCURRENT, period), best(REVOLVER, period)
     rev = best(REVENUE, f"CY{today.year - 1}")
     rev.update({k: v for k, v in best(REVENUE, f"CY{today.year - 2}").items() if k not in rev})
     flt = frame("EntityPublicFloat", f"CY{today.year - 1}Q2I", tax="dei")
+    yr = f"CY{today.year - 1}"
+    opi, dna, intx = best(OP_INCOME, yr), best(DA, yr), best(INTEREST, yr)
+    def ebitda(c):
+        o = val(opi, c)
+        return None if o is None else o + (val(dna, c) or 0)
 
     since = (today - dt.timedelta(days=180)).isoformat()
     forb = text_hits('"forbearance agreement"', ["8-K", "10-Q", "10-K"], since)
     gc = text_hits('"substantial doubt" "going concern"', ["10-K", "10-Q"], since, cap=4000)
 
-    val = lambda m, c: m[c][0] if c in m else None
     cands = set()
     for c, (dc, *_rest) in dcur.items():
         ch, r, fl = val(cash, c), val(rev, c), val(flt, c)
         total = dc + (val(dnon, c) or 0)
         if dc >= 10e6 and ch is not None and dc > ch and (r or 0) >= 20e6 and (fl is None or fl <= 2e9) and total <= 750e6:
             cands.add(c)
+    # Leverage screen: net debt over 7x EBITDA and interest covered under 2x (or negative EBITDA with real debt).
+    lev = 0
+    for c, (dn, *_rest) in dnon.items():
+        total = dn + (val(dcur, c) or 0)
+        e, i, r, fl = ebitda(c), val(intx, c), val(rev, c), val(flt, c)
+        if total < 20e6 or total > 750e6 or (r or 0) < 20e6 or (fl is not None and fl > 2e9) or e is None:
+            continue
+        net = total - (val(cash, c) or 0)
+        if (e <= 0 and net > 0) or (e > 0 and net / e >= 7 and (i is None or i <= 0 or e / i < 2)):
+            cands.add(c)
+            lev += 1
+    STATS["leverage_candidates"] = lev
     for c in set(forb) | set(gc):
         r = val(rev, c)
         if r is None or r >= 20e6:
@@ -250,7 +272,8 @@ def credit():
         if c in gc:
             flags["going_concern"] = gc[c]
         batch.append({"cik": c, **p, "periodEnd": (dcur.get(c) or cash.get(c) or (None, None))[1], "debtCurrent": val(dcur, c),
-                      "debtNoncurrent": val(dnon, c), "revolverCurrent": val(rvl, c), "cash": val(cash, c), "revenue": val(rev, c), "publicFloat": val(flt, c), "flags": flags})
+                      "debtNoncurrent": val(dnon, c), "revolverCurrent": val(rvl, c), "cash": val(cash, c), "revenue": val(rev, c), "publicFloat": val(flt, c), "flags": flags,
+                      "ebitda": ebitda(c), "interestExpense": val(intx, c)})
         if len(batch) >= 100:
             r = post({"action": "ingest", "kind": "credit", "items": batch, "period": period, "run": run, "stats": STATS})
             sent += len(batch)

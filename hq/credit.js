@@ -54,6 +54,8 @@ function rowHtml(s) {
     s.debt_current != null ? `Due in 12 months <b>${money(s.debt_current)}</b>` : '',
     s.cash != null ? `Cash <b>${money(s.cash)}</b>` : '',
     total ? `Total debt <b>${money(total)}</b>` : '',
+    s.ebitda != null ? `EBITDA <b>${money(s.ebitda)}</b>${s.ebitda > 0 ? ` (net debt <b>${(Math.max(0, total - (s.cash || 0)) / s.ebitda).toFixed(1)}x</b>)` : ''}` : '',
+    s.ebitda > 0 && s.interest_expense > 0 ? `Interest covered <b>${(s.ebitda / s.interest_expense).toFixed(1)}x</b>` : '',
     s.revenue != null ? `Revenue <b>${money(s.revenue)}</b>` : '',
     s.public_float != null ? `Float <b>${money(s.public_float)}</b>` : '',
     [s.sic_desc, s.state].filter(Boolean).map(esc).join(' · '),

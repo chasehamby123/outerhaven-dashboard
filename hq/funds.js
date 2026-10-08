@@ -151,6 +151,7 @@ function rowHtml(s) {
     s.offering ? `Target <b>${money(s.offering)}</b>` : 'Target <b>not stated</b>',
     s.sold != null ? `Raised <b>${money(s.sold)}</b>${pct != null ? ` (${pct}%)` : ''}` : '',
     s.investors != null ? `<b>${s.investors}</b> investor${s.investors === 1 ? '' : 's'}` : '',
+    s.list === 'fund1' && s.next_expected ? `Next fund expected <b>~${new Date(s.next_expected + 'T12:00:00').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}</b>` : '',
     s.first_sale ? `First sale <b>${day(s.first_sale)}</b>` : '<b>No money taken yet</b>',
     [s.city, s.state].filter(Boolean).join(', '),
     // Manager size (Form ADV / Form D totals): under $150M = emerging (our target), $150-500M = lower priority, over $500M = cut.
@@ -204,6 +205,8 @@ function prep(s) {
     if (s.stage === 'raising') q.push(`What's holding up the final close of ${cur}? Which investor types passed, and why?`);
     else if (s.stage === 'unclear') q.push(`Has ${cur} held its final close? At what size?`);
     q.push(`How much of ${cur} do they expect to re-up in ${nxt}, and from whom? (The gap is our job.)`);
+    const prior = (s.history || []).filter(h => h.fund_no === (s.fund_no || 1) - 1).sort((a, b) => b.sold - a.sold)[0];
+    if (prior && prior.sold > 0 && prior.sold < 5e6) q.push(`Fund ${ROMAN[(s.fund_no || 1) - 1]} was only ${money(prior.sold)}: what got ${cur} to ${money(s.sold)}? (An anchor, a spin-out track record, a new partner?)`);
     if (s.investors > 0 && s.investors <= 5) q.push(`Only ${s.investors} investor${s.investors === 1 ? '' : 's'} in ${cur}: is the anchor coming back, and at what size?`);
     q.push(`${nxt} target size, first close date, and how much the GP is committing itself.`);
     q.push(`Has the team changed since ${cur}? Who left, who joined?`);
