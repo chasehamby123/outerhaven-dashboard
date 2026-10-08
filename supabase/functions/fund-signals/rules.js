@@ -3,14 +3,16 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 15;
+export const RULES_VERSION = 16;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
 // Managers with their own fundraising teams, and wealth platforms whose feeders just repackage someone else's fund.
-const BRANDS = /\b(apollo|blackstone|kkr|carlyle|ares|cerberus|adams street|investcorp|canyon capital|h\.?i\.?g\.?|bain capital|andreessen|lightspeed|neuberger|icapital|cais|brown advisory|ashwood|nuveen|crestline|lindsay goldberg|hines|greystar|goldman|morgan stanley|j\.?p\.? ?morgan|blackrock|tpg|warburg|general atlantic|sequoia|accel|insight partners|thoma bravo|brookfield|oaktree|hamilton lane|stepstone|pantheon|harbourvest|partners group|ardian|eqt|cvc|permira|silver lake|fortress|starwood|pimco|invesco|fidelity|ubs|wells fargo|meridiam|cresset|moonfare|yieldstreet|novacap|columbia capital|patient square|grey rock|cvp nolimit|blue owl|dfj)\b/i;
+const BRANDS = /\b(apollo|blackstone|kkr|carlyle|ares|cerberus|adams street|investcorp|canyon capital|h\.?i\.?g\.?|bain capital|andreessen|lightspeed|neuberger|icapital|cais|brown advisory|ashwood|nuveen|crestline|lindsay goldberg|hines|greystar|goldman|morgan stanley|j\.?p\.? ?morgan|blackrock|tpg|warburg|general atlantic|sequoia|accel|insight partners|thoma bravo|brookfield|oaktree|hamilton lane|stepstone|pantheon|harbourvest|partners group|ardian|eqt|cvc|permira|silver lake|fortress|starwood|pimco|invesco|fidelity|ubs|wells fargo|meridiam|cresset|moonfare|yieldstreet|novacap|columbia capital|patient square|grey rock|cvp nolimit|blue owl|dfj|petershill|gcm grosvenor|grosvenor|siguler guff|strategic value|arrowmark)\b/i;
 // Single-deal or pass-through vehicles: not a fund raising from LPs.
-const VEHICLE = /\b(spv|co-?invest\w*|series of|splitter|blocker|continuation|sidecar|aggregator|access fund|annex)\b|\bseries\s+(?!fund\b)[a-z0-9]/i;
+// Audit 8 Oct 2026 added: employee funds, overflow / overage (co-invest top-ups), access feeders, holdcos and GP-commitment vehicles,
+// none of which raise from outside investors.
+const VEHICLE = /\b(spv|co-?invest\w*|series of|splitter|blocker|continuation|sidecar|aggregator|access fund|annex|employees?|overflow|overage|hedgeaccess|holdco|gp commitment|general partner commitment)\b|\saccess\b|\bseries\s+(?!fund\b)[a-z0-9]/i; // "Access" only after the first word: "Access Venture Partners" is a real firm
 // One fund files many Form Ds: amendments, feeders, parallel and offshore twins, -A/-B classes. Same family = same fund.
 export const fundFamily = name => String(name || '').toLowerCase().replace(/\([^)]*\)/g, ' ')
   .replace(/\b(feeder|offshore|onshore|parallel|master|qp|ai|institutional|international|cayman|delaware|us|usd|eur|lux|scsp|l\.?\s?p\.?|llc|ltd|limited|inc|co|the)\b/g, ' ')
