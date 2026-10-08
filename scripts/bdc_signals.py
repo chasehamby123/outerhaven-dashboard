@@ -147,7 +147,7 @@ secured unsecured loans loan term revolver revolving delayed draw ddtl unitranch
 notes note bonds bond corporate type asset instrument facility issuer name interest rate reference spread sofr libor prime floor
 maturity due date acquisition initial original purchase industry coupon cash pik toggle incremental tranche convertible
 preferred common stock units unit shares warrants warrant class series credit line lines other private securities security bank
-structured finance sector region country geography information canadian u.s. - -- | ~ / : investments-non-controlled/non-affiliated
+structured finance sector region country geography information canadian u.s. prtfl comp flsd - -- | ~ / : investments-non-controlled/non-affiliated
 """.split())
 COUNTRIES = ["United Kingdom", "Canada", "Australia", "France", "Germany", "Ireland", "Netherlands", "Luxembourg", "Spain", "Italy",
              "Sweden", "Norway", "Denmark", "Finland", "Switzerland", "Belgium", "Japan", "Singapore", "New Zealand", "Israel",
@@ -173,8 +173,16 @@ Wireless Telecommunication Services|Business Services|Consumer Services|Educatio
 Utilities: Services|Utilities|Services: Business|Services: Consumer|High Tech Industries|Construction & Building|Beverage, Food & Tobacco|
 Media: Advertising, Printing & Publishing|Advertising|Containers, Packaging & Glass|Consumer goods: Durable|Consumer goods: Non-durable|
 Environmental Industries|Hotel, Gaming & Leisure|Aerospace / MRO Services|Food and Beverage|Specialty Chemicals|Diversified Manufacturing|
-Manufacturing|Information Technology|Technology|Diversified telecommunication services|Aerospace & defense""".split("|")),
+Manufacturing|Information Technology|Technology|Diversified telecommunication services|Aerospace & defense|Software & Services|
+Technology Hardware & Equipment|Technology, Hardware & Equipment|Retailing|Real Estate|Real Estate Management and Development|Media & Entertainment|
+Consumer Durables & Apparel|Capital Goods|Automobiles & Components|Food, Beverage & Tobacco|Household & Personal Products|
+Health Care Equipment & Services|Pharmaceuticals, Biotechnology & Life Sciences|Diversified Financials|Telecommunication Services|Materials|Energy|
+Semiconductors|Publishing|Printing|Environmental & Facilities Services|IT Consulting|Consumer Products|Consumer Discretionary|Consumer Staples|
+Industrials|Financials|Communication Services|Business Products|Healthcare Services|Healthcare Technology|Healthcare Providers|Specialty Finance|
+Insurance Services|Buildings & Real Estate|Leisure & Entertainment|Chemicals, Plastics & Rubber|Metals & Mining|Forest Products & Paper|
+Sovereign & Public Finance|Banking, Finance, Insurance & Real Estate|Wholesale Distribution|Distribution|Restaurants|Gaming|Hospitality|Hardware & Equipment""".replace("\n", "").split("|")),
                     key=len, reverse=True)
+INDUSTRIES = sorted(set(INDUSTRIES) | {i.replace(" & ", " and ") for i in INDUSTRIES} | {i.replace(" and ", " & ") for i in INDUSTRIES}, key=len, reverse=True)
 IND_RE = re.compile(r"\b(" + "|".join(re.escape(i) for i in INDUSTRIES) + r")(?![A-Za-z])", re.I)
 SEPS = re.compile(r"\s+[-–—|~]+\s+|\s*\|\s*|\s*;\s*|\s+--\s+|,\s+")
 INSTR_RE = re.compile(r"\b(First|Second|1st|2nd|Senior|Super Senior|Unitranche|Term Loan|Revolv\w*|Delayed Draw|DDTL|Incremental|Subordinated|"
@@ -184,6 +192,10 @@ INSTR_RE = re.compile(r"\b(First|Second|1st|2nd|Senior|Super Senior|Unitranche|T
 GENERIC = {"holdings", "holding", "intermediate", "parent", "buyer", "acquisition", "acquisitions", "acquiror", "midco", "bidco", "topco",
            "holdco", "opco", "purchaser", "borrower", "finance", "financing", "finco", "group", "the", "us", "u", "s", "co", "company",
            "investment", "investments", "merger", "sub", "newco", "lux", "uk", "and", "of"}
+BUSINESS = set("""technologies technology tech services service solutions systems system health healthcare partners partner management global
+enterprises enterprise international brands brand products product industries industry usa america american capital software consulting
+operations network networks digital media marketing labs lab care medical dental logistics energy foods food financial insurance engineering
+communications data group corp inc llc services, north south east west national united""".split())
 SUFFIX_WORDS = {"llc", "l", "c", "inc", "incorporated", "corp", "corporation", "lp", "p", "lllp", "ltd", "limited", "gmbh", "sarl", "sa",
                 "bv", "nv", "plc", "pty", "ulc", "llp", "sas", "spa", "oyj", "aps", "dba", "fka"}
 
@@ -287,6 +299,9 @@ def _no_suffix(t):
             continue
         if IND_RE.fullmatch(part) or COUNTRY_RE.fullmatch(part) or re.fullmatch(r"[\d.%/ +-]+", part):
             continue
+        part = re.sub(r"\s+\d{1,2}$", "", part).strip()
+        if part.lower() in BUSINESS or part.lower() in VOCAB:
+            continue
         return part[:120]
     return ""
 
@@ -299,7 +314,7 @@ def name_options(name):
     out = []
     for i in range(len(ws)):
         core = ws[i:]
-        if all(w.lower().strip(",.") in GENERIC for w in core):
+        if all(w.lower().strip(",.") in GENERIC or w.lower().strip(",.") in BUSINESS for w in core):
             break
         out.append(" ".join(core) + (f", {sfx}" if sfx else ""))
     return out or [name]
@@ -350,7 +365,8 @@ EQUITY_RE = re.compile(r"\b(equity|warrants?|preferred|common stock|common units
                        r"partnership interest|co-invest)\b", re.I)
 DEBT_RE = re.compile(r"\b(loan|lien|debt|notes?|bonds?|revolv\w*|unitranche|term|ddtl|delayed draw|senior secured|subordinated|mezzanine)\b", re.I)
 SKIP_RE = re.compile(r"(\bCLO\b|collateralized loan|senior loan fund|\bSLF\b|joint venture|\bJV\b|money market|treasury|government obligations|"
-                     r"cash equivalents|structured finance|liquidating trust|total investments|fund securities|\bfund\b,? (?:L\.?P|LLC))", re.I)
+                     r"cash equivalents|structured finance|liquidating trust|total investments|fund securities|\bfund\b,? (?:L\.?P|LLC)|collateri[sz]ed|unfunded|"
+                     r"\b(?:19|20)\d{2}-[A-Z0-9]{1,6}\b|\bCMBS\b|\bABS\b|forward contract|swap)", re.I)
 NONACCRUAL_RE = re.compile(r"non[- ]?accru", re.I)
 PIK_RE = re.compile(r"\bPIK\b|paid[- ]in[- ]kind", re.I)
 
@@ -414,9 +430,11 @@ def rows_to_holdings(rows):
         if not cand or len(cand) < 3:
             continue
         principal, fair, cost = num(r["principal"]), num(r["fair"]), num(r["cost"])
-        debt = bool(principal) or (bool(DEBT_RE.search(t)) and not r["shares"] and not EQUITY_RE.search(t))
-        if debt and not principal and cost:
-            principal = None   # debt row with no principal tagged: size from cost below
+        eq_text = bool(EQUITY_RE.search(t)) and not DEBT_RE.search(t)
+        debt = (bool(principal) or bool(DEBT_RE.search(t))) and not eq_text and not (r["shares"] and not principal)
+        # Unfunded commitments (delayed draw / revolver not drawn): principal = commitment, cost and fair ~0 or negative.
+        if debt and principal and (cost is None or cost <= 0.05 * principal) and (fair is None or fair <= 0.05 * principal):
+            continue
         equity = not debt and (bool(r["shares"]) or bool(EQUITY_RE.search(t)))
         controlled, affiliated = control_flags(t, r["affil"])
         cm = COUNTRY_RE.search(t[:220])

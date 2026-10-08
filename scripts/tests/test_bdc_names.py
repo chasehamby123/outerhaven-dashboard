@@ -32,6 +32,10 @@ CASES = [  # (identifier text, expected name, expected maturity or None)
     ("Controlled Affiliates, AutoAlert, LLC, Senior Secured 1st Lien Term Loan, SOFR + 5.4%, 1% SOFR Floor, PIK toggle, due 3/31/28", "AutoAlert, LLC", "2028-03-31"),
     ("Cannabis | Devi Holdings Inc.", "Devi Holdings, Inc.", None),
     ("Debt Investments- United States Diversified Consumer Services SSI Parent, LLC (fka School Specialty, Inc. Date 09/15/20 Term Loan  11.76% (SOFR + 8.00", "SSI Parent, LLC", None),
+    ("Investments United States Debt Investments Retailing MeriCal, LLC Investment Type Unitranche", "MeriCal, LLC", None),
+    ("Investments United States Debt Investments Software and Services Marlabs Investment Type S", "Marlabs", None),
+    ("PCI Pharma Services 1", "PCI Pharma Services", None),
+    ("Investments United States Debt Investments Technology, Hardware & Equipment Gener8, LLC Investment Type Senior", "Gener8, LLC", None),
 ]
 
 bad = 0
@@ -43,5 +47,6 @@ for text, name, mat in CASES:
     print(("ok  " if ok else "BAD ") + f"{got!r} (want {name!r})  mat {m} (want {mat})")
 assert b.key_of("Curium BidCo S.a.r.l.") == b.key_of("Curium Bidco, S.a.r.l."), b.key_of("Curium BidCo S.a.r.l.")
 assert b.key_of("TITAN BW BORROWER, L.P.") == b.key_of("Titan BW Borrower L.P.")
+assert b.name_options("Zeta Technologies, Inc.") == ["Zeta Technologies, Inc."]  # never shortened to a bare business word
 print(f"{len(CASES) - bad}/{len(CASES)} ok")
 sys.exit(1 if bad else 0)
