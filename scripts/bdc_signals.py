@@ -69,6 +69,24 @@ def probe(name):
     step = max(1, len(with_mat) // 12)
     for i, r in enumerate(with_mat[::step][:12]):
         note(f"bdc sample {i}", " ; ".join(f"{k}={v}" for k, v in r.items() if v and k not in ("inlineurl",)))
+    fill = {}
+    for r in rows:
+        for k, v in r.items():
+            if v:
+                fill[k] = fill.get(k, 0) + 1
+    note("bdc fill", str(sorted([(k, n) for k, n in fill.items() if n >= 300], key=lambda x: -x[1])))
+    for col in ("Investment, Issuer Name Axis", "Investee", "InvestmentsIdentifier", "Investment, Name Axis", "InvestmentPerformanceStatus",
+                "Financial Instrument Performance Status Axis", "Investment, Non-income Producing [true false]", "Lien Category Axis"):
+        ex = [r[col] for r in rows if r.get(col)][:12]
+        note(f"bdc col {col[:30]}", f"{fill.get(col, 0)} filled; e.g. {ex}")
+    seen, ids = set(), []
+    for r in rows:
+        if r.get("cik") in seen or not r.get("Investment, Identifier Axis") or not g(r, "maturity"):
+            continue
+        seen.add(r.get("cik"))
+        ids.append(r["Investment, Identifier Axis"][:170])
+    for i in range(0, min(len(ids), 120), 20):
+        note(f"bdc ids {i}", " || ".join(ids[i:i + 20]))
     nomat = [r for r in rows if not g(r, "maturity")][:4]
     for i, r in enumerate(nomat):
         note(f"bdc no-maturity sample {i}", " ; ".join(f"{k}={v}" for k, v in r.items() if v and k not in ("inlineurl",)))
