@@ -109,7 +109,9 @@ def soi_rows(z):
     with z.open(member) as f:
         rd = csv.reader(io.TextIOWrapper(f, encoding="utf-8", errors="replace", newline=""), delimiter="\t",
                         quoting=csv.QUOTE_NONE)
-        head = next(rd)
+        head = next(rd, None)
+        if not head:
+            return                      # months with no BDC filings ship an empty table
         idx = {k: [head.index(c) for c in cols if c in head] for k, cols in FIELDS.items()}
         for row in rd:
             rec = {}
