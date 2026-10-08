@@ -191,7 +191,8 @@ INSTR_RE = re.compile(r"\b(First|Second|1st|2nd|Senior|Super Senior|Unitranche|T
                       r"Notes?\b|Bonds?\b|Warrants?\b|Preferred|Common|Class [A-Z0-9]\b|Series [A-Z0-9]|Units?\b|Shares?\b|Loan\b|Term\b|Revolver)")
 GENERIC = {"holdings", "holding", "intermediate", "parent", "buyer", "acquisition", "acquisitions", "acquiror", "midco", "bidco", "topco",
            "holdco", "opco", "purchaser", "borrower", "finance", "financing", "finco", "group", "the", "us", "u", "s", "co", "company",
-           "investment", "investments", "merger", "sub", "newco", "lux", "uk", "and", "of"}
+           "investment", "investments", "merger", "sub", "newco", "lux", "uk", "and", "of", "acquisitionco", "holdco", "i", "ii", "iii", "iv", "v",
+           "vi", "vii", "viii", "ix", "x", "1", "2", "3", "4", "5"}
 BUSINESS = set("""technologies technology tech services service solutions systems system health healthcare partners partner management global
 enterprises enterprise international brands brand products product industries industry usa america american capital software consulting
 operations network networks digital media marketing labs lab care medical dental logistics energy foods food financial insurance engineering
@@ -225,7 +226,8 @@ def strip_lead(s):
     """Drop leading vocabulary, % / number tokens, countries and an industry phrase."""
     while True:
         before = s
-        s = re.sub(r"^[\s,:;|\-–~/.]+", "", s)
+        s = re.sub(r"^[\s,:;|\-–~/.&]+", "", s)
+        s = re.sub(r"^(?:and|of)\s+", "", s, flags=re.I)
         s = re.sub(r"^-?\d+(?:\.\d+)?%\s*", "", s)
         m = COUNTRY_RE.match(s)
         if m:
@@ -318,6 +320,9 @@ def name_options(name):
             break
         out.append(" ".join(core) + (f", {sfx}" if sfx else ""))
     return out or [name]
+
+
+FOREIGN_FORM = re.compile(r"\b(AB|AS|A/S|GmbH|S\.?[àa]\.?\s?r\.?\s?l\.?|B\.V\.|N\.V\.|Pty|PTY|S\.A\.|SAS|S\.p\.A\.|Oyj?|ApS|PLC|plc)\b")
 
 
 def family(bdc):
@@ -513,6 +518,8 @@ def build(latest, prev):
         spread = round(sum(s * p for s, p in sp) / w * 100, 2) if sp and w else None
         pmark = mark_of([h for h in pgroups.get(key, []) if h["debt"]])
         countries = Counter(h["country"] for h in hs if h["country"])
+        if not countries and FOREIGN_FORM.search(names.most_common(1)[0][0]):
+            countries["Outside the US"] = 1
         inds = Counter(h["industry"] for h in hs if h["industry"])
         items.append({
             "company_key": key[:200], "company_name": names.most_common(1)[0][0][:200],

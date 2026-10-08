@@ -80,4 +80,6 @@ jobs:
           if [ "$MODE" = "daily" ]; then python scripts/adviser_aum.py --mode run || rc=$?; fi
           # ...and private companies from state UCC lien filings (CT, CO, OR open data + Florida federal tax liens) sized by PPP loans.
           if [ "$MODE" = "daily" ]; then python scripts/ucc_signals.py || rc=$?; fi
+          # ...and, on Mondays, private companies from every BDC's loan list (the SEC publishes the BDC data sets monthly).
+          if [ "$MODE" = "daily" ] && [ "$(date -u +%u)" = "1" ]; then python scripts/bdc_signals.py || rc=$?; fi
           exit $rc

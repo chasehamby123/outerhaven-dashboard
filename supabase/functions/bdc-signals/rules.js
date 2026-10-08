@@ -16,7 +16,7 @@ export const tierOf = bdc => { const n = String(bdc || '').toUpperCase(); return
 
 const m = n => n >= 1e9 ? '$' + +(n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? '$' + +(n / 1e6).toFixed(n >= 1e8 ? 0 : 1) + 'M' : '$' + Math.round(n / 1e3) + 'K';
 const mon = d => d ? new Date(d + 'T12:00:00Z').toLocaleString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
-const short = s => String(s || '').replace(/,? (INC|CORP|CORPORATION|LLC|FUND|LP|L\.P\.|LTD)\.?$/i, '').replace(/\b(\w)(\w*)/g, (_, a, b) => a + b.toLowerCase());
+const short = s => String(s || '').replace(/,? (INC|CORP|CORPORATION|LLC|FUND|LP|L\.P\.|LTD)\.?$/i, '').replace(/\b(\w)(\w*)/g, (w, a, b) => w.length <= 3 ? w : a + b.toLowerCase());
 export const HOLDCO = /\b(buyer|midco|bidco|topco|holdco|parent|purchaser|acquisition|acquiror|intermediate|borrower|merger sub)\b/i;
 // EBITDA the facility implies at the usual 4-5.5x senior leverage for this size.
 export const ebitdaRange = f => f ? [f / 5.5, f / 4] : null;
@@ -41,7 +41,9 @@ export function classifyBdc(s, today = new Date()) {
   const mat = s.earliest_maturity || s.maturity, days = mat ? Math.round((new Date(mat + 'T12:00:00Z') - today) / 864e5) : null;
   if (days != null) {
     const mo = Math.round(days / 30.4);
-    if (days < 0) { score += 30; trigger = true; reasons.push({ tone: 'good', text: `Past its ${mon(mat)} maturity and still outstanding: extended or in default. A refinancing is overdue.` }); }
+    // Past maturity but still marked near par = usually extended with the old date still in the filing: worth a check, not a trigger.
+    if (days < 0 && (mark == null || mark >= 95)) { score += 10; reasons.push({ tone: 'maybe', text: `Filed maturity ${mon(mat)} has passed but lenders still mark it near par: probably extended. Check the latest terms.` }); }
+    else if (days < 0) { score += 30; trigger = true; reasons.push({ tone: 'good', text: `Past its ${mon(mat)} maturity, still outstanding and marked down: extended under pressure or in default. A refinancing is overdue.` }); }
     else if (days <= 365) { score += 35; trigger = true; reasons.push({ tone: 'good', text: `Matures ${mon(mat)} (${mo} months): has to refinance now.` }); }
     else if (days <= 548) { score += 25; trigger = true; reasons.push({ tone: 'good', text: `Matures ${mon(mat)} (${mo} months): inside the 18-month refinancing window.` }); }
     else if (days <= 730) { score += 10; reasons.push({ tone: 'good', text: `Matures ${mon(mat)} (${mo} months): refinancing talks start in the next 6 months.` }); }
@@ -70,7 +72,7 @@ export function classifyBdc(s, today = new Date()) {
   if (s.lenders >= 3) reasons.push({ tone: 'info', text: `${s.lenders} BDC lenders: a club deal.` });
   if (s.affiliated) { maybe = true; reasons.push({ tone: 'maybe', text: 'A lender also owns 5–25% of it: ask whether the lender-owner would welcome outside capital.' }); }
   else if (s.equity_held) reasons.push({ tone: 'info', text: 'A lender also holds equity (co-investor).' });
-  if (s.country) { score -= 10; maybe = true; reasons.push({ tone: 'maybe', text: `Based in ${s.country}.` }); }
+  if (s.country) { score -= 10; maybe = true; reasons.push({ tone: 'maybe', text: s.country === 'Outside the US' ? 'Non-US company (foreign legal form in the name).' : `Based in ${s.country}.` }); }
   if (HOLDCO.test(s.company_name || '')) reasons.push({ tone: 'info', text: 'Holding-company name (Buyer / Midco / Parent): likely PE-owned. Call the sponsor\'s deal team or the CFO.' });
 
   if (!trigger) { reasons.push({ tone: 'maybe', text: 'No trigger: nothing forces a refinancing in the next 18 months and lenders mark it near par.' }); return out('maybe', Math.min(score, 44)); }
