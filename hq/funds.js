@@ -151,6 +151,7 @@ function rowHtml(s) {
     s.offering ? `Target <b>${money(s.offering)}</b>` : 'Target <b>not stated</b>',
     s.sold != null ? `Raised <b>${money(s.sold)}</b>${pct != null ? ` (${pct}%)` : ''}` : '',
     s.investors != null ? `<b>${s.investors}</b> investor${s.investors === 1 ? '' : 's'}` : '',
+    s.list === 'fund1' && s.next_expected ? `Next fund expected <b>~${new Date(s.next_expected + 'T12:00:00').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}</b>` : '',
     s.first_sale ? `First sale <b>${day(s.first_sale)}</b>` : '<b>No money taken yet</b>',
     [s.city, s.state].filter(Boolean).join(', '),
     // Manager size (Form ADV / Form D totals): under $150M = emerging (our target), $150-500M = lower priority, over $500M = cut.
@@ -204,6 +205,8 @@ function prep(s) {
     if (s.stage === 'raising') q.push(`What's holding up the final close of ${cur}? Which investor types passed, and why?`);
     else if (s.stage === 'unclear') q.push(`Has ${cur} held its final close? At what size?`);
     q.push(`How much of ${cur} do they expect to re-up in ${nxt}, and from whom? (The gap is our job.)`);
+    const prior = (s.history || []).filter(h => h.fund_no === (s.fund_no || 1) - 1).sort((a, b) => b.sold - a.sold)[0];
+    if (prior && prior.sold > 0 && prior.sold < 5e6) q.push(`Fund ${ROMAN[(s.fund_no || 1) - 1]} was only ${money(prior.sold)}: what got ${cur} to ${money(s.sold)}? (An anchor, a spin-out track record, a new partner?)`);
     if (s.investors > 0 && s.investors <= 5) q.push(`Only ${s.investors} investor${s.investors === 1 ? '' : 's'} in ${cur}: is the anchor coming back, and at what size?`);
     q.push(`${nxt} target size, first close date, and how much the GP is committing itself.`);
     q.push(`Has the team changed since ${cur}? Who left, who joined?`);
@@ -341,9 +344,13 @@ function howModal() {
       <li>Raising now: target under $50M or over $250M, 60%+ already raised, or Fund IV and up.</li>
       <li>Fund I list: Fund I under $10M or over $75M, or a later fund already filed.</li></ul>
       <h4>4. "Maybe" (needs a human look)</h4>
-      <ul><li>Target size "Indefinite", so % raised can't be worked out.</li><li>Non-US manager, or no named people on the filing.</li><li>Fund I younger than 2.5 or older than 5 years.</li></ul>
+      <ul><li>Target size "Indefinite", so % raised can't be worked out.</li><li>Non-US manager, or no named people on the filing.</li>
+      <li>Due for next fund: the current fund is <b>still raising</b> (too early for a next-fund pitch), it closed under 60% of target, or 5 or fewer investors carry a $15M+ fund.</li></ul>
       <h4>5. Score (higher = call first)</h4>
-      <ul><li><b>+40</b> stuck: under 30% raised 6+ months after the first sale.</li><li><b>+30</b> Fund I still raising years later.</li><li><b>+25</b> checked: no Fund II filed yet.</li><li><b>+20</b> Fund II (the hardest raise), or Fund I inside the year 3–5 window.</li><li><b>+15</b> filed before taking money, or under 30% raised.</li><li><b>+8</b> Rule 506(c): allowed to market publicly.</li></ul>
+      <p><b>Raising now:</b> +20 stuck (under 30% raised 6+ months in), +20 Fund II, +12 Fund III, +15 filed before taking money or under 30% raised, +12 started in the last 6 weeks.</p>
+      <p><b>Due for next fund:</b> +12 closed (raised the target, or no filing for 13+ months; a target equal to the amount raised only proves it closed, since managers reset the target at close), +12 oversubscribed, +15 in the pre-launch window (next fund expected from a 50/50 blend of their own pace between funds and the market median), +8 the fund is 1.3x+ the size of the last one (−5 if smaller), +6 average cheque $1M+ (family-office-sized), +15 checked with no next fund, +5 fee income $400K+ a year (−8 under).</p>
+      <p><b>Both:</b> emerging manager (all funds under $150M) +20 / +12, $150–500M −15, private credit +8, real estate −15, Rule 506(c) +8.</p>
+      <p>Full criteria, with questions for Peter: the "OuterHaven Deal Screening Criteria" doc.</p>
       <h4>6. The next-fund check</h4>
       <p>Pulls every later filing by the same fund (by its SEC company number), and runs an SEC full-text search for later Form Ds under the manager's name (e.g. "Ground Game"). A later fund with a higher number = cut ("already filed Fund II"). It also searches every person named on the filing: a later pooled fund under any name with the same people (e.g. a Fund I followed by a "Frontier Fund" with the same partners) also counts as the next fund. A newer amendment of the same fund (same SEC company number) updates how much it has raised. Different firms that share a word are ignored unless the name matches.</p>
       <h4>7. What it can't see</h4>

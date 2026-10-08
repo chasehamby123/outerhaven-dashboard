@@ -140,6 +140,19 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   hardest to get paid), credit +8. Weights recalibrated so targets spread (window 15, clear 15, emerging 12 on fund1 / 20 on live).
   HQ: Fund status + Strategy filters, status/strategy chips, "Call prep" questions per card (`prep()`), openers by stage.
   The cron re-judges stale rows best-score first. Migration `supabase/2026-10-08-fund-lanes-marks.sql`.
+- **Rules audit (8 Oct 2026, RULES_VERSION 15 / CREDIT_RULES_VERSION 4):** judge() attaches `history` = `managerHistory(s, peers)` (stored rows
+  with the same manager_key + `prior_funds`, the earlier funds `scripts/adviser_aum.py` found on EDGAR; now fetched for every Fund II on
+  the next-fund list, `adviser_todo` returns `prior_checked`). Timing: next fund expected at a 50/50 blend of the manager's own gap
+  (previous fund to this one, 9-72 months) and the cohort median (one own gap is noisy); stored as `next_expected`; pre-launch window =
+  12 months before to 9 after (+15), earlier = maybe. Step-up vs previous fund: 1.3x+ +8, smaller = maybe -5, previous fund under $5M =
+  info "ask what drove the jump" (no Fund II track-record points). Raised = target to the dollar (78 of 273 targets) = target reset at
+  close: proves closed, NOT "hit target" (only oversubscribed gets +12). "Filled within 12 months" removed (amended_at is the yearly
+  re-file, not the close). Investor count replaced by average cheque ($1M+ +6; <=5 investors = neutral info + anchor question). Strategy
+  also reads adviser_name; "income" alone = credit only without real estate words. Live list: stuck +40 -> +20.
+  Credit: `scripts/credit_signals.py` pulls last-year EBITDA (OperatingIncomeLoss + D&A) and interest expense; leverage screen
+  (net debt >= 7x EBITDA and cover < 2x = trigger +25; negative EBITDA with net debt = trigger +10; >= 5x +8; strong cash flow < 3x and
+  cover >= 4x = -15 "bank will refinance") also adds candidates; revenue $20-200M +10 (Peter's sweet spot), $200M-1B +3; balance sheet
+  older than 270 days -5. Migration `supabase/2026-10-08-fund-history.sql`.
 - **Stars and flags (all three signal tabs, `hq/marks.js`):** shared per row (`starred_by/at`, `flagged_by/at`, `flag_note`), views
   "★ Starred" / "⚑ Flagged". Fund marks apply to every vehicle of the fund; marked cut rows load with the first page.
 - **Load speed (8 Oct 2026):** HQ loads every fund_signals row EXCEPT cut ones (`or('verdict.neq.cut,status.neq.new')`, ~1,900 of ~17,000;

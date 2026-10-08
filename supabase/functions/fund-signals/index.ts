@@ -4,7 +4,7 @@
 // Cron (x-outerhaven-cron): poll + re-judge on rules change (+ Apify weekly scan only if fund_scan_enabled).
 // Rules live in rules.js; every verdict stores its reasons.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { normalize, classify, readCheck, money, RULES_VERSION, normalizeCredit, classifyCredit, CREDIT_RULES_VERSION, formDTotal } from "./rules.js";
+import { normalize, classify, readCheck, money, RULES_VERSION, normalizeCredit, classifyCredit, CREDIT_RULES_VERSION, formDTotal, managerHistory } from "./rules.js";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -96,10 +96,30 @@ async function check(ids: string[], by: string | null) {
   return { started };
 }
 
+// Each row is judged with its manager's own funds (stored rows with the same manager_key + earlier funds the adviser job
+// found on EDGAR), so timing can use the manager's own pace, and the step-up between funds can be scored.
+const HIST_COLS = "id,manager_key,company_name,fund_no,cik,first_sale,filing_date,sold,investors,executives,city";
+async function peersOf(rows: any[]) {
+  const keys = [...new Set(rows.filter(r => r.list === "fund1" && r.manager_key).map(r => r.manager_key))];
+  const out: any[] = [];
+  for (let i = 0; i < keys.length; i += 100) {
+    for (let from = 0; ; from += 1000) {
+      const r = await sb.from("fund_signals").select(HIST_COLS).in("manager_key", keys.slice(i, i + 100)).range(from, from + 999);
+      out.push(...(r.data || []));
+      if ((r.data || []).length < 1000) break;
+    }
+  }
+  const by = new Map<string, any[]>();
+  for (const p of out) by.set(p.manager_key, [...(by.get(p.manager_key) || []), p]);
+  return by;
+}
 async function judge(rows: any[]) {
+  const peers = await peersOf(rows);
   for (let i = 0; i < rows.length; i += 20) await Promise.all(rows.slice(i, i + 20).map(s => {
-    const c = classify(s);
-    return sb.from("fund_signals").update({ verdict: c.verdict, score: c.score, reasons: c.reasons, stage: c.stage, strategy: c.strategy, rules_version: RULES_VERSION, updated_at: new Date().toISOString() }).eq("id", s.id);
+    const history = s.list === "fund1" ? managerHistory(s, peers.get(s.manager_key) || []) : null;
+    const c = classify({ ...s, history });
+    return sb.from("fund_signals").update({ verdict: c.verdict, score: c.score, reasons: c.reasons, stage: c.stage, strategy: c.strategy, next_expected: c.next_expected,
+      history, rules_version: RULES_VERSION, updated_at: new Date().toISOString() }).eq("id", s.id);
   }));
 }
 
@@ -244,9 +264,9 @@ async function ingest(body: any) {
   if (body.kind === "adviser_todo") {
     const out: any[] = [];
     for (let from = 0; ; from += 1000) {
-      const r = await sb.from("fund_signals").select("id,list,cik,company_name,manager_key,check_keyword,executives_text,state,city,adviser_checked_at,manager_formd_total").in("list", ["live", "fund1"]).neq("verdict", "cut").range(from, from + 999);
+      const r = await sb.from("fund_signals").select("id,list,fund_no,cik,company_name,manager_key,check_keyword,executives_text,state,city,adviser_checked_at,manager_formd_total,prior_checked:prior_funds").in("list", ["live", "fund1"]).neq("verdict", "cut").range(from, from + 999);
       if (r.error) throw new Error(r.error.message);
-      out.push(...(r.data || []));
+      out.push(...(r.data || []).map((x: any) => ({ ...x, prior_checked: x.prior_checked != null })));
       if ((r.data || []).length < 1000) break;
     }
     return { rows: out };
@@ -275,7 +295,10 @@ async function ingest(body: any) {
       await sb.from("fund_signals").update({ adviser_crd: a.adviser_crd || null, adviser_name: a.adviser_name || null, adviser_type: a.adviser_type || null,
         adviser_raum: raum, adviser_pf_gav: gav, adviser_pf_count: num(a.adviser_pf_count), adviser_match: a.adviser_match || null,
         adviser_filed: a.adviser_filed || null, adviser_checked_at: now, manager_total: total || null, manager_total_src: src,
-        manager_formd_total: fd.total || null, manager_formd_funds: fd.funds || null }).eq("id", a.id);
+        manager_formd_total: fd.total || null, manager_formd_funds: fd.funds || null,
+        // Earlier funds found on EDGAR, kept for the manager history (own pace, step-up). Only when this run looked them up.
+        ...(extras ? { prior_funds: extras.map((x: any) => ({ company_name: x.company_name, manager_key: x.manager_key, fund_no: x.fund_no, cik: x.cik, first_sale: x.first_sale,
+          filing_date: x.filing_date, sold: x.sold, investors: x.investors, executives: x.executives, city: x.city })) } : {}) }).eq("id", a.id);
     }));
     await judge((await sb.from("fund_signals").select("*").in("id", rows.map((x: any) => x.id))).data || []);
     return { updated: rows.length };
