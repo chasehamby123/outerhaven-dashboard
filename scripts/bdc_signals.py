@@ -26,7 +26,7 @@ def log(*a):
 
 def note(title, msg):
     msg = msg.replace("\r", " ").replace("\n", " | ")
-    print(f"::notice title={title}::{msg[:3900]}", flush=True)
+    print(f"::notice title={title}::{msg[:60000]}", flush=True)
 
 
 def fetch(name):
@@ -43,53 +43,29 @@ def read_tsv(z, member):
 
 
 def probe(name):
+    """Max 10 notices per step on GitHub, so everything is packed into a few long ones."""
     z = fetch(name)
-    files = [(i.filename, i.file_size) for i in z.infolist()]
-    note(f"bdc {name} files", str(files))
-    soi = next((f for f, _ in files if "soi" in f.lower()), None)
-    if not soi:
-        return
+    soi = next((i.filename for i in z.infolist() if "soi" in i.filename.lower()), None)
     rows = list(read_tsv(z, soi))
-    cols = list(rows[0].keys()) if rows else []
-    note("bdc soi columns", f"{len(rows)} rows; columns: {cols}")
-    bdcs = {}
-    for r in rows:
-        bdcs.setdefault(r.get("name"), 0)
-        bdcs[r.get("name")] += 1
-    note("bdc soi registrants", f"{len(bdcs)} BDCs; top: {sorted(bdcs.items(), key=lambda x: -x[1])[:25]}")
-    def g(r, *keys):
-        for k in r:
-            if all(x.lower() in k.lower() for x in keys):
-                return r[k]
-        return ""
-    with_mat = [r for r in rows if g(r, "maturity") and g(r, "principal")]
-    note("bdc soi coverage", f"principal {sum(1 for r in rows if g(r, 'principal'))}, maturity {sum(1 for r in rows if g(r, 'maturity'))},"
-         f" both {len(with_mat)}, fair value {sum(1 for r in rows if g(r, 'fair value'))}, forms {sorted({r.get('form') for r in rows})},"
-         f" periods {sorted({r.get('period') for r in rows})[-8:]}")
-    step = max(1, len(with_mat) // 12)
-    for i, r in enumerate(with_mat[::step][:12]):
-        note(f"bdc sample {i}", " ; ".join(f"{k}={v}" for k, v in r.items() if v and k not in ("inlineurl",)))
     fill = {}
     for r in rows:
         for k, v in r.items():
             if v:
                 fill[k] = fill.get(k, 0) + 1
-    note("bdc fill", str(sorted([(k, n) for k, n in fill.items() if n >= 300], key=lambda x: -x[1])))
-    for col in ("Investment, Issuer Name Axis", "Investee", "InvestmentsIdentifier", "Investment, Name Axis", "InvestmentPerformanceStatus",
-                "Financial Instrument Performance Status Axis", "Investment, Non-income Producing [true false]", "Lien Category Axis"):
-        ex = [r[col] for r in rows if r.get(col)][:12]
-        note(f"bdc col {col[:30]}", f"{fill.get(col, 0)} filled; e.g. {ex}")
-    seen, ids = set(), []
+    note("bdc fill", f"{len(rows)} rows; " + str(sorted([(k, n) for k, n in fill.items() if n >= 200], key=lambda x: -x[1])))
+    cols = ("Investment, Issuer Name Axis", "Investee", "InvestmentsIdentifier", "Investment, Name Axis", "InvestmentPerformanceStatus",
+            "Financial Instrument Performance Status Axis", "Investment, Non-income Producing [true false]", "Lien Category Axis",
+            "Investment Type Axis", "Industry Sector Axis", "Investment, Issuer Affiliation Axis")
+    note("bdc cols", " #### ".join(f"{c}: {fill.get(c, 0)} e.g. {[r[c][:80] for r in rows if r.get(c)][:8]}" for c in cols))
+    by = {}
     for r in rows:
-        if r.get("cik") in seen or not r.get("Investment, Identifier Axis") or not g(r, "maturity"):
-            continue
-        seen.add(r.get("cik"))
-        ids.append(r["Investment, Identifier Axis"][:170])
-    for i in range(0, min(len(ids), 120), 20):
-        note(f"bdc ids {i}", " || ".join(ids[i:i + 20]))
-    nomat = [r for r in rows if not g(r, "maturity")][:4]
-    for i, r in enumerate(nomat):
-        note(f"bdc no-maturity sample {i}", " ; ".join(f"{k}={v}" for k, v in r.items() if v and k not in ("inlineurl",)))
+        if r.get("Investment, Identifier Axis") and r.get("Investment Maturity Date"):
+            by.setdefault(r["cik"], []).append(r)
+    ciks = list(by)
+    chunk = (len(ciks) + 5) // 6
+    for i in range(6):
+        part = ciks[i * chunk:(i + 1) * chunk]
+        note(f"bdc ids {i}", " || ".join(f"[{by[c][0]['name'][:25]}] " + " ~~ ".join(x["Investment, Identifier Axis"][:150] for x in by[c][3:5]) for c in part))
 
 
 if __name__ == "__main__":
