@@ -344,9 +344,13 @@ function howModal() {
       <li>Raising now: target under $50M or over $250M, 60%+ already raised, or Fund IV and up.</li>
       <li>Fund I list: Fund I under $10M or over $75M, or a later fund already filed.</li></ul>
       <h4>4. "Maybe" (needs a human look)</h4>
-      <ul><li>Target size "Indefinite", so % raised can't be worked out.</li><li>Non-US manager, or no named people on the filing.</li><li>Fund I younger than 2.5 or older than 5 years.</li></ul>
+      <ul><li>Target size "Indefinite", so % raised can't be worked out.</li><li>Non-US manager, or no named people on the filing.</li>
+      <li>Due for next fund: the current fund is <b>still raising</b> (too early for a next-fund pitch), it closed under 60% of target, or 5 or fewer investors carry a $15M+ fund.</li></ul>
       <h4>5. Score (higher = call first)</h4>
-      <ul><li><b>+40</b> stuck: under 30% raised 6+ months after the first sale.</li><li><b>+30</b> Fund I still raising years later.</li><li><b>+25</b> checked: no Fund II filed yet.</li><li><b>+20</b> Fund II (the hardest raise), or Fund I inside the year 3–5 window.</li><li><b>+15</b> filed before taking money, or under 30% raised.</li><li><b>+8</b> Rule 506(c): allowed to market publicly.</li></ul>
+      <p><b>Raising now:</b> +40 stuck (under 30% raised 6+ months in), +20 Fund II, +12 Fund III, +15 filed before taking money or under 30% raised, +12 started in the last 6 weeks.</p>
+      <p><b>Due for next fund:</b> +15 closed at target (or +12 no filing for 13+ months: open raises must re-file yearly), +12 hit target, +6 filled within 12 months, +6 25+ investors, +15 inside the next-fund window, +15 checked with no next fund, +5 fee income $400K+ a year (−8 under).</p>
+      <p><b>Both:</b> emerging manager (all funds under $150M) +20 / +12, $150–500M −15, private credit +8, real estate −15, Rule 506(c) +8.</p>
+      <p>Full criteria, with questions for Peter: the "OuterHaven Deal Screening Criteria" doc.</p>
       <h4>6. The next-fund check</h4>
       <p>Pulls every later filing by the same fund (by its SEC company number), and runs an SEC full-text search for later Form Ds under the manager's name (e.g. "Ground Game"). A later fund with a higher number = cut ("already filed Fund II"). It also searches every person named on the filing: a later pooled fund under any name with the same people (e.g. a Fund I followed by a "Frontier Fund" with the same partners) also counts as the next fund. A newer amendment of the same fund (same SEC company number) updates how much it has raised. Different firms that share a word are ignored unless the name matches.</p>
       <h4>7. What it can't see</h4>
