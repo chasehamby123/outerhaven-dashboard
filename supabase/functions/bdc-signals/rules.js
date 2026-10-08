@@ -3,7 +3,9 @@
 // Size (Tengku, 8 Oct 2026): under $10M of debt wastes Peter's time; over ~$150M the big banks and placement agents take it.
 // $10-75M is the core (~$2-17M EBITDA at the usual 4-5.5x leverage), $75-150M the upper end.
 // v2: weights rescaled after the first live run (half the targets scored 100, so the score didn't rank anything).
-export const BDC_RULES_VERSION = 2;
+// v3: a maturity that passed AFTER the lenders' last report is unknown (extended, refinanced or defaulted), not 'still outstanding';
+// stressed loans show the refinancing gap (debt minus the lenders' own value), which a plain refinancing can't close.
+export const BDC_RULES_VERSION = 3;
 export const SIZE = { min: 10e6, core: 75e6, max: 150e6 };
 
 // Lender families by BDC name. Big platforms = upper middle market (sponsor deals, facility far bigger than the BDC piece);
@@ -43,7 +45,9 @@ export function classifyBdc(s, today = new Date()) {
   if (days != null) {
     const mo = Math.round(days / 30.4);
     // Past maturity but still marked near par = usually extended with the old date still in the filing: worth a check, not a trigger.
-    if (days < 0 && (mark == null || mark >= 95)) { score += 5; reasons.push({ tone: 'maybe', text: `Filed maturity ${mon(mat)} has passed but lenders still mark it near par: probably extended. Check the latest terms.` }); }
+    const after = s.period && mat > String(s.period).slice(0, 10);
+    if (days < 0 && after) { score += 15; trigger = true; reasons.push({ tone: 'good', text: `Matured ${mon(mat)}, after the lenders' last report (${mon(String(s.period).slice(0, 10))}): it was extended, refinanced or defaulted since. Find out which before calling; the next filing will show it.` }); }
+    else if (days < 0 && (mark == null || mark >= 95)) { score += 5; reasons.push({ tone: 'maybe', text: `Filed maturity ${mon(mat)} has passed but lenders still mark it near par: probably extended. Check the latest terms.` }); }
     else if (days < 0) { score += 22; trigger = true; reasons.push({ tone: 'good', text: `Past its ${mon(mat)} maturity, still outstanding and marked down: extended under pressure or in default. A refinancing is overdue.` }); }
     else if (days <= 365) { score += 25; trigger = true; reasons.push({ tone: 'good', text: `Matures ${mon(mat)} (${mo} months): has to refinance now.` }); }
     else if (days <= 548) { score += 18; trigger = true; reasons.push({ tone: 'good', text: `Matures ${mon(mat)} (${mo} months): inside the 18-month refinancing window.` }); }
@@ -60,6 +64,8 @@ export function classifyBdc(s, today = new Date()) {
     else if (mark < 95) { score += 4; reasons.push({ tone: 'good', text: `Marked at ${Math.round(mark)}¢${d}: slightly below par.` }); }
     else reasons.push({ tone: 'info', text: `Marked at ${Math.round(mark)}¢${d}: performing.` });
     if (drop >= 5 && mark >= 50) { score += 8; trigger = true; reasons.push({ tone: 'good', text: `Marked down ${drop} points in one quarter: getting worse.` }); }
+    // A new lender lends against value, not against the old loan: the gap has to come from equity, junior capital or a lender write-down.
+    if (mark < 90 && f) reasons.push({ tone: 'info', text: `Refinancing gap ~${m(f * (1 - mark / 100))}: lenders value the debt below what's owed, so a straight refinancing won't cover it. The fix is junior or structured capital, a recap, or a sale.` });
   }
   if (s.nonaccrual) { score += 10; trigger = true; reasons.push({ tone: 'good', text: 'On non-accrual at a lender (interest not being paid).' }); }
   if (s.pik) { score += 5; reasons.push({ tone: 'good', text: 'Paying part of its interest in kind (added to the loan): cash is tight.' }); }

@@ -36,6 +36,8 @@ CASES = [  # (identifier text, expected name, expected maturity or None)
     ("Investments United States Debt Investments Software and Services Marlabs Investment Type S", "Marlabs", None),
     ("PCI Pharma Services 1", "PCI Pharma Services", None),
     ("Investments United States Debt Investments Technology, Hardware & Equipment Gener8, LLC Investment Type Senior", "Gener8, LLC", None),
+    ("Non-controlled/Non-Affiliated Investments Media: Diversified & Production Efficient Collaborative Retail Marketing Company, LLC First Lien Senior Secured Loan SOFR Floor 1.00% Spread 8.76% PIK Interest Rate 12.46% Maturity Date 9/30/2026", "Efficient Collaborative Retail Marketing Company", "2026-09-30"),
+    ("Inv in NCNA Prtfl Comp Efficient Collaborative Retail Marketing Company, LLC Acquisition 10/23/2018 Maturity 9/30/2026 Industry Media: Diversified and Production Current Coupon 11.49% (PIK 2.00%)", "Efficient Collaborative Retail Marketing Company", "2026-09-30"),
 ]
 
 bad = 0
