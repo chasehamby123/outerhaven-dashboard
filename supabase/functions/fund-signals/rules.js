@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 13;
+export const RULES_VERSION = 14;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -72,10 +72,23 @@ export function normalize(it, list) {
   };
 }
 
+// Strategy from the fund name (Form D has no strategy field). Order matters: "Real Estate Credit" is credit.
+export function strategyOf(s) {
+  const t = `${s.company_name || ''} ${s.industry || ''}`.toLowerCase();
+  if (/\b(credit|lending|loans?|debt|income|mezz\w*|direct lend\w*|specialty finance|asset[- ]based)\b/.test(t)) return 'credit';
+  if (/\b(real estate|realty|propert\w*|multi-?family|apartments?|housing|residential|homes|land|reit|self[- ]storage|hospitality|hotels?|opportunity zone|qof|industrial outdoor)\b/.test(t)) return 'real_estate';
+  if (/\b(infrastructure|infra|energy|power|renewables?|solar|wind|transition|climate)\b/.test(t)) return 'infra';
+  if (/\b(ventures?|vc|seed|pre-?seed|founders?|labs|angels?|accelerator|studios?)\b/.test(t)) return 'venture';
+  if (/\b(buyout|private equity|equity partners|growth equity|search fund|lower middle market|lmm)\b/.test(t)) return 'buyout';
+  return 'other';
+}
+export const STRATEGY_LABEL = { credit: 'Private credit', real_estate: 'Real estate', infra: 'Infrastructure / energy', venture: 'Venture', buyout: 'Buyout / PE', other: 'Strategy unclear' };
+
 // Judge a signal. Returns { verdict: 'target' | 'maybe' | 'cut', score 0-100, reasons: [{ tone, text }] }.
 export function classify(s, now = Date.now()) {
   const R = [], add = (tone, text, pts = 0) => R.push({ tone, text, pts });
   const name = s.company_name || '';
+  let stage = s.list === 'live' ? 'raising' : null;
   if (VEHICLE.test(name)) add('cut', 'Single-deal vehicle (SPV, co-invest or series), not a fund raising from investors');
   if (BRANDS.test(name) || BRANDS.test(s.executives_text || '')) add('cut', 'Big brand or wealth platform: has its own fundraising team');
   if (s.commissions > 0) add('cut', `Already pays a placement agent (${money(s.commissions)} in sales commissions)`);
@@ -125,25 +138,65 @@ export function classify(s, now = Date.now()) {
     // same people, any name, 9+ months later): Fund I -> next median 24 months (middle half 16-35); Fund II -> next median 28
     // (19-37). Only ~1 in 7 Fund I managers with no next fund at year 3 files one by year 5.
     const W = n === 2 ? { lo: 15, hi: 39, med: 28, q: '19-37' } : { lo: 12, hi: 36, med: 24, q: '16-35' };
+    // Has the current fund finished raising? (8 Oct 2026, Peter call.) A Form D is filed within 15 days of the first sale and
+    // a fund usually takes 12-18 months (up to 24) to final close, so a Fund I filed a year ago is normally still raising
+    // Fund I: too early to pitch help on Fund II. Open offerings must file an amendment every year (Rule 503), so no filing
+    // for 13+ months means the raise has most likely ended.
+    const lastAct = [s.filing_date, s.amended_at].filter(Boolean).sort().pop();
+    const sinceAct = lastAct ? (now - Date.parse(lastAct)) / (30.44 * 864e5) : null;
+    const known = !!(s.amended_at || ['clear', 'next', 'unsure'].includes(s.check_status));
+    const full = s.offering > 0 && s.sold > 0 ? s.sold / s.offering : null;
+    // still_raising is stored at check time: it only counts while that filing is under 13 months old (else the yearly re-file lapsed).
+    stage = s.still_raising && sinceAct != null && sinceAct <= 13 ? 'raising' : full != null && full >= 0.95 ? 'closed' : known && sinceAct != null && sinceAct > 13 ? 'closed' : 'unclear';
+    if (stage === 'raising') add('maybe', `Still raising ${nm} (${s.still_raising}): too early to pitch ${nextNm}. Revisit after it closes`);
+    else if (stage === 'closed' && full != null && full >= 0.95) add('good', `${nm} closed: raised ${pctTxt(full)} of its ${money(s.offering)} target`, 15);
+    else if (stage === 'closed') add('good', `${nm} raise has ended: no filing for ${Math.round(sinceAct)} months (open raises must re-file every year)`, 12);
+    else add('info', `Not sure ${nm} has closed yet (last filing ${lastAct || 'unknown'}): confirm on the first call`);
+
     if (months != null) {
       const yrs = `${nm} is ${months < 24 ? Math.round(months) + ' months' : (months / 12).toFixed(1) + ' years'} old`;
       if (months < W.lo) add('maybe', `${yrs}: early, most managers file their next fund at ${W.q} months (median ${W.med})`);
-      else if (months <= W.hi) add('good', `${yrs}: inside the window where most managers file their next fund (median ${W.med} months, middle half ${W.q})`, 25);
-      else if (months <= 60) add('good', `${yrs}: past the usual window; most who raise again have filed by now, so this manager may be stalled (or need help most)`, 5);
+      else if (months <= W.hi) add('good', `${yrs}: inside the window where most managers file their next fund (median ${W.med} months, middle half ${W.q})`, 15);
+      else if (months <= 60) add('info', `${yrs}: past the usual window; most who raise again have filed by now (stalled, or needs help most)`);
       else add('maybe', `${yrs}: may have moved on or stopped`);
     }
-    if (pctSold != null && sold > 0 && pctSold < 0.6) add('good', `${nm} reached only ${pctTxt(pctSold)} of its target: ${nextNm} will be harder`, 10);
+
+    // Track record we can see in public filings (real returns are never public for managers this size: ask on the first call).
+    // Peter: a weak Fund I is a weak story, hard to place with new investors. So a miss counts against, never for.
+    if (stage !== 'raising' && full != null && s.sold > 0) {
+      if (full >= 1) add('good', `Hit its ${nm} target: a clean story to take to new investors`, 12);
+      else if (full >= 0.8) add('good', `Raised ${pctTxt(full)} of the ${nm} target`, 5);
+      else if (full < 0.6 && stage === 'closed') add('maybe', `${nm} closed at only ${pctTxt(full)} of target: a weak story for new investors`, -10);
+    }
+    if (stage === 'closed' && s.first_sale && s.amended_at && full != null && full >= 0.95) {
+      const took = (Date.parse(s.amended_at) - Date.parse(s.first_sale)) / (30.44 * 864e5);
+      if (took > 0 && took <= 12) add('good', `Filled ${nm} in about ${Math.round(took)} months: investors wanted in`, 6);
+    }
+    const inv = s.investors;
+    if (inv != null && inv > 0 && size >= 15e6 && inv <= 5) add('maybe', `Only ${inv} investor${inv === 1 ? '' : 's'} in ${money(size)}: one or two anchors carry it. Ask if they re-up`, -8);
+    else if (inv != null && inv >= 25) add('good', `${inv} investors: a real base of references (re-ups usually cover about half of the next fund; the rest must be new money)`, 6);
+
+    // Can they pay? Annual management fee is about 2% of the fund. Our retainer is $25-50K (Peter).
+    if (size) {
+      const fee = size * 0.02;
+      if (fee < 400e3) add('info', `Fee income about ${money(fee)} a year: tight budget for a $25-50K retainer`, -8);
+      else add('good', `Fee income about ${money(fee)} a year: can afford a retainer`, 5);
+      // The ask for the next fund: managers usually aim 1.5-2x bigger; existing investors re-up roughly 60% of what they put in.
+      if (stage !== 'raising') add('info', `Likely ${nextNm}: ${money(size * 1.5)}-${money(size * 2)}, of which roughly ${money(size * 0.9)}-${money(size * 1.4)} has to come from new investors`);
+    }
     if (n === 2) add('good', 'Fund II manager: has a track record to sell for Fund III', 5);
     if (s.check_status === 'clear' && !(s.sold > 0)) add('maybe', `No money reported raised, even in later filings: ${nm} may never have closed`);
-    else if (s.check_status === 'clear') add('good', `No ${nextNm} or renamed next fund filed yet (checked ${String(s.checked_at || '').slice(0, 10)})`, 25);
+    else if (s.check_status === 'clear') add('good', `No ${nextNm} or renamed next fund filed yet (checked ${String(s.checked_at || '').slice(0, 10)})`, 15);
     else if (s.check_status === 'next') add('cut', s.check_note || 'Already filed a later fund');
     else if (s.check_status === 'unsure') add('maybe', s.check_note || `Possible ${nextNm}, not confirmed: check by hand`);
     else if (s.check_status === 'error') add('maybe', 'Next-fund check failed: run it again');
     else if (s.check_status === 'checking') add('info', `Checking EDGAR for a ${nextNm}…`);
     else if (s.check_status === 'queued') add('info', 'Queued for a next-fund check (runs hourly on GitHub)');
     else add('info', 'Not checked for a next fund yet');
-    if (s.still_raising) add('good', `Still raising ${nm}: ${s.still_raising}`, 30);
   }
+  const strategy = strategyOf(s);
+  if (strategy === 'real_estate') add('info', 'Real estate: the most crowded raise and the hardest to get paid on (Peter)', -15);
+  else if (strategy === 'credit') add('good', 'Private credit: where family offices and Gulf money are moving now (Peter)', 8);
   if (/06c/.test(s.exemptions || '')) add('good', 'Rule 506(c): allowed to market publicly, so already looking for investors openly', 8);
   // Manager size (6 Oct 2026, Tengku): all its funds together under $150M = the target; $150-500M = keep, lower priority;
   // over $500M = established, cut. From the adviser's Form ADV (assets under management / private fund gross assets),
@@ -151,12 +204,12 @@ export function classify(s, now = Date.now()) {
   const mt = s.manager_total != null ? Number(s.manager_total) : null, src = s.manager_total_src ? ` (${s.manager_total_src})` : '';
   if (mt != null && mt > 500e6) add('cut', `Manager runs ${money(mt)} in total${src}: established, not an emerging manager`);
   else if (mt != null && mt > 150e6) add('info', `Manager runs ${money(mt)} in total${src}: past emerging, lower priority`, -15);
-  else if (mt != null && mt > 0) add('good', `Emerging manager: ${money(mt)} across all its funds${src}`, 20);
+  else if (mt != null && mt > 0) add('good', `Emerging manager: ${money(mt)} across all its funds${src}`, s.list === 'live' ? 20 : 12);
   else if (s.adviser_checked_at && !s.adviser_crd) add('info', 'No SEC adviser filing found: likely a small, state-registered manager');
 
   const verdict = R.some(r => r.tone === 'cut') ? 'cut' : R.some(r => r.tone === 'maybe') ? 'maybe' : 'target';
   const score = Math.max(0, Math.min(100, R.reduce((n, r) => n + r.pts, 0)));
-  return { verdict, score: verdict === 'cut' ? Math.min(score, 20) : score, reasons: R.map(({ tone, text }) => ({ tone, text })) };
+  return { verdict, score: verdict === 'cut' ? Math.min(score, 20) : score, reasons: R.map(({ tone, text }) => ({ tone, text })), stage, strategy };
 }
 
 // People on a filing, as comparable keys: "aman brar" → "a brar". Entities are already dropped by people().

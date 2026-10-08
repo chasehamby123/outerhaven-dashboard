@@ -3,8 +3,12 @@
 // this tab shows every verdict with its reasons, and turns a target into pipeline people with one click.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
 import { me } from './tasks.js';
+import { markBtns, markLine, bindMarks, MARK_VIEWS, inMarkView } from './marks.js';
 
 let el = null, rows = [], runs = [], cfg = null, list = 'live', view = 'target', timer = null, onCount = () => {};
+let stageF = '', stratF = ''; // filters: '' = all
+const STAGE = { closed: ['Closed', 'good', 'Current fund has finished raising: the next-fund pitch fits'], raising: ['Still raising', 'warn', 'Current fund is still open: too early for a next-fund pitch'], unclear: ['Close unclear', '', 'No proof yet that the current fund has closed: confirm on the first call'] };
+const STRAT = { credit: 'Private credit', real_estate: 'Real estate', infra: 'Infra / energy', venture: 'Venture', buyout: 'Buyout / PE', other: 'Other' };
 const DAY = 864e5;
 const GH_RUN = 'https://github.com/chasehamby123/outerhaven-dashboard/actions/workflows/fund-signals.yml';
 const GH_SECRETS = 'https://github.com/chasehamby123/outerhaven-dashboard/settings/secrets/actions';
@@ -26,7 +30,7 @@ async function allSignals(cutList) {
   const out = [];
   for (let from = 0; ; from += 1000) {
     let q = sb.from('fund_signals').select('*');
-    q = cutList ? q.eq('list', cutList).eq('verdict', 'cut').eq('status', 'new') : q.or('verdict.neq.cut,status.neq.new');
+    q = cutList ? q.eq('list', cutList).eq('verdict', 'cut').eq('status', 'new') : q.or('verdict.neq.cut,status.neq.new,starred_at.not.is.null,flagged_at.not.is.null');
     const r = await q.order('score', { ascending: false }).order('id').range(from, from + 999);
     if (r.error) return { error: r.error };
     out.push(...(r.data || []));
@@ -66,6 +70,11 @@ function grouped(l) {
     if (!g) m.set(k, { ...s, vehicles: [s] });
     else { g.vehicles.push(s); if (s.score > g.score) Object.assign(g, s, { vehicles: g.vehicles }); }
   }
+  // A star or flag on any vehicle shows on the fund.
+  for (const g of m.values()) for (const k of ['starred', 'flagged']) {
+    const v = g.vehicles.find(x => x[k + '_at']);
+    if (v) { g[k + '_at'] = v[k + '_at']; g[k + '_by'] = v[k + '_by']; if (k === 'flagged') g.flag_note = v.flag_note; }
+  }
   return [...m.values()];
 }
 const bucket = s => s.status === 'added' ? 'added' : s.status === 'dismissed' ? 'dismissed' : s.verdict;
@@ -94,10 +103,11 @@ async function collect(quiet) {
 function draw() {
   if (rows === null) { el.innerHTML = '<div class="empty">The fund signals tables aren\'t set up yet.</div>'; return; }
   if (view === 'cut' && !cutLoaded[list]) { loadCut(list); return; }
-  const all = grouped(list), counts = { target: 0, maybe: 0, cut: 0, added: 0, dismissed: 0 };
-  all.forEach(s => counts[bucket(s)]++);
-  if (!cutLoaded[list]) counts.cut = cutCount[list] ?? counts.cut;
-  const shown = all.filter(s => bucket(s) === view).sort((a, b) => b.score - a.score || String(b.filing_date).localeCompare(String(a.filing_date)));
+  const all = grouped(list).filter(s => (!stageF || s.stage === stageF) && (!stratF || s.strategy === stratF));
+  const counts = { target: 0, maybe: 0, cut: 0, added: 0, dismissed: 0, starred: 0, flagged: 0 };
+  all.forEach(s => { counts[bucket(s)]++; if (s.starred_at) counts.starred++; if (s.flagged_at) counts.flagged++; });
+  if (!cutLoaded[list] && !stageF && !stratF) counts.cut = cutCount[list] ?? counts.cut;
+  const shown = all.filter(s => inMarkView(view, s) ?? bucket(s) === view).sort((a, b) => b.score - a.score || String(b.filing_date).localeCompare(String(a.filing_date)));
   const running = runs.filter(r => r.status === 'running');
   const month = new Date(); month.setUTCDate(1); month.setUTCHours(0, 0, 0, 0);
   const spent = runs.filter(r => Date.parse(r.created_at) >= month).reduce((n, r) => n + (r.status === 'running' ? +r.cap_usd || 0 : +r.cost_usd || 0), 0);
@@ -115,7 +125,10 @@ function draw() {
     <p class="pHint">${list === 'live' ? 'Fund IIs and IIIs that filed a Form D: they started taking investor money in the last few weeks.' : 'Fund I and Fund II managers inside the window where most file their next fund (Fund I: 12–36 months after filing, median 24; Fund II: 15–39, median 28; from a study of 500 funds filed in 2019) who have not filed it yet, under any name.'} Manager size (SEC Form ADV, or Form D totals): under $150M across all its funds is the target, $150–500M lower priority, over $500M cut.
       Source: SEC EDGAR (edgartools), scanned daily on GitHub, free. ${gh ? `Last run <b>${new Date(gh.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>.` : ''}${spent ? ` Apify fallback: $${spent.toFixed(2)} this month.` : ''}</p>
     ${gh ? '' : `<div class="fsBulk fsSetup"><span>Finish setup: add two secrets to GitHub so the daily scan can run.</span><button class="btn sm primary" id="fsSetup">Show me how</button></div>`}
-    <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed']].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
+    <div class="fsFilt">${list === 'fund1' ? `<label>Fund status<select class="select sm" id="fsStage"><option value="">Any</option>${Object.entries(STAGE).map(([k, [l]]) => `<option value="${k}" ${stageF === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}
+      <label>Strategy<select class="select sm" id="fsStrat"><option value="">Any</option>${Object.entries(STRAT).map(([k, l]) => `<option value="${k}" ${stratF === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      ${list === 'fund1' ? '<span class="muted s">Targets = the current fund has finished raising (or may have). Still-raising funds sit in Maybe: too early for a next-fund pitch.</span>' : ''}</div>
+    <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed'], ...MARK_VIEWS].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
     ${list === 'fund1' && view === 'target' && shown.some(s => !s.check_status) ? `<div class="fsBulk"><span>${shown.filter(s => !s.check_status).length} not yet checked for a next fund.</span><button class="btn sm" id="fsCheckAll">Queue them all (free, runs within the hour)</button></div>` : ''}
     <div class="fsList">${shown.length ? shown.map(rowHtml).join('') : `<div class="empty">${view === 'target' ? (all.length ? 'No targets in this list right now.' : 'Nothing scanned yet. Run a scan above; results arrive in a few minutes.') : 'Nothing here.'}</div>`}</div>
   </div>`;
@@ -151,12 +164,16 @@ function rowHtml(s) {
     <div class="fsScore"><b>${s.score}</b><span>score</span></div>
     <div class="fsMain">
       <h4>${esc(s.company_name)}${s.vehicles.length > 1 ? ` <span class="fsVeh" title="${esc(s.vehicles.map(v => v.company_name).join('\n'))}">+${s.vehicles.length - 1} vehicle${s.vehicles.length > 2 ? 's' : ''}</span>` : ''}</h4>
+      ${(s.list === 'fund1' && STAGE[s.stage]) || (s.strategy && s.strategy !== 'other') ? `<div class="mkLine">${s.list === 'fund1' && STAGE[s.stage] ? `<span class="pFlag ${STAGE[s.stage][1]}" title="${STAGE[s.stage][2]}">${STAGE[s.stage][0]}</span>` : ''}${s.strategy && s.strategy !== 'other' ? `<span class="pFlag${s.strategy === 'real_estate' ? ' warn' : s.strategy === 'credit' ? ' good' : ''}">${STRAT[s.strategy]}</span>` : ''}</div>` : ''}
+      ${markLine(s)}
       <div class="fsFacts">${facts.map(f => `<span>${f}</span>`).join('')}<span class="muted">Filed ${day(s.filing_date)}${s.form_type === 'D/A' ? ' (amendment)' : ''}${s.amended_at ? ` · numbers from the ${s.amendment_url ? `<a href="${esc(s.amendment_url)}" target="_blank" rel="noopener">latest filing ↗</a>` : 'latest filing'} (${day(s.amended_at)})` : ' · numbers from the first filing'}</span></div>
       <ul class="fsWhy">${(s.reasons || []).map(r => `<li data-tone="${toneOf(r.tone)}">${esc(r.text)}</li>`).join('')}</ul>
       ${chk ? `<div class="fsCheck">${chk}</div>` : ''}
+      <details class="fsPrep"><summary>Call prep: what to find out</summary><ol>${prep(s).map(q => `<li>${esc(q)}</li>`).join('')}</ol></details>
       ${ppl.length ? `<div class="fsPeople">${ppl.map(p => `<a href="${liSearch(p.name, s)}" target="_blank" rel="noopener" title="Search LinkedIn">${esc(p.name)} ↗</a>`).join('')}${(s.executives || []).length > 4 ? `<span class="muted">+${s.executives.length - 4} more</span>` : ''}</div>` : ''}
     </div>
     <div class="fsAct">
+      ${markBtns(s)}
       ${s.status !== 'added' ? `<button class="btn sm ${s.verdict === 'target' ? 'primary' : ''}" data-add="${s.id}">Add to pipeline</button>` : '<span class="pFlag good">In pipeline</span>'}
       <button class="btn sm" data-copy="${s.id}">Copy opener</button>
       ${!['checking', 'queued'].includes(s.check_status) ? `<button class="btn sm" data-check="${s.id}">${s.check_status ? 'Re-check' : s.list === 'live' ? 'Check newer filings' : 'Check for next fund'}</button>` : ''}
@@ -169,17 +186,40 @@ function opener(s) {
   const who = firstName((s.executives || [])[0]?.name || '') || 'there';
   const pct = s.offering && s.sold ? Math.round(s.sold / s.offering * 100) : null;
   if (s.list === 'fund1') {
-    const yrs = s.first_sale || s.filing_date ? ((Date.now() - Date.parse(s.first_sale || s.filing_date)) / (365.25 * DAY)).toFixed(0) : 'a few';
     const cur = s.fund_no === 2 ? 'Fund II' : 'Fund I', nxt = s.fund_no === 2 ? 'Fund III' : 'Fund II';
-    return `Hi ${who}, ${s.check_keyword} ${cur} is about ${yrs} years in, so ${nxt} planning is probably on the table. We help emerging managers line up new LPs (family offices especially) before launch, not after. Open to comparing notes on who's on your list?`;
+    if (s.stage === 'raising') return `Hi ${who}, congrats on the progress with ${s.check_keyword} ${cur}${s.sold ? ` (${money(s.sold)} in so far)` : ''}. If it would help to widen the LP list before your final close, we introduce family offices to emerging managers. Happy to share who's active in your space right now.`;
+    return `Hi ${who}, congrats on ${s.check_keyword} ${cur}${s.sold ? ` at ${money(s.sold)}` : ''}. Most managers find re-ups cover about half of the next fund, so the rest has to come from new LPs. We introduce family offices to managers at exactly this point, before ${nxt} launches, not after. Worth comparing notes on who's on your list?`;
   }
   const where = s.sold && s.offering ? `${money(s.sold)} toward ${money(s.offering)}${pct != null ? ` (${pct}%)` : ''}` : 'the raise';
   return `Hi ${who}, congrats on getting ${s.check_keyword} Fund ${ROMAN[s.fund_no] || ''} underway: ${where}. We introduce family offices and other LPs to managers at your stage. Worth a quick chat on who's still on your list?`;
 }
 
+// First-call questions a placement agent would need answered before pitching this manager to investors.
+// Real returns are never in public filings for managers this size, so the track record question always comes first.
+function prep(s) {
+  const q = [];
+  const cur = `Fund ${ROMAN[s.fund_no] || 'I'}`, nxt = `Fund ${ROMAN[(s.fund_no || 1) + 1]}`;
+  if (s.list === 'fund1') {
+    q.push(`${cur} returns so far: net IRR, TVPI and DPI (how much cash is back), and how much of that is realised vs marked.`);
+    if (s.stage === 'raising') q.push(`What's holding up the final close of ${cur}? Which investor types passed, and why?`);
+    else if (s.stage === 'unclear') q.push(`Has ${cur} held its final close? At what size?`);
+    q.push(`How much of ${cur} do they expect to re-up in ${nxt}, and from whom? (The gap is our job.)`);
+    if (s.investors > 0 && s.investors <= 5) q.push(`Only ${s.investors} investor${s.investors === 1 ? '' : 's'} in ${cur}: is the anchor coming back, and at what size?`);
+    q.push(`${nxt} target size, first close date, and how much the GP is committing itself.`);
+    q.push(`Has the team changed since ${cur}? Who left, who joined?`);
+  } else {
+    q.push(`Who anchors this raise, and how much is signed vs soft-circled?`);
+    q.push(`Prior fund returns: net IRR, TVPI, DPI. What's realised?`);
+    q.push(`What do investors push back on in meetings so far?`);
+  }
+  if (s.strategy === 'real_estate') q.push('Real estate is crowded: what makes them different from every other manager raising now?');
+  q.push('Who helps them raise today (placement agent, IR hire, nobody)? Would they pay a retainer ($25-50K) plus a success fee?');
+  return q;
+}
+
 function bind(shown) {
   const find = id => shown.find(s => s.id === id) || rows.find(s => s.id === id);
-  $$('[data-list]', el).forEach(b => b.onclick = () => { list = b.dataset.list; view = 'target'; draw(); });
+  $$('[data-list]', el).forEach(b => b.onclick = () => { list = b.dataset.list; view = 'target'; stageF = ''; draw(); });
   $$('[data-view]', el).forEach(b => b.onclick = () => { view = b.dataset.view; draw(); });
   $('#fsCollect', el).onclick = () => collect(false);
   $('#fsHow', el).onclick = howModal;
@@ -203,6 +243,9 @@ function bind(shown) {
     rows.filter(r => ids.includes(r.id)).forEach(r => r.status = st); draw();
   });
   $$('[data-add]', el).forEach(b => b.onclick = () => addModal(find(b.dataset.add)));
+  bindMarks(el, { table: 'fund_signals', find, rawFind: id => rows.find(r => r.id === id), idsOf: s => (s.vehicles || [s]).map(v => v.id), redraw: draw });
+  $('#fsStage', el)?.addEventListener('change', e => { stageF = e.target.value; draw(); });
+  $('#fsStrat', el)?.addEventListener('change', e => { stratF = e.target.value; draw(); });
 }
 
 // Each chosen person becomes a Sell Side relationship (a fund raising money is a client with something to sell to investors).

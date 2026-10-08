@@ -2,6 +2,7 @@
 // Filled daily by the GitHub edgartools job (scripts/credit_signals.py) from SEC data; judged on the server
 // (classifyCredit in supabase/functions/fund-signals/rules.js). Every verdict shows its reasons.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
+import { markBtns, markLine, bindMarks, MARK_VIEWS, inMarkView } from './marks.js';
 import { me } from './tasks.js';
 
 let el = null, rows = [], runs = [], view = 'target', onCount = () => {};
@@ -31,16 +32,16 @@ export async function renderCredit(target, countCb) {
 
 function draw() {
   if (rows === null) { el.innerHTML = '<div class="empty">The credit signals table isn\'t set up yet.</div>'; return; }
-  const counts = { target: 0, maybe: 0, cut: 0, added: 0, dismissed: 0 };
-  rows.forEach(s => counts[bucket(s)]++);
-  const shown = rows.filter(s => bucket(s) === view).sort((a, b) => b.score - a.score);
+  const counts = { target: 0, maybe: 0, cut: 0, added: 0, dismissed: 0, starred: 0, flagged: 0 };
+  rows.forEach(s => { counts[bucket(s)]++; if (s.starred_at) counts.starred++; if (s.flagged_at) counts.flagged++; });
+  const shown = rows.filter(s => inMarkView(view, s) ?? bucket(s) === view).sort((a, b) => b.score - a.score);
   const last = runs[0];
   onCount(counts.target);
   el.innerHTML = `<div class="fs">
     <div class="fsTop"><p class="pHint" style="padding:0;margin:0;max-width:640px">Small US public companies with debt they must refinance, a lender losing patience, or a going-concern warning. For Peter: private credit is their natural next lender.</p>
       <div class="row fsBtns"><a class="btn sm primary" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a><button class="btn sm ghost" id="crHow">How it works</button></div></div>
     <p class="pHint">Source: SEC XBRL financials and full-text search (edgartools), refreshed daily on GitHub, free.${last ? ` Last run <b>${new Date(last.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>${last.params?.period ? ` · balance sheets ${esc(last.params.period)}` : ''}.` : ' Not run yet: on GitHub choose Run workflow, mode <b>credit</b>.'}</p>
-    <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed']].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
+    <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed'], ...MARK_VIEWS].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
     <div class="fsList">${shown.length ? shown.slice(0, 200).map(rowHtml).join('') : `<div class="empty">${rows.length ? 'Nothing here.' : 'No companies yet. Run the credit scan on GitHub (mode credit); it takes about 5–10 minutes.'}</div>`}</div>
     ${shown.length > 200 ? `<p class="pHint">Showing the top 200 of ${shown.length}.</p>` : ''}
   </div>`;
@@ -64,11 +65,13 @@ function rowHtml(s) {
     <div class="fsScore"><b>${s.score}</b><span>score</span></div>
     <div class="fsMain">
       <h4>${esc(s.company_name)}${s.tickers ? ` <span class="fsVeh">${esc(s.tickers)}${s.exchange ? ' · ' + esc(s.exchange) : ''}</span>` : ''}</h4>
+      ${markLine(s)}
       <div class="fsFacts">${facts.map(x => `<span>${x}</span>`).join('')}</div>
       <ul class="fsWhy">${(s.reasons || []).map(r => `<li data-tone="${toneOf(r.tone)}">${esc(r.text)}</li>`).join('')}</ul>
       <div class="fsPeople"><a href="${cfoSearch(s)}" target="_blank" rel="noopener">Find the CFO on LinkedIn ↗</a>${ev.join('')}</div>
     </div>
     <div class="fsAct">
+      ${markBtns(s)}
       ${s.status !== 'added' ? `<button class="btn sm ${s.verdict === 'target' ? 'primary' : ''}" data-add="${s.id}">Add to pipeline</button>` : '<span class="pFlag good">In pipeline</span>'}
       <button class="btn sm" data-copy="${s.id}">Copy opener</button>
       ${s.status === 'dismissed' ? `<button class="btn sm ghost" data-undo="${s.id}">Restore</button>` : s.status !== 'added' ? `<button class="btn sm ghost" data-dismiss="${s.id}">Dismiss</button>` : ''}
@@ -89,6 +92,7 @@ function opener(s, name = '') {
 
 function bind(shown) {
   const find = id => shown.find(s => s.id === id) || rows.find(s => s.id === id);
+  bindMarks(el, { table: 'credit_signals', find, redraw: draw });
   $$('[data-view]', el).forEach(b => b.onclick = () => { view = b.dataset.view; draw(); });
   $('#crHow', el).onclick = howModal;
   $$('[data-copy]', el).forEach(b => b.onclick = async () => {

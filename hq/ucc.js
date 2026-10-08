@@ -3,6 +3,7 @@
 // signal, sector, recency, registry (kept in localStorage 'hq-ucc-filters'). Filled daily by scripts/ucc_signals.py on GitHub; judged
 // on the server (classifyUcc in supabase/functions/ucc-signals/rules.js). Every verdict shows its reasons.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
+import { markBtns, markLine, bindMarks, MARK_VIEWS, inMarkView } from './marks.js';
 
 let el = null, rows = [], runs = [], view = 'target', onCount = () => {};
 const money = n => n == null ? '—' : n >= 1e9 ? '$' + +(n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? '$' + +(n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? '$' + Math.round(n / 1e3) + 'K' : '$' + Math.round(n);
@@ -99,10 +100,11 @@ function drawList() {
   const counts = { target: 0, maybe: 0, cut: 0, added: 0, dismissed: 0 }, all = { target: 0 };
   const pass = rows.filter(passes);
   rows.forEach(s => { if (bucket(s) === 'target') all.target++; });
-  pass.forEach(s => counts[bucket(s)]++);
+  counts.starred = 0; counts.flagged = 0;
+  pass.forEach(s => { counts[bucket(s)]++; if (s.starred_at) counts.starred++; if (s.flagged_at) counts.flagged++; });
   onCount(all.target);
-  const shown = pass.filter(s => bucket(s) === view).sort(sorter[F.sort] || sorter.score);
-  body.innerHTML = `<div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed']].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
+  const shown = pass.filter(s => inMarkView(view, s) ?? bucket(s) === view).sort(sorter[F.sort] || sorter.score);
+  body.innerHTML = `<div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed'], ...MARK_VIEWS].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
     ${active() ? `<p class="pHint" style="margin:0">${pass.length.toLocaleString()} of ${rows.length.toLocaleString()} companies match the filters.</p>` : ''}
     <div class="fsList">${shown.length ? shown.slice(0, 200).map(rowHtml).join('') : `<div class="empty">${rows.length ? (active() ? 'Nothing matches these filters.' : 'Nothing here.') : 'No companies yet. Run the scan on GitHub (mode ucc); the first run takes about 10–15 minutes.'}</div>`}</div>
     ${shown.length > 200 ? `<p class="pHint">Showing the top 200 of ${shown.length}. Narrow it with the filters.</p>` : ''}`;
@@ -122,12 +124,14 @@ function rowHtml(s) {
     <div class="fsScore"><b>${s.score}</b><span>score</span></div>
     <div class="fsMain">
       <h4>${esc(s.company_name)} <span class="fsVeh">${esc((s.sources || []).join(' · '))} UCC</span></h4>
+      ${markLine(s)}
       <div class="fsFacts">${facts.map(x => `<span>${x}</span>`).join('')}</div>
       <ul class="fsWhy">${(s.reasons || []).map(r => `<li data-tone="${toneOf(r.tone)}">${esc(r.text)}</li>`).join('')}</ul>
       ${liens.length ? `<details class="ucLiens"><summary>Filings (${(s.liens || []).length})</summary><table><tbody>${liens.map(l => `<tr><td>${esc(mon(l.filed))}</td><td>${esc(CLASS[l.class] || l.class)}</td><td>${esc(l.party)}</td><td class="muted">${l.status === 'active' ? (l.lapse && !l.lapse.startsWith('9999') ? 'lapses ' + esc(mon(l.lapse)) : 'active') : 'released'}</td></tr>`).join('')}</tbody></table></details>` : ''}
       <div class="fsPeople"><a href="${ceoSearch(s)}" target="_blank" rel="noopener">Find the owner / CEO on LinkedIn ↗</a><a href="${webSearch(s)}" target="_blank" rel="noopener">Website ↗</a></div>
     </div>
     <div class="fsAct">
+      ${markBtns(s)}
       ${s.status !== 'added' ? `<button class="btn sm ${s.verdict === 'target' ? 'primary' : ''}" data-add="${s.id}">Add to pipeline</button>` : '<span class="pFlag good">In pipeline</span>'}
       <button class="btn sm" data-copy="${s.id}">Copy opener</button>
       ${s.status === 'dismissed' ? `<button class="btn sm ghost" data-undo="${s.id}">Restore</button>` : s.status !== 'added' ? `<button class="btn sm ghost" data-dismiss="${s.id}">Dismiss</button>` : ''}
@@ -148,6 +152,7 @@ function opener(s, name = '') {
 
 function bind(shown) {
   const find = id => shown.find(s => s.id === id) || rows.find(s => s.id === id);
+  bindMarks(el, { table: 'ucc_signals', find, redraw: drawList });
   $$('[data-view]', el).forEach(b => b.onclick = () => { view = b.dataset.view; drawList(); });
   $$('[data-copy]', el).forEach(b => b.onclick = async () => {
     const t = opener(find(b.dataset.copy));
