@@ -130,6 +130,18 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   Hard checks in `fund_data_checks`: `selftest` (KNOWN cases in fund_signals.py vs live SEC data, run first in daily; failure = red
   GitHub run) and `audit` (every non-vehicle row re-verified against the SEC filing index, stale rows fixed; after daily/fund1/live).
   Add every hand-caught error to KNOWN. HQ shows the latest self-test and audit above the list.
+- **Lanes + track record (8 Oct 2026, Peter call; RULES_VERSION 14):** `classify()` now sets `stage` for the next-fund list: 'raising'
+  (`still_raising` and the last filing <13 months old), 'closed' (raised >=95% of target, or no filing for 13+ months while known: open
+  offerings must re-file yearly, Rule 503), else 'unclear'. Still raising = maybe ("too early for a next-fund pitch"); the old +30 for
+  still raising is gone (it put every still-raising Fund I at the top). Track-record proxies (real returns are never public at this size):
+  hit target +12, >=80% +5, closed under 60% = maybe -10 (Peter: weak Fund I is hard to place), filled within 12 months +6, <=5
+  investors = maybe -8 (anchor-only), >=25 investors +6. Ability to pay: 2% fee under $400K/yr -8, else +5. Next fund ask line: 1.5-2x,
+  of which 0.9-1.4x of Fund I must be new money (re-ups ~60%). `strategy` from the name (`strategyOf`): real estate -15 (Peter: crowded,
+  hardest to get paid), credit +8. Weights recalibrated so targets spread (window 15, clear 15, emerging 12 on fund1 / 20 on live).
+  HQ: Fund status + Strategy filters, status/strategy chips, "Call prep" questions per card (`prep()`), openers by stage.
+  The cron re-judges stale rows best-score first. Migration `supabase/2026-10-08-fund-lanes-marks.sql`.
+- **Stars and flags (all three signal tabs, `hq/marks.js`):** shared per row (`starred_by/at`, `flagged_by/at`, `flag_note`), views
+  "★ Starred" / "⚑ Flagged". Fund marks apply to every vehicle of the fund; marked cut rows load with the first page.
 - **Load speed (8 Oct 2026):** HQ loads every fund_signals row EXCEPT cut ones (`or('verdict.neq.cut,status.neq.new')`, ~1,900 of ~17,000;
   loading all took ~2 min). Cut rows for a list load when the Cut view opens (`loadCut`); its count comes from RPC `signal_target_counts()`
   (also gives Pipeline's Fund/Credit/UCC tab counts before a tab is opened). Migration `supabase/2026-10-08-signal-counts.sql`.

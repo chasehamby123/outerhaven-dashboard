@@ -99,7 +99,7 @@ async function check(ids: string[], by: string | null) {
 async function judge(rows: any[]) {
   for (let i = 0; i < rows.length; i += 20) await Promise.all(rows.slice(i, i + 20).map(s => {
     const c = classify(s);
-    return sb.from("fund_signals").update({ verdict: c.verdict, score: c.score, reasons: c.reasons, rules_version: RULES_VERSION, updated_at: new Date().toISOString() }).eq("id", s.id);
+    return sb.from("fund_signals").update({ verdict: c.verdict, score: c.score, reasons: c.reasons, stage: c.stage, strategy: c.strategy, rules_version: RULES_VERSION, updated_at: new Date().toISOString() }).eq("id", s.id);
   }));
 }
 
@@ -362,7 +362,7 @@ Deno.serve(async req => {
     if (cron) {
       if (cron !== await secret("FUND_CRON_SECRET")) return json({ ok: false, error: "bad cron secret" }, 401);
       const p = await poll();
-      const stale = (await sb.from("fund_signals").select("*").lt("rules_version", RULES_VERSION).limit(1500)).data || [];
+      const stale = (await sb.from("fund_signals").select("*").lt("rules_version", RULES_VERSION).order("score", { ascending: false }).limit(1500)).data || []; // best rows first, so the lists HQ shows refresh in the first pass
       if (stale.length) await judge(stale);
       const staleCredit = (await sb.from("credit_signals").select("*").lt("rules_version", CREDIT_RULES_VERSION).limit(500)).data || [];
       if (staleCredit.length) await judgeCredit(staleCredit);

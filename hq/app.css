@@ -1116,3 +1116,22 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .dlMore>summary{cursor:pointer;font-size:var(--fs-s);font-weight:600;color:var(--ink-2)}
 .dlMore>.dlForm{margin-top:12px}
 .dlFilled{outline:2px solid var(--brass)!important;outline-offset:1px;transition:outline-color .4s}
+/* Signal rows: stars and flags (hq/marks.js), filters and call prep (hq/funds.js) */
+.mkBtns{display:flex;gap:6px}
+.mkBtn{flex:1;height:30px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--muted);font-size:15px;line-height:1;cursor:pointer}
+.mkBtn:hover{border-color:var(--line-2);color:var(--ink)}
+.mkBtn.on{border-color:var(--brass);background:var(--brass-soft);color:var(--brass-2)}
+.mkBtn.flag.on{border-color:var(--bad);background:var(--bad-bg);color:var(--bad)}
+.mkBtn:focus-visible{outline:2px solid var(--ring,var(--brass));outline-offset:1px}
+.mkLine{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 2px}
+.mkTag{font-size:var(--fs-xs);padding:2px 8px;border-radius:999px;background:var(--brass-soft);color:var(--brass-2)}
+.mkTag.flag{background:var(--bad-bg);color:var(--bad)}
+.fsFilt{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:10px 20px 0}
+.fsFilt label{display:flex;align-items:center;gap:6px;font-size:var(--fs-xs);color:var(--muted)}
+.fsFilt select{height:30px;padding:0 8px;font-size:var(--fs-xs)}
+.fsFilt .s{flex-basis:100%}
+.fsPrep{margin-top:8px;font-size:var(--fs-s)}
+.fsPrep summary{cursor:pointer;font-size:var(--fs-xs);font-weight:600;color:var(--ink-2)}
+.fsPrep ol{margin:6px 0 0;padding-left:20px;color:var(--ink-2)}
+.fsPrep li{margin:3px 0}
+@media(max-width:700px){.fsFilt{padding:10px 16px 0}}
