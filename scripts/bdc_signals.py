@@ -180,7 +180,14 @@ Health Care Equipment & Services|Pharmaceuticals, Biotechnology & Life Sciences|
 Semiconductors|Publishing|Printing|Environmental & Facilities Services|IT Consulting|Consumer Products|Consumer Discretionary|Consumer Staples|
 Industrials|Financials|Communication Services|Business Products|Healthcare Services|Healthcare Technology|Healthcare Providers|Specialty Finance|
 Insurance Services|Buildings & Real Estate|Leisure & Entertainment|Chemicals, Plastics & Rubber|Metals & Mining|Forest Products & Paper|
-Sovereign & Public Finance|Banking, Finance, Insurance & Real Estate|Wholesale Distribution|Distribution|Restaurants|Gaming|Hospitality|Hardware & Equipment""".replace("\n", "").split("|")),
+Sovereign & Public Finance|Banking, Finance, Insurance & Real Estate|Wholesale Distribution|Distribution|Restaurants|Gaming|Hospitality|Hardware & Equipment|
+Media: Diversified & Production|Media: Diversified and Production|Media: Broadcasting & Subscription|Media: Advertising, Printing & Publishing|
+Services: Business|Services: Consumer|Consumer Goods: Durable|Consumer Goods: Non-Durable|Consumer Goods: Non-durable|Hotel, Gaming & Leisure|
+Healthcare & Pharmaceuticals|High Tech Industries|Banking, Finance, Insurance & Real Estate|Capital Equipment|Wholesale|Utilities: Electric|
+Utilities: Oil & Gas|Energy: Oil & Gas|Energy: Electricity|Transportation: Cargo|Transportation: Consumer|Forest Products & Paper|
+Aerospace & Defense|Automotive|Beverage, Food & Tobacco|Chemicals, Plastics & Rubber|Construction & Building|Containers, Packaging & Glass|
+Environmental Industries|Metals & Mining|Retail|Telecommunications|Sovereign & Public Finance|
+Diversified & Production|Diversified and Production|Broadcasting & Subscription|Advertising, Printing & Publishing|Oil & Gas""".replace("\n", "").split("|")),
                     key=len, reverse=True)
 INDUSTRIES = sorted(set(INDUSTRIES) | {i.replace(" & ", " and ") for i in INDUSTRIES} | {i.replace(" and ", " & ") for i in INDUSTRIES}, key=len, reverse=True)
 IND_RE = re.compile(r"\b(" + "|".join(re.escape(i) for i in INDUSTRIES) + r")(?![A-Za-z])", re.I)

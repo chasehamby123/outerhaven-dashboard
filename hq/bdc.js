@@ -12,6 +12,7 @@ const toneOf = t => t === 'good' ? 'good' : t === 'cut' ? 'bad' : t === 'maybe' 
 const bucket = s => s.status === 'added' ? 'added' : s.status === 'dismissed' ? 'dismissed' : s.verdict;
 const GH_RUN = 'https://github.com/chasehamby123/outerhaven-dashboard/actions/workflows/fund-signals.yml';
 const monthsTo = d => d ? Math.round((Date.parse(d) - Date.now()) / (30.44 * 864e5)) : null;
+const whenLabel = d => { const days = Math.round((Date.parse(d) - Date.now()) / 864e5), mo = Math.round(days / 30.44); return days < 0 ? (days > -45 ? `matured ${-days} days ago` : `matured ${-mo} months ago`) : days < 45 ? `in ${days} days` : `${mo} months`; };
 const shortName = n => String(n || '').replace(/,?\s+(inc|corp|corporation|co|company|ltd|limited|llc|l\.l\.c\.|lp|l\.p\.|llp|pc)\.?$/i, '').trim();
 const brand = n => shortName(n).replace(/\s+(buyer|midco|bidco|topco|holdco|parent|purchaser|acquisition|acquiror|intermediate|borrower|holdings?)(\s+(i|ii|iii|iv))?$/i, '').trim();
 const cfoSearch = s => `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(`${brand(s.company_name)} (CFO OR CEO OR "chief financial")`)}`;
@@ -115,7 +116,7 @@ function rowHtml(s) {
   const facts = [
     `Debt <b>${money(s.facility)}</b> <span class="muted">(held by BDCs)</span>`,
     s.facility ? `EBITDA <b>~${money(s.facility / 5.5)}–${money(s.facility / 4)}</b> <span class="muted">(implied)</span>` : '',
-    s.earliest_maturity ? `Matures <b>${mon(s.earliest_maturity)}</b>${mo != null ? ` <span class="muted">(${mo < 0 ? `${-mo} months ago` : `${mo} months`})</span>` : ''}` : '',
+    s.earliest_maturity ? `Matures <b>${mon(s.earliest_maturity)}</b> <span class="muted">(${whenLabel(s.earliest_maturity)})</span>` : '',
     s.mark != null ? `Mark <b>${Math.round(s.mark)}¢</b>${drop >= 3 ? ` <span class="muted">(was ${Math.round(s.prev_mark)}¢)</span>` : ''}` : '',
     s.spread ? `Spread <b>S+${(+s.spread).toFixed(2)}%</b>` : '',
     s.industry ? esc(s.industry) : '',
@@ -143,7 +144,9 @@ function rowHtml(s) {
 // Peter's first message: leads with the refinancing window, never with the lender's mark (that's the lender's private view).
 function opener(s, name = '') {
   const who = firstName(name) || 'there', co = brand(s.company_name), mo = monthsTo(s.earliest_maturity);
-  const body = mo != null && mo <= 18
+  const body = s.mark != null && s.mark < 85
+    ? `When a facility gets tight, the options are wider than most owners hear from their current lender: junior or structured capital alongside the senior debt, a recap, or a partial sale that resets the balance sheet. I work with family offices and private lenders who do exactly that at ${co}'s size.`
+    : mo != null && mo <= 18
     ? `Companies with a facility coming due in the next year or so are getting much better terms when they run a proper process early instead of rolling with the incumbent: more lenders are competing for good lower-middle-market credits than at any point I've seen.`
     : `More private lenders are competing for companies like ${co} than at any point I've seen, and terms (leverage, covenants, PIK flexibility) have moved a lot in borrowers' favour.`;
   return `Hi ${who}, I've spent 35 years in private credit. ${body} Happy to share who's actively lending at ${co}'s size and what they're offering, no pitch. Worth 15 minutes?`;
