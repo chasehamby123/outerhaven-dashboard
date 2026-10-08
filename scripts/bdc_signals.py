@@ -284,7 +284,7 @@ def _before_suffix(t, m):
     if not name or all(w.lower().strip(",.") in VOCAB | GENERIC for w in ws):
         return ""
     sfx = m.group(0).lstrip(", ").strip()
-    return f"{name} {sfx}" if sfx.lower() in ("company", "corporation", "incorporated", "limited") else f"{name}, {sfx}"
+    return f"{name}{', ' if m.group(0).lstrip().startswith(',') else ' '}{sfx}"   # keep the filer's punctuation
 
 
 def _no_suffix(t):
@@ -311,14 +311,14 @@ def _no_suffix(t):
 def name_options(name):
     """Shorter forms of a candidate (dropping leading words), for the vote: 'Insurance AMBA Buyer, Inc.' → 'AMBA Buyer, Inc.'"""
     m = SUFFIX_END.search(name)
-    base, sfx = (name[:m.start()], m.group(0).lstrip(", ").strip()) if m else (name, "")
+    base, sfx = (name[:m.start()], m.group(0)) if m else (name, "")
     ws = base.split()
     out = []
     for i in range(len(ws)):
         core = ws[i:]
         if all(w.lower().strip(",.") in GENERIC or w.lower().strip(",.") in BUSINESS for w in core):
             break
-        out.append(" ".join(core) + (f", {sfx}" if sfx else ""))
+        out.append(" ".join(core) + sfx)
     return out or [name]
 
 

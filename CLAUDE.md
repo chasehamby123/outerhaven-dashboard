@@ -185,6 +185,31 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   `credit_done`, which sets `on_latest=false` (cut) on rows that run didn't send; tickers ending in Q (Chapter 11) are cut. Migration:
   `supabase/2026-10-02-credit-signals.sql`.
 
+## BDC loans (Pipeline → BDC loans tab, `hq/bdc.js`, admin only; 8 Oct 2026)
+- The main private-company credit lane (UCC is now secondary). Private companies that borrow from BDCs, from the SEC's **BDC data sets**
+  (every BDC's schedule of investments, XBRL, `https://www.sec.gov/files/datastandardsinnovation/data/business-development-company-bdc-data-sets/`
+  `YYYY_MM_bdc.zip` monthly from 2026, `YYYYqN_bdc.zip` before; `soi.tsv` inside; empty months ship an empty table). Real loan sizes,
+  the lender's own mark (fair value / principal), maturity, spread, PIK, non-accrual. Fair value / cost columns are labelled
+  "Initial fair value of Investment" / "Adjusted cost basis" in the 2026 files (FIELDS in the script maps both label years).
+- `scripts/bdc_signals.py` (workflow mode `bdc`; `bdcdry` = dry run with samples as annotations; `bdcprobe` = raw zip look; also runs in the
+  daily job on Mondays): last 6 monthly zips, each BDC's latest quarter + the one before (mark change). Borrower name is parsed from the free-text
+  "Investment, Identifier Axis" (163 different formats): walk back from a legal suffix, else first non-vocabulary segment; then a vote across BDC
+  families drops industry words glued in front ("Insurance AMBA Buyer" → "AMBA Buyer"), but never drops a real word unless the short form is
+  distinctive and used by 3+ families ("GrapeTree Medical Staffing" ≠ "Medical Staffing"). Group key = `key_of()` (no suffix, no Buyer/Midco/
+  Holdings). Unfunded commitments, warrants/equity, CLO/CMBS tranches are skipped. Offline test: `python3 -I scripts/tests/test_bdc_names.py`
+  (real strings; add every bad name you find). Raw logs are unreadable from the session: failures come back as a `bdc failed` annotation.
+- Edge function `bdc-signals` (verify_jwt=false; ingest `x-fund-ingest`, kinds `bdc` / `bdc_done`; admin action `rejudge`) → `bdc_signals`
+  (one row per company_key; status/person/notes/marks kept) + `bdc_signal_runs`. Rules: `classifyBdc()` in `supabase/functions/bdc-signals/rules.js`
+  (`BDC_RULES_VERSION`; deploy index.ts + rules.js together). Size (Tengku): debt held by BDCs < $10M cut, $10–75M core, $75–150M upper end,
+  > $150M cut (it's a floor: lenders also hold pieces off-BDC). Triggers: matures ≤ 18 months, marked < 90¢, marked down 5+ in a quarter,
+  non-accrual, past maturity AND marked down (past maturity at par = probably extended = a check). Lender tiers by BDC name (big platform −10,
+  lower-middle-market only +8, venture = maybe, syndicated-only / controlled / public = cut). Opener never mentions the mark.
+  Migration `supabase/2026-10-08-bdc-signals.sql` (also adds `bdc` to `signal_target_counts()`).
+- Known gaps: ~55% of borrowers have no maturity in the data (some BDCs put it only in custom tags); names from single-lender rows can keep a
+  stray word; BDC debt understates the full facility for big-platform deals.
+- **UCC rules v4 (same day):** demoted. Size floor $30M est. revenue for Target; merchant cash advances count toward Target only at $50M+
+  (smaller ones are factoring deals); IRS +20 (it primes a new lender), state tax +15, judgment +12. HQ copy points to BDC loans for direct lenders.
+
 ## UCC signals (Pipeline → UCC signals tab, `hq/ucc.js`, admin only; 7 Oct 2026)
 - Sizable PRIVATE companies that need private credit (Peter's lane; Credit signals only sees SEC filers). `scripts/ucc_signals.py`
   (GitHub workflow mode `ucc`, also in daily) reads free state UCC open data: Connecticut `data.ct.gov` xfev-8smz (one table) and
