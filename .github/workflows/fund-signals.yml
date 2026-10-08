@@ -11,11 +11,11 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "daily | live | fund1 | check | recheck | credit | ucc | uccprobe | probe | study1 | study2 | selftest | audit | adviser | adviserprobe"
+        description: "daily | live | fund1 | check | recheck | credit | bdc | bdcprobe | ucc | uccprobe | probe | study1 | study2 | selftest | audit | adviser | adviserprobe"
         default: daily
         required: true
       from:
-        description: "Start date YYYY-MM-DD (live / fund1 backfills); probe: names separated by ;  uccprobe/ucc: registries e.g. FL,OR"
+        description: "Start date YYYY-MM-DD (live / fund1 backfills); probe: names separated by ;  uccprobe/ucc: registries e.g. FL,OR  bdcprobe: zip name e.g. 2026_08_bdc.zip"
         required: false
       to:
         description: "End date YYYY-MM-DD"
@@ -58,8 +58,10 @@ jobs:
           else
             MODE="$IN_MODE"
           fi
-          case "$MODE" in daily|live|fund1|check|recheck|credit|ucc|uccprobe|probe|study1|study2|selftest|audit|adviser|adviserprobe) ;; *) echo "unknown mode $MODE"; exit 1;; esac
+          case "$MODE" in daily|live|fund1|check|recheck|credit|bdc|bdcprobe|ucc|uccprobe|probe|study1|study2|selftest|audit|adviser|adviserprobe) ;; *) echo "unknown mode $MODE"; exit 1;; esac
           if [ "$MODE" = "credit" ]; then python scripts/credit_signals.py; exit $?; fi
+          if [ "$MODE" = "bdc" ]; then python scripts/bdc_signals.py; exit $?; fi
+          if [ "$MODE" = "bdcprobe" ]; then python scripts/bdc_signals.py --probe "${IN_FROM:-2026_08_bdc.zip}"; exit $?; fi
           if [ "$MODE" = "ucc" ]; then python scripts/ucc_signals.py --only "$IN_FROM"; exit $?; fi
           if [ "$MODE" = "uccprobe" ]; then python scripts/ucc_signals.py --dry --only "$IN_FROM"; exit $?; fi
           if [ "$MODE" = "adviserprobe" ]; then python scripts/adviser_aum.py --mode probe --q "${IN_FROM:-Solomon Hess}"; exit $?; fi
