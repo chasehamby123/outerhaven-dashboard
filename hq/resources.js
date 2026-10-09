@@ -14,7 +14,7 @@ const LEAD_MAGNET = /\b(comment|steal|free|dm me|template|blueprint|playbook|gui
 
 const S = { jobs: [], posts: [], accounts: {}, cfg: null, loaded: false, channel: null, format: 'notion', draft: {}, q: '' };
 const isAdmin = () => state.role === 'admin';
-const isResource = j => (j.kind || 'resource') === 'resource' && !['teaser', 'chat'].includes(j.payload?.type); // analysis + teaser jobs share the table
+const isResource = j => (j.kind || 'resource') === 'resource' && !['teaser', 'chat', 'reply'].includes(j.payload?.type); // analysis + teaser jobs share the table
 const minutes = t => Math.max(0, Math.round((Date.now() - new Date(t)) / 60000));
 const ago = t => { if (!t) return ''; const m = minutes(t); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
 const day = d => d ? new Date(d + (d.length === 10 ? 'T12:00:00' : '')).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—';

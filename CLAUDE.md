@@ -315,14 +315,18 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 ## Reply assist, track record, post scoring (9 Oct 2026; Tengku)
 - **Sync inbox tasks**: 9 daily team tasks "Sync inbox: <name>" (assignee Tengku, `supabase/2026-10-09-sync-inbox-tasks.sql`). Manual click only:
   never auto-sync on a timer (LinkedIn would see scripted page opens at fixed times; Tengku rejected it).
-- **Reply assist**: extension v2.2 "Draft a reply" (draft only, never types or sends) → edge function `reply-assist` (`x-capture-key`, `prompt.js` pure
-  helpers, test `node scripts/tests/test_reply_prompt.mjs`) → Claude API (`MODEL` in prompt.js) with the account's `reply_personas` row (the ONLY facts a draft may
-  claim), matching ready resources, and up to 3 threads that booked a meeting. Lead messages are untrusted data. Logs `reply_drafts`; cap `growth_settings.reply_daily_cap`.
-  Key `ANTHROPIC_API_KEY` pasted by an admin in HQ → Growth → Reply assist (RPC `set_anthropic_key`, write-only; never enter it for them). No personas seeded: drafts are generic until written.
+- **Reply assist** (Tengku: no Claude API, same engine as HQ chat): extension v2.3 "Draft a reply" (draft only, never types or sends) → edge function
+  `reply-assist` (`x-capture-key`; action draft → `reply_drafts` row status 'working' with `input` {prospect, messages, matching resources, meeting
+  examples, tweak} + `resource_jobs` row `payload.type='reply'` → fires the resource-builder routine; action status = poll) → routine follows
+  `routines/reply.md` (skill redirect) and writes draft/intent/background/next_step/flags into the row. 1–2 min; the extension polls every 4 s and
+  keeps a finished draft tied to its chat. Personas (`reply_personas`, the ONLY facts a draft may claim) were written by Claude
+  (`supabase/2026-10-09-reply-personas.sql`): Sara/Dev/Sahid/Reza have no title or employer on file, so theirs claim none and have no booking link.
+  Cap `growth_settings.reply_daily_cap`, 4 at once, `reply_sweep()` errors drafts stuck 15 min. Reply jobs count against the routine's daily limit.
+  `set_anthropic_key` / `anthropic_key_set` from the first version are unused.
 - **Track record** (`#/record`, `hq/record.js`, admin): RPC `track_record(from,to)` per person per day (planned/done/skipped/open/`no_record` = nobody opened HQ that day).
 - **Playbook** (Growth → Playbook, `hq/playbook.js`, engine `hq/scoring.js`, test `node hq/scoring-test.mjs`): each post vs its own account's median, factor effects shrunk toward 0 (K=3),
   predictor, library. SQL twin: view `post_scores`. Directional until ~100 tagged posts; link meetings to posts so "converted" counts.
-- Migrations: `2026-10-09-sync-inbox-tasks.sql`, `-reply-record-scores.sql`, `-anthropic-key.sql`.
+- Migrations: `2026-10-09-sync-inbox-tasks.sql`, `-reply-record-scores.sql`, `-reply-routine.sql`, `-reply-personas.sql` (`-anthropic-key.sql` unused).
 
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.

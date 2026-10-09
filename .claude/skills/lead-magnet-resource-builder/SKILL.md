@@ -9,6 +9,9 @@ description: Build the free resource behind a lead magnet post (Notion doc, PDF,
 > **HQ chat jobs:** if the job row's `payload->>'type'` is `'chat'`, this is a message from the HQ chat button, not a lead magnet.
 > Ignore the rest of this skill and follow `routines/chat.md` in this repo for the whole job.
 
+> **Reply draft jobs:** if the job row's `payload->>'type'` is `'reply'`, this is the extension's "Draft a reply" button, not a lead magnet.
+> Ignore the rest of this skill and follow `routines/reply.md` in this repo for the whole job. Be fast: someone is waiting.
+
 > **Deal teaser jobs:** if the job row's `payload->>'type'` is `'teaser'`, this is not a lead magnet.
 > Ignore the rest of this skill and follow `routines/teaser-builder.md` in this repo for the whole job.
 

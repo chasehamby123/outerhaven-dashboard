@@ -286,27 +286,51 @@
   function hideDraft() { draftFor = ''; $('draftBox').style.display = 'none'; $('card').classList.remove('wide'); }
   const FLAG_TEXT = { persona_missing: 'No persona written for this account: ask an admin to fill it in (HQ → Growth → Reply assist)', no_resource_matched: 'No matching resource found: add the link yourself', instruction_in_message: 'The message tried to give the AI instructions: be careful' };
   const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+  // Claude (the same routine as HQ chat) writes it in 1-2 minutes. Each draft is tied to the chat it was asked for: if you
+  // switch chats meanwhile it waits, and shows when you come back to that chat.
+  const ready = new Map(); // draftKey -> draft
+  let pending = '';
+  const ask = payload => new Promise(ok => chrome.runtime.sendMessage({ type: 'reply', payload }, ok));
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  function showDraft(key, d) {
+    draftFor = key;
+    $('dout').value = d.reply || '';
+    $('dmeta').innerHTML = [d.background ? `<b>Who:</b> ${esc(d.background)}` : '', d.intent ? `<b>Looks like:</b> ${esc(d.intent.replace(/_/g, ' '))}` : '', d.next_step ? `<b>Next:</b> ${esc(d.next_step)}` : ''].filter(Boolean).join('<br>');
+    $('dflags').innerHTML = (d.needs_human ? '<span class="flag warn">Needs a person: check before sending</span>' : '') + (d.flags || []).map(f => `<span class="flag ${FLAG_TEXT[f] ? 'warn' : ''}">${esc(FLAG_TEXT[f] || f)}</span>`).join('');
+    $('dnote').textContent = d.remaining_today != null ? `${d.remaining_today} drafts left today` : '';
+    $('draftBox').style.display = 'grid'; $('card').classList.add('wide'); say('');
+  }
   async function draftReply() {
     const r = read(); if (!r) { say('Open a conversation first.', 'bad'); return; }
     if (!$('me').value) { say('Pick who you are first.', 'bad'); return; }
     if (!$('acct').value) { say('Pick which LinkedIn account this is.', 'bad'); return; }
     if (!r.payload.messages.length) { say("Couldn't read any messages. Open the chat on the full Messaging page.", 'bad'); return; }
-    $('draft').disabled = true; $('dagain').disabled = true; say('Drafting…');
-    const p = r.payload;
-    const res = await new Promise(ok => chrome.runtime.sendMessage({ type: 'reply', payload: {
-      account: $('acct').value, booked_by: $('me').value, thread_key: p.thread_key, tweak: $('tweak').value.trim(),
+    if (pending) { say('Claude is still writing the last draft. One at a time.', 'bad'); return; }
+    const key = draftKey(r), p = r.payload, who = p.prospect_name || 'this chat';
+    pending = key; ready.delete(key); hideDraft();
+    $('draft').disabled = true; $('dagain').disabled = true; say('Sending the chat to Claude…');
+    const res = await ask({ action: 'draft', account: $('acct').value, booked_by: $('me').value, thread_key: p.thread_key, tweak: $('tweak').value.trim(),
       prospect: { name: p.prospect_name, headline: p.prospect_headline },
-      messages: p.messages.slice(-30).map(m => ({ from: m.from, text: m.text, at: m.at })) } }, ok));
-    $('draft').disabled = false; $('dagain').disabled = false;
-    if (!res?.ok) { say(res?.error || 'Draft failed', 'bad'); return; }
-    // The person may have switched chats while Claude was writing: never show a draft against the wrong person.
-    const now = read(); if (!now || draftKey(now) !== draftKey(r)) { say('You switched chats while it was drafting. Press Draft again.', 'bad'); return; }
-    const d = res.result; draftFor = draftKey(r);
-    $('dout').value = d.reply;
-    $('dmeta').innerHTML = [d.background ? `<b>Who:</b> ${esc(d.background)}` : '', d.intent ? `<b>Looks like:</b> ${esc(d.intent.replace(/_/g, ' '))}` : '', d.next_step ? `<b>Next:</b> ${esc(d.next_step)}` : ''].filter(Boolean).join('<br>');
-    $('dflags').innerHTML = (d.needs_human ? '<span class="flag warn">Needs a person: check before sending</span>' : '') + (d.flags || []).map(f => `<span class="flag ${FLAG_TEXT[f] ? 'warn' : ''}">${esc(FLAG_TEXT[f] || f)}</span>`).join('');
-    $('dnote').textContent = d.remaining_today != null ? `${d.remaining_today} drafts left today` : '';
-    $('draftBox').style.display = 'grid'; $('card').classList.add('wide'); say('');
+      messages: p.messages.slice(-30).map(m => ({ from: m.from, text: m.text, at: m.at })) });
+    const done = () => { pending = ''; $('draft').disabled = false; $('dagain').disabled = false; };
+    if (!res?.ok) { done(); say(res?.error || 'Draft failed', 'bad'); return; }
+    const id = res.result.id, left = res.result.remaining_today, t0 = Date.now();
+    let d = null, misses = 0;
+    while (Date.now() - t0 < 8 * 60e3) {
+      await sleep(4000);
+      const here = draftKey(read()) === key, secs = Math.round((Date.now() - t0) / 1000);
+      if (here) say(`Claude is writing the reply… ${secs}s (usually 1–2 min). You can keep working.`);
+      const s = await ask({ action: 'status', id });
+      if (!s?.ok) { if (++misses >= 5) { done(); say(s?.error || 'Lost contact with HQ.', 'bad'); return; } continue; }
+      misses = 0;
+      if (s.result.status === 'ready') { d = { ...s.result, remaining_today: left }; break; }
+      if (s.result.status === 'error') { done(); say(s.result.error || 'Claude could not draft this one.', 'bad'); return; }
+    }
+    done();
+    if (!d) { say('Claude is taking too long. Try Draft again.', 'bad'); return; }
+    ready.set(key, d);
+    if (draftKey(read()) === key) showDraft(key, d);
+    else say(`Draft for ${who} is ready. Go back to that chat to see it.`, 'ok');
   }
   $('draft').onclick = draftReply; $('dagain').onclick = draftReply;
   $('dcopy').onclick = async () => {
@@ -321,8 +345,9 @@
   setInterval(() => {
     if (location.href !== lastUrl || host.style.display === 'none') { lastUrl = location.href; refresh(); }
     else if (draftFor && draftKey(read()) !== draftFor) hideDraft(); // chat bubbles switch without a URL change
+    else if (!draftFor && read() && ready.has(draftKey(read()))) showDraft(draftKey(read()), ready.get(draftKey(read())));
   }, 1000);
 
   // Exposed for tests only.
-  window.__ohqTest = { read, messages, toIso, readInboxList, listTime, draftReply };
+  window.__ohqTest = { read, messages, toIso, readInboxList, listTime, draftReply, ready };
 })();
