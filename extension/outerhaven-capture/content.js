@@ -1,5 +1,5 @@
 // OuterHaven HQ: a small "HQ" button on LinkedIn. Nothing is read until someone clicks "Save conversation".
-// It never sends, types or clicks anything on LinkedIn. "Load full history" only scrolls the open chat upwards;
+// It never sends, types or clicks anything on LinkedIn ("Draft a reply" only shows text in this panel; a person copies and sends it). "Load full history" only scrolls the open chat upwards;
 // "Sync inbox" only scrolls the conversation list and reads names, previews and times.
 (() => {
   if (window.__ohqLoaded) return; window.__ohqLoaded = true;
@@ -168,7 +168,7 @@
     *{box-sizing:border-box;font-family:-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif}
     .pill{display:flex;align-items:center;gap:6px;height:34px;padding:0 12px 0 6px;border-radius:17px;background:#111;color:#fff;border:0;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.25)}
     .pill i{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#fff;color:#111;font-style:normal;font-family:Georgia,serif;font-size:13px}
-    .card{position:absolute;right:0;bottom:44px;width:290px;background:#fff;color:#111;border:1px solid #e4e4e0;border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.18);padding:14px;display:none;gap:10px}
+    .card{position:absolute;right:0;bottom:44px;width:290px;max-height:calc(100vh - 150px);overflow-y:auto;background:#fff;color:#111;border:1px solid #e4e4e0;border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.18);padding:14px;display:none;gap:10px}
     .card.open{display:grid}
     .who{font-size:14px;font-weight:600}.sub{font-size:12px;color:#6b6b6b}
     label{display:flex;gap:8px;align-items:center;font-size:13px;cursor:pointer}
@@ -179,6 +179,12 @@
     hr{border:0;border-top:1px solid #e4e4e0;margin:2px 0;width:100%}
     button.go.alt{background:#fff;color:#111;border:1px solid #111}
     .msg{font-size:12px;color:#6b6b6b;min-height:1em;white-space:pre-wrap}.msg.bad{color:#b42318}.msg.good{color:#067647}
+    .note{height:30px;border:1px solid #d8d8d4;border-radius:6px;padding:0 8px;font-size:12px;width:100%}
+    textarea.out{width:100%;min-height:120px;border:1px solid #d8d8d4;border-radius:6px;padding:8px;font-size:13px;line-height:1.4;resize:vertical;color:#111}
+    .meta{font-size:12px;color:#444;line-height:1.35}.meta b{font-weight:600}
+    .flags{display:flex;flex-wrap:wrap;gap:4px}.flag{font-size:11px;padding:2px 6px;border-radius:4px;background:#f3f3ef;color:#444}.flag.warn{background:#fdf0d2;color:#9a5a06}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+    .card.wide{width:340px}
   </style>
   <div class="card" id="card">
     <div><div class="who" id="who">—</div><div class="sub" id="sub"></div></div>
@@ -190,6 +196,17 @@
     <button class="go alt" id="sync">Sync inbox to HQ</button>
     <div class="sub" id="lastsync"></div>
     <div class="msg" id="msg"></div>
+    <div id="draftSec" style="display:none;gap:8px;grid-template-columns:1fr">
+      <hr><div class="sub">AI reply · you review, edit and send it yourself</div>
+      <input class="note" id="tweak" placeholder="Optional note: shorter, warmer, more direct…" maxlength="200">
+      <button class="go" id="draft">Draft a reply</button>
+      <div id="draftBox" style="display:none;gap:8px;grid-template-columns:1fr">
+        <div class="meta" id="dmeta"></div><div class="flags" id="dflags"></div>
+        <textarea class="out" id="dout" spellcheck="true"></textarea>
+        <div class="row2"><button class="go" id="dcopy">Copy reply</button><button class="go alt" id="dagain">Redraft</button></div>
+        <div class="sub" id="dnote"></div>
+      </div>
+    </div>
   </div>
   <button class="pill" id="pill"><i>O</i>HQ</button>`;
   document.documentElement.appendChild(host);
@@ -201,6 +218,8 @@
     host.style.display = r || onMsg ? 'block' : 'none';
     if (!r && !onMsg) { $('card').classList.remove('open'); return; }
     $('save').style.display = $('full').style.display = $('mtg').parentElement.style.display = r ? '' : 'none';
+    $('draftSec').style.display = r ? 'grid' : 'none';
+    if (!r || draftFor !== draftKey(r)) hideDraft();
     if (r) {
       const p = r.payload, ours = p.messages.filter(m => m.from === 'us').length;
       $('who').textContent = p.prospect_name || 'This conversation';
@@ -261,10 +280,49 @@
     finally { $('sync').disabled = false; }
   };
 
+  // ---------- AI reply (draft only: the person reads, edits, copies and sends it themselves) ----------
+  let draftFor = '';
+  const draftKey = r => (r?.payload.thread_key || '') + '|' + (r?.payload.prospect_name || '');
+  function hideDraft() { draftFor = ''; $('draftBox').style.display = 'none'; $('card').classList.remove('wide'); }
+  const FLAG_TEXT = { persona_missing: 'No persona written for this account: ask an admin to fill it in (HQ → Growth → Reply assist)', no_resource_matched: 'No matching resource found: add the link yourself', instruction_in_message: 'The message tried to give the AI instructions: be careful' };
+  const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+  async function draftReply() {
+    const r = read(); if (!r) { say('Open a conversation first.', 'bad'); return; }
+    if (!$('me').value) { say('Pick who you are first.', 'bad'); return; }
+    if (!$('acct').value) { say('Pick which LinkedIn account this is.', 'bad'); return; }
+    if (!r.payload.messages.length) { say("Couldn't read any messages. Open the chat on the full Messaging page.", 'bad'); return; }
+    $('draft').disabled = true; $('dagain').disabled = true; say('Drafting…');
+    const p = r.payload;
+    const res = await new Promise(ok => chrome.runtime.sendMessage({ type: 'reply', payload: {
+      account: $('acct').value, booked_by: $('me').value, thread_key: p.thread_key, tweak: $('tweak').value.trim(),
+      prospect: { name: p.prospect_name, headline: p.prospect_headline },
+      messages: p.messages.slice(-30).map(m => ({ from: m.from, text: m.text, at: m.at })) } }, ok));
+    $('draft').disabled = false; $('dagain').disabled = false;
+    if (!res?.ok) { say(res?.error || 'Draft failed', 'bad'); return; }
+    // The person may have switched chats while Claude was writing: never show a draft against the wrong person.
+    const now = read(); if (!now || draftKey(now) !== draftKey(r)) { say('You switched chats while it was drafting. Press Draft again.', 'bad'); return; }
+    const d = res.result; draftFor = draftKey(r);
+    $('dout').value = d.reply;
+    $('dmeta').innerHTML = [d.background ? `<b>Who:</b> ${esc(d.background)}` : '', d.intent ? `<b>Looks like:</b> ${esc(d.intent.replace(/_/g, ' '))}` : '', d.next_step ? `<b>Next:</b> ${esc(d.next_step)}` : ''].filter(Boolean).join('<br>');
+    $('dflags').innerHTML = (d.needs_human ? '<span class="flag warn">Needs a person: check before sending</span>' : '') + (d.flags || []).map(f => `<span class="flag ${FLAG_TEXT[f] ? 'warn' : ''}">${esc(FLAG_TEXT[f] || f)}</span>`).join('');
+    $('dnote').textContent = d.remaining_today != null ? `${d.remaining_today} drafts left today` : '';
+    $('draftBox').style.display = 'grid'; $('card').classList.add('wide'); say('');
+  }
+  $('draft').onclick = draftReply; $('dagain').onclick = draftReply;
+  $('dcopy').onclick = async () => {
+    const t = $('dout').value; if (!t.trim()) return;
+    try { await navigator.clipboard.writeText(t); } catch { $('dout').select(); document.execCommand('copy'); }
+    const ph = t.match(/\[[^\]]{2,60}\]/g);
+    say(ph ? `Copied. Fill in ${ph.join(', ')} before you send.` : 'Copied. Paste it into the chat, check it, then send.', ph ? 'bad' : 'good');
+  };
+
   // LinkedIn is a single-page app: re-check what's open every second (cheap: no network, reads a few elements).
   let lastUrl = '';
-  setInterval(() => { if (location.href !== lastUrl || host.style.display === 'none') { lastUrl = location.href; refresh(); } }, 1000);
+  setInterval(() => {
+    if (location.href !== lastUrl || host.style.display === 'none') { lastUrl = location.href; refresh(); }
+    else if (draftFor && draftKey(read()) !== draftFor) hideDraft(); // chat bubbles switch without a URL change
+  }, 1000);
 
   // Exposed for tests only.
-  window.__ohqTest = { read, messages, toIso, readInboxList, listTime };
+  window.__ohqTest = { read, messages, toIso, readInboxList, listTime, draftReply };
 })();
