@@ -319,7 +319,8 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   `reply-assist` (`x-capture-key`; action draft → `reply_drafts` row status 'working' + `resource_jobs` row `payload.type='reply'` → fires the
   resource-builder routine; action status = poll every 4 s; a finished draft stays tied to its chat). `input.source` = where the lead came from,
   matched by profile slug then exact name: their comments on our posts (post caption + the post's linked lead magnet), Prosp campaign replies
-  (`lead_intake`, profile bio from `raw_payload.eventData.profileInfo`), our opener + matching DM test version. The routine (`routines/reply.md`)
+  (`lead_intake`, profile bio from `raw_payload.eventData.profileInfo`; Prosp is on Peter/Tengku/Chase only, the other 6 send by hand so their
+  "campaign" is our opener in the chat), our opener + matching DM test version. The routine (`routines/reply.md`)
   works out source, the LEAD's background (`lead_type`: owner_operator / sponsor_or_fund / adviser_or_banker / investor / service_provider / other;
   advisers = deal-flow partners) and stage, then picks a play (`approach`): **hostage rule first** (lead magnet asked for and our questions
   unanswered → `hostage_ask`, no link; answered → `deliver`; pushback twice → send anyway), else qualify / book / nurture / close_out / holding.

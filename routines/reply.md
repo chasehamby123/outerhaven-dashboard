@@ -24,8 +24,11 @@ select * from public.reply_approach_stats where n >= 20 order by reply_rate desc
 - `source` (where the lead came from, found by the edge function):
   - `comments`: their comments on our posts: `post_name`, `post_caption`, `comment`, `on_account`, and `resource` {title, url} = the
     lead magnet behind that post (null = not linked yet).
-  - `outreach`: replies they sent to an outreach campaign (Prosp): `campaign`, `their_reply`.
-  - `lead_profile`: `headline`, `company`, `bio` (Prosp sends the LinkedIn About text).
+  - `outreach`: replies they sent to a Prosp campaign: `campaign`, `their_reply`. **Only Peter, Tengku and Chase run Prosp.** The
+    other 6 accounts (Sara, Dev, Sahid, Reza, Razeen, Anaz) send outreach by hand in AdsPower, so for them `outreach` is empty and the
+    campaign is simply our first message in the chat (`opener`, plus `dm_variant` if it matches a DM test).
+  - `lead_profile`: `headline`, `company`, `bio`. The About text only comes with Prosp replies; for the other accounts you have the
+    headline from the chat and from their comment, so read the company and role out of the headline.
   - `opener`: our first message in this chat; `dm_variant`: the DM test version it matches, if any.
 - `resources`: other lead magnets whose words match the chat (fallback when `source.comments[].resource` is empty).
 - `examples`: our side of threads that booked a meeting (style reference only, never facts).
@@ -46,8 +49,9 @@ Writes: only this `reply_drafts` row and this `resource_jobs` row.
 
 ## 3. Work out three things before writing
 
-**A. Where they came from.** A comment on a lead-magnet post (which post, which resource), a reply to an outreach campaign (which
-campaign, what our opener said), or neither (cold inbound / old contact). The reply must connect to that: name the resource or the
+**A. Where they came from.** A comment on a lead-magnet post (which post, which resource), a reply to outreach (a Prosp campaign on
+Peter / Tengku / Chase, or a hand-sent opener on the other 6 accounts: either way, what our opener said), or neither (cold inbound /
+old contact). A first message from us that offers a resource is a lead-magnet follow-up, even if no comment was found. The reply must connect to that: name the resource or the
 point of the post, or answer what they said to our opener. A reply that could have been sent to anyone is a bad reply.
 
 **B. Who the lead is** (their background, not ours). From headline, company, bio, their comment and how they write:
