@@ -11,6 +11,7 @@ import { renderDealsPage, refreshDealsBadge } from './deals.js';
 import { mountChat } from './chat.js';
 import { renderChaseDaily } from './chase-daily.js';
 import { renderTeam } from './team.js';
+import { renderRecord } from './record.js';
 
 const ROUTES = {
   today: { label: 'Today', render: r => renderToday(r), ops: true },
@@ -20,6 +21,7 @@ const ROUTES = {
   pipeline: { label: 'Pipeline', render: (r, sub) => renderPipeline(r, sub) },
   deals: { label: 'Deals', render: r => renderDealsPage(r) },
   resources: { label: 'Resources', render: (r, sub) => renderResources(r, sub), ops: true },
+  record: { label: 'Track record', render: r => renderRecord(r) },
   team: { label: 'Team access', render: r => renderTeam(r) },
   'chase-daily': { label: 'My Daily Ops', render: r => renderChaseDaily(r), chaseOnly: true },
 };
@@ -51,6 +53,7 @@ const ICON = {
   schedule: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/><rect x="7" y="13" width="5" height="4" rx="1"/></svg>',
   resources: '<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>',
   deals: '<svg viewBox="0 0 24 24"><path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M4 12h16"/></svg>',
+  record: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 10h18M8 2v4M16 2v4M8 14h2M13 14h3M8 18h2"/></svg>',
   team: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><rect x="15" y="11" width="6.5" height="5" rx="1"/><path d="M16.5 11V9.5a1.75 1.75 0 0 1 3.5 0V11"/></svg>',
   pipeline: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="6" rx="1.5"/></svg>',
 };
@@ -78,6 +81,7 @@ function shell() {
         ${navLink('deals', '#/deals', 'Deals')}
         ${navLink('growth', '#/growth/posts', 'Growth')}
         ${navLink('resources', '#/resources', 'Resources')}
+        ${navLink('record', '#/record', 'Track record')}
         ${navLink('team', '#/team', 'Team access')}
         ${String(state.user?.email || '').toLowerCase() === 'chasehamby@chproduction.org' ? navLink('chase-daily', '#/chase-daily', 'My Daily Ops') : ''}
         <small>Legacy</small>

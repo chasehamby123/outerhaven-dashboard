@@ -7,9 +7,11 @@ import { METRICS } from './sheet.js';
 import { scraperView, scraperStatus } from './scraper.js';
 import { dmTestsView } from './dms.js';
 import { outboundView } from './inbox.js';
+import { playbookView } from './playbook.js';
+import { replyView } from './reply.js';
 import { sb, state } from './core.js';
 
-const TABS = [['scraper', 'Scraper'], ['posts', 'Posts'], ['insights', 'Insights'], ['outbound', 'Outbound'], ['dms', 'DM tests'], ['experiments', 'Post experiments'], ['meetings', 'Meetings'], ['sheet', 'Sheet history']];
+const TABS = [['scraper', 'Scraper'], ['posts', 'Posts'], ['insights', 'Insights'], ['playbook', 'Playbook'], ['reply', 'Reply assist'], ['outbound', 'Outbound'], ['dms', 'DM tests'], ['experiments', 'Post experiments'], ['meetings', 'Meetings'], ['sheet', 'Sheet history']];
 const EXP_METRICS = [['impressions', 'Impressions'], ['sent', 'Messages sent'], ['comments', 'Comments'], ['reactions', 'Reactions'], ['saves', 'Saves'], ['sends', 'Sends (shares)'], ['replies', 'Replies'], ['dms', 'Inbound DMs'], ['meetings', 'Meetings']];
 const VARIABLES = [...Object.values(DIMENSIONS).map(d => d.label), 'Account', 'Boost', 'Other'];
 let insightMetric = 'engagement';
@@ -29,7 +31,7 @@ export function renderGrowth(root, tab = 'posts') {
     <nav class="tabs">${TABS.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</nav><div id="gBody"></div>`;
   $$('[data-tab]', root).forEach(b => b.onclick = () => { location.hash = `#/growth/${b.dataset.tab}`; });
   const body = $('#gBody', root);
-  ({ scraper: scraperView, posts: postsView, experiments: experimentsView, insights: insightsView, dms: dmTestsView, outbound: outboundView, meetings: meetingsView, sheet: sheetView })[tab](body);
+  ({ scraper: scraperView, posts: postsView, experiments: experimentsView, insights: insightsView, playbook: playbookView, reply: replyView, dms: dmTestsView, outbound: outboundView, meetings: meetingsView, sheet: sheetView })[tab](body);
 }
 
 // ---------------- Posts ----------------
