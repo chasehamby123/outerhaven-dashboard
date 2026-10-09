@@ -1,5 +1,6 @@
 // reply-assist: the extension's "Draft a reply" button. Same engine as the HQ chat button: no Claude API key. It stores the open
-// LinkedIn conversation (read by the extension when someone clicks) as a `reply_drafts` row (status 'working'), adds a
+// LinkedIn conversation (read by the extension when someone clicks) plus where the lead came from (the post they commented on and its
+// lead magnet, the outreach campaign they replied to, their profile) as a `reply_drafts` row (status 'working'), adds a
 // `resource_jobs` row (payload.type = 'reply') and fires the "OuterHaven resource builder" Claude Code routine, which follows
 // routines/reply.md and writes the draft back into the reply_drafts row. The extension polls action 'status'. Drafts take 1-2 min.
 // It NEVER sends or types anything on LinkedIn: a person reads, edits and sends.
@@ -43,6 +44,60 @@ async function fire(jobId: string) {
   try { return JSON.parse(body).claude_code_session_url as string | undefined; } catch { return undefined; }
 }
 
+const slugOf = (u: unknown) => (String(u || "").match(/linkedin\.com\/in\/([^/?#]+)/i) || [])[1]?.toLowerCase() || "";
+
+// Where this lead came from: a comment on one of our posts (which post, which lead magnet) and/or a reply to an outreach campaign
+// (Prosp sends their profile bio), plus our opening message and the DM test version it matches. The routine ties the reply to it.
+async function sourceOf(prospect: { name: string; headline: string; url: string }, messages: { from: string; text: string }[]) {
+  const slug = slugOf(prospect.url), name = prospect.name;
+  const cBase = () => sb.from("daily_ops_post_comments").select("post_id,author_headline,body,posted_at").eq("is_team", false).order("posted_at", { ascending: false }).limit(5);
+  const lBase = () => sb.from("lead_intake").select("campaign_name,source_account,headline,company_name,reply_text,raw_payload,created_at").order("created_at", { ascending: false }).limit(3);
+  const none = { data: [] as any[] };
+  // Profile slug first (exact person); the chat sometimes links an internal id instead, so fall back to the exact name.
+  const okSlug = /^[a-z0-9%_-]+$/i.test(slug);
+  let [c, l]: any[] = okSlug ? await Promise.all([
+    cBase().or(`author_url.ilike.%/in/${slug},author_url.ilike.%/in/${slug}/`),
+    lBase().or(`linkedin_url.ilike.%/in/${slug},linkedin_url.ilike.%/in/${slug}/`),
+  ]) : [none, none];
+  if (!(c.data || []).length && name) c = await cBase().ilike("author_name", name);
+  if (!(l.data || []).length && name) l = await lBase().ilike("name", name);
+  const comments = (c.data || []) as any[];
+  const postIds = [...new Set(comments.map((x) => x.post_id))];
+  const [posts, res] = postIds.length ? await Promise.all([
+    sb.from("daily_ops_posts").select("id,post_name,post_text,linkedin_post_url,posted_at,account_id").in("id", postIds),
+    sb.from("resource_jobs").select("post_id,output_title,output_url").in("post_id", postIds).eq("status", "ready").not("output_url", "is", null),
+  ]) : [{ data: [] }, { data: [] }];
+  const P = Object.fromEntries(((posts as any).data || []).map((p: any) => [p.id, p]));
+  const R = Object.fromEntries(((res as any).data || []).map((r: any) => [r.post_id, r]));
+  const acctIds = [...new Set(Object.values(P).map((p: any) => p.account_id).filter(Boolean))];
+  const A = acctIds.length ? Object.fromEntries(((await sb.from("daily_ops_accounts").select("id,owner_name").in("id", acctIds)).data || []).map((a: any) => [a.id, a.owner_name])) : {};
+  const leads = (l.data || []) as any[];
+  const prof = leads.map((x) => x.raw_payload?.eventData?.profileInfo).find(Boolean) || {};
+  const opener = messages.find((m) => m.from === "us")?.text || "";
+  let variant = null;
+  if (opener) {
+    const mv = await sb.rpc("match_dm_variant", { p_text: opener });
+    const best = (mv.data || [])[0];
+    if (best?.variant_id && best.score >= 0.5) {
+      const v = await sb.from("dm_variants").select("label,message,dm_tests(name,context)").eq("id", best.variant_id).maybeSingle();
+      if (v.data) variant = { test: (v.data as any).dm_tests?.name, context: (v.data as any).dm_tests?.context, label: v.data.label, message: String(v.data.message).slice(0, 600) };
+    }
+  }
+  return {
+    comments: comments.map((x) => { const p = P[x.post_id] || {}; const r = R[x.post_id]; return {
+      on_account: A[p.account_id] || null, post_name: p.post_name || null, post_url: p.linkedin_post_url || null,
+      post_caption: String(p.post_text || "").slice(0, 900), comment: String(x.body || "").slice(0, 400), commented_at: x.posted_at,
+      resource: r ? { title: r.output_title, url: r.output_url } : null }; }),
+    outreach: leads.map((x) => ({ campaign: x.campaign_name, sender: x.source_account, their_reply: String(x.reply_text || "").replace(/^A lead has replied\s*Re:/i, "").trim().slice(0, 400), at: x.created_at })),
+    lead_profile: {
+      headline: prospect.headline || prof.headline || comments[0]?.author_headline || leads[0]?.headline || "",
+      company: prof.company || leads[0]?.company_name || "",
+      bio: String(prof.bio || "").slice(0, 1500),
+    },
+    opener: opener.slice(0, 800), dm_variant: variant,
+  };
+}
+
 const myDayStart = () => { const t = new Date(Date.now() + 8 * 3600e3); return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()) - 8 * 3600e3).toISOString(); };
 
 Deno.serve(async (req) => {
@@ -59,11 +114,11 @@ Deno.serve(async (req) => {
   // ---- poll ----
   if (b.action === "status") {
     const id = str(b.id, 60);
-    const r = await sb.from("reply_drafts").select("id,status,progress,draft,intent,background,next_step,needs_human,flags,persona_missing,error,created_at").eq("id", id).maybeSingle();
+    const r = await sb.from("reply_drafts").select("id,status,progress,draft,intent,approach,lead_type,background,next_step,needs_human,flags,persona_missing,error,created_at").eq("id", id).maybeSingle();
     if (!r.data) return json({ ok: false, error: "Draft not found." }, 404);
     if (r.data.status === "working" && Date.now() - new Date(r.data.created_at).getTime() > 15 * 60e3) await sb.rpc("reply_sweep");
     const d = r.data;
-    return json({ ok: true, id: d.id, status: d.status, progress: d.progress, reply: d.draft, intent: d.intent, background: d.background, next_step: d.next_step, needs_human: d.needs_human, flags: d.flags || [], persona_missing: d.persona_missing, error: d.error });
+    return json({ ok: true, id: d.id, status: d.status, progress: d.progress, reply: d.draft, intent: d.intent, approach: d.approach, lead_type: d.lead_type, background: d.background, next_step: d.next_step, needs_human: d.needs_human, flags: d.flags || [], persona_missing: d.persona_missing, error: d.error });
   }
 
   // ---- new draft ----
@@ -92,13 +147,15 @@ Deno.serve(async (req) => {
   const resources = pickResources(messages, (rj.data || []).filter((r: any) => !["chat", "teaser", "reply"].includes(r.payload?.type)).map((r: any) => ({ title: r.output_title, topic: r.topic, caption: r.caption, url: r.output_url })));
   const rows = (ex.data || []) as any[];
   const examples = [...rows.filter((r) => r.account_name === account), ...rows.filter((r) => r.account_name !== account)].map(exampleFrom).filter(Boolean).slice(0, 3);
-  const prospect = { name: str(b.prospect?.name, 120), headline: str(b.prospect?.headline, 300) };
+  const prospect = { name: str(b.prospect?.name, 120), headline: str(b.prospect?.headline, 300), url: str(b.prospect?.url, 300) };
+  let source: unknown = null;
+  try { source = await sourceOf(prospect, messages); } catch (e) { source = { error: String(e).slice(0, 200) }; }
   const persona_missing = !(pr.data && (pr.data.who_they_are || pr.data.voice || pr.data.offer));
 
   const d = await sb.from("reply_drafts").insert({
-    account_name: account, requested_by: by, thread_key: str(b.thread_key, 200) || null, prospect_name: prospect.name || null, prospect_headline: prospect.headline || null,
+    account_name: account, requested_by: by, thread_key: str(b.thread_key, 200) || null, prospect_name: prospect.name || null, prospect_headline: prospect.headline || null, prospect_url: prospect.url || null,
     status: "working", progress: "Waiting for Claude to start", persona_missing, model: "routine",
-    input: { prospect, messages, resources, examples, tweak: str(b.tweak, 200) },
+    input: { prospect, source, messages, resources, examples, tweak: str(b.tweak, 200) },
   }).select("id").single();
   if (d.error) return json({ ok: false, error: d.error.message }, 500);
 

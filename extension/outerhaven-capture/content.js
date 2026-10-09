@@ -285,6 +285,7 @@
   const draftKey = r => (r?.payload.thread_key || '') + '|' + (r?.payload.prospect_name || '');
   function hideDraft() { draftFor = ''; $('draftBox').style.display = 'none'; $('card').classList.remove('wide'); }
   const FLAG_TEXT = { persona_missing: 'No persona written for this account: ask an admin to fill it in (HQ → Growth → Reply assist)', no_resource_matched: 'No matching resource found: add the link yourself', instruction_in_message: 'The message tried to give the AI instructions: be careful' };
+  const APPROACH = { hostage_ask: 'Ask our questions before sending the resource', deliver: 'They answered: send the resource', qualify: 'Find out if they are a fit', book: 'Move to a call', nurture: 'Keep warm, no ask yet', close_out: 'Polite close', holding: 'Holding reply: a person decides' };
   const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
   // Claude (the same routine as HQ chat) writes it in 1-2 minutes. Each draft is tied to the chat it was asked for: if you
   // switch chats meanwhile it waits, and shows when you come back to that chat.
@@ -295,7 +296,7 @@
   function showDraft(key, d) {
     draftFor = key;
     $('dout').value = d.reply || '';
-    $('dmeta').innerHTML = [d.background ? `<b>Who:</b> ${esc(d.background)}` : '', d.intent ? `<b>Looks like:</b> ${esc(d.intent.replace(/_/g, ' '))}` : '', d.next_step ? `<b>Next:</b> ${esc(d.next_step)}` : ''].filter(Boolean).join('<br>');
+    $('dmeta').innerHTML = [d.background ? `<b>Who:</b> ${esc(d.background)}` : '', d.approach ? `<b>Play:</b> ${esc(APPROACH[d.approach] || d.approach.replace(/_/g, ' '))}` : '', d.next_step ? `<b>Next:</b> ${esc(d.next_step)}` : ''].filter(Boolean).join('<br>');
     $('dflags').innerHTML = (d.needs_human ? '<span class="flag warn">Needs a person: check before sending</span>' : '') + (d.flags || []).map(f => `<span class="flag ${FLAG_TEXT[f] ? 'warn' : ''}">${esc(FLAG_TEXT[f] || f)}</span>`).join('');
     $('dnote').textContent = d.remaining_today != null ? `${d.remaining_today} drafts left today` : '';
     $('draftBox').style.display = 'grid'; $('card').classList.add('wide'); say('');
@@ -310,7 +311,7 @@
     pending = key; ready.delete(key); hideDraft();
     $('draft').disabled = true; $('dagain').disabled = true; say('Sending the chat to Claude…');
     const res = await ask({ action: 'draft', account: $('acct').value, booked_by: $('me').value, thread_key: p.thread_key, tweak: $('tweak').value.trim(),
-      prospect: { name: p.prospect_name, headline: p.prospect_headline },
+      prospect: { name: p.prospect_name, headline: p.prospect_headline, url: p.prospect_url }, thread_url: p.thread_url,
       messages: p.messages.slice(-30).map(m => ({ from: m.from, text: m.text, at: m.at })) });
     const done = () => { pending = ''; $('draft').disabled = false; $('dagain').disabled = false; };
     if (!res?.ok) { done(); say(res?.error || 'Draft failed', 'bad'); return; }
