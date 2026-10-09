@@ -35,7 +35,7 @@ function cellOf(rows, day, who, today) {
 export async function renderRecord(root) {
   const t = opsToday();
   if (view.y == null) { view.y = +t.slice(0, 4); view.m = +t.slice(5, 7) - 1; }
-  root.innerHTML = `<div class="head"><div><h1>Track record</h1><p>Every day, who finished what they were given. Green is everything done; red is under 60%.</p></div></div><div id="rcBody"><div class="empty">Loading…</div></div>`;
+  root.innerHTML = `<div class="head"><div><h1>Track record</h1><p>Who finished what they were given, day by day.</p></div></div><div id="rcBody"><div class="empty">Loading…</div></div>`;
   const body = $('#rcBody', root);
   const first = iso(view.y, view.m, 1), last = iso(view.y, view.m, new Date(view.y, view.m + 1, 0).getDate());
   const from28 = new Date(Date.parse(t) - 28 * 864e5).toISOString().slice(0, 10);
@@ -66,22 +66,32 @@ export async function renderRecord(root) {
     if (!d) return '<span class="rcCell blank"></span>';
     const day = iso(view.y, view.m, d), c = cellOf(rows, day, who, t);
     const label = { full: 'All done', part: `${c.done}/${c.planned} done`, miss: `${c.done}/${c.planned} done`, norec: 'HQ not opened', live: 'In progress', none: 'Nothing planned', future: '' }[c.state];
-    const sub = c.state === 'norec' ? '—' : c.state === 'live' ? `${c.done}/${c.planned}` : c.pct != null ? c.pct + '%' : '';
+    const sub = c.state === 'norec' ? 'not opened' : c.state === 'live' ? `${c.done}/${c.planned}` : c.pct != null ? c.pct + '%' : '';
     return `<button type="button" class="rcCell ${c.state} ${day === t ? 'today' : ''} ${view.day === day ? 'sel' : ''}" data-day="${day}" title="${esc(day + ' · ' + label)}" ${c.state === 'future' ? 'disabled' : ''}><b>${d}</b><small>${sub}</small></button>`;
   }).join('');
 
-  body.innerHTML = `<div class="rcTop">
-      <label class="field" style="max-width:220px">Person<select class="select" id="rcWho"><option value="">Everyone</option>${people.map(p => `<option ${p === who ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></label>
-      <div class="rcKpis"><div class="kpi"><label>Last 14 days</label><b>${s.pct == null ? '—' : s.pct + '%'}</b><small>${s.done} of ${s.planned} tasks</small></div>
-        <div class="kpi"><label>Full days in a row</label><b>${s.streak}</b><small>ending yesterday</small></div>
-        <div class="kpi"><label>Bad days</label><b class="${s.missed ? 'down' : ''}">${s.missed}</b><small>under 60%${s.norec ? `, ${s.norec} with HQ not opened` : ''}</small></div></div></div>
-    <div class="rcCols"><section class="card"><header><div><h2>${MON[view.m]} ${view.y}</h2><p>${who ? esc(who) : 'Everyone together'}. Click a day.</p></div><div class="row"><button class="btn sm" id="rcPrev" aria-label="Previous month">←</button><button class="btn sm" id="rcNext" aria-label="Next month">→</button></div></header>
-      <div class="body"><div class="rcGrid"><span class="rcHd">Mon</span><span class="rcHd">Tue</span><span class="rcHd">Wed</span><span class="rcHd">Thu</span><span class="rcHd">Fri</span><span class="rcHd">Sat</span><span class="rcHd">Sun</span>${grid}</div>
-      <div class="rcKey"><span><i class="full"></i>All done</span><span><i class="part"></i>60–99%</span><span><i class="miss"></i>Under 60%</span><span><i class="norec"></i>HQ not opened</span><span><i class="live"></i>Today</span></div></div></section>
-    <section class="card"><header><div><h2>Last 14 days by person</h2><p>Lowest first. Click to filter.</p></div></header><div class="body flush"><ul class="rcList">${lead.map(r => `<li data-who="${esc(r.p)}">${avatar(r.p, 'sm')}<b>${esc(r.p)}</b><span class="rcMini">${days14.slice().reverse().map(d => `<i class="${cellOf(recent, d, r.p, t).state}" title="${d}"></i>`).join('')}</span><em class="${r.pct != null && r.pct < 60 ? 'down' : r.pct === 100 ? 'up' : ''}">${r.pct == null ? '—' : r.pct + '%'}</em></li>`).join('') || '<li class="muted s" style="padding:16px">No tasks recorded.</li>'}</ul></div></section></div>
+  const chip = (val, label, av) => `<button type="button" class="rcWho ${who === val ? 'on' : ''}" data-who="${esc(val)}">${av ? avatar(val) : ''}<span>${esc(label)}</span></button>`;
+  const kpi = (label, val, sub, tone = '') => `<div class="kpi rcKpi"><label>${label}</label><b class="${tone}">${val}</b><small>${sub}</small></div>`;
+  body.innerHTML = `
+    <div class="rcBar" role="group" aria-label="Person">${chip('', 'Everyone')}${people.map(p => chip(p, p, true)).join('')}</div>
+    <div class="rcKpis">
+      ${kpi('Done, last 14 days', s.pct == null ? '—' : s.pct + '%', `${s.done} of ${s.planned} tasks`, s.pct == null ? '' : s.pct < 60 ? 'down' : s.pct === 100 ? 'up' : '')}
+      ${kpi('Full days in a row', s.streak, 'ending yesterday')}
+      ${kpi('Bad days', s.missed, 'under 60% done', s.missed ? 'down' : '')}
+      ${kpi('HQ not opened', s.norec, 'in the last 14 days', s.norec ? 'down' : '')}
+    </div>
+    <div class="rcCols">
+      <section class="card"><header><div><h2>${MON[view.m]} ${view.y}</h2><p>${who ? esc(who) : 'Everyone together'} · click a day for its tasks</p></div>
+        <div class="rcNav"><button class="btn sm" id="rcPrev" aria-label="Previous month">‹</button><button class="btn sm" id="rcNow">Today</button><button class="btn sm" id="rcNext" aria-label="Next month">›</button></div></header>
+        <div class="body"><div class="rcGrid">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => `<span class="rcHd">${d}</span>`).join('')}${grid}</div>
+        <div class="rcKey"><span><i class="full"></i>All done</span><span><i class="part"></i>60–99%</span><span><i class="miss"></i>Under 60%</span><span><i class="norec"></i>HQ not opened</span><span><i class="live"></i>Today</span></div></div></section>
+      <section class="card"><header><div><h2>By person</h2><p>Last 14 days, lowest first</p></div></header>
+        <div class="body flush"><ul class="rcList">${lead.map(r => `<li data-who="${esc(r.p)}" class="${r.p === who ? 'on' : ''}">${avatar(r.p)}<b>${esc(r.p)}</b><span class="rcMini">${days14.slice().reverse().map(d => `<i class="${cellOf(recent, d, r.p, t).state}" title="${d}"></i>`).join('')}</span><em class="${r.pct != null && r.pct < 60 ? 'down' : r.pct === 100 ? 'up' : ''}">${r.pct == null ? '—' : r.pct + '%'}</em></li>`).join('') || '<li class="muted s rcNone">No tasks recorded.</li>'}</ul></div></section>
+    </div>
     <section class="card" id="rcDay" ${view.day ? '' : 'hidden'}></section>`;
 
-  $('#rcWho', body).onchange = e => { view.who = e.target.value; renderRecord(root); };
+  $$('.rcWho', body).forEach(b => b.onclick = () => { view.who = b.dataset.who; renderRecord(root); });
+  $('#rcNow', body).onclick = () => { view.y = +t.slice(0, 4); view.m = +t.slice(5, 7) - 1; view.day = null; renderRecord(root); };
   $('#rcPrev', body).onclick = () => { view.m--; if (view.m < 0) { view.m = 11; view.y--; } view.day = null; renderRecord(root); };
   $('#rcNext', body).onclick = () => { view.m++; if (view.m > 11) { view.m = 0; view.y++; } view.day = null; renderRecord(root); };
   $$('[data-day]', body).forEach(b => b.onclick = () => { view.day = b.dataset.day; $$('.rcCell', body).forEach(x => x.classList.toggle('sel', x === b)); dayDetail($('#rcDay', body), view.day, who); });

@@ -315,14 +315,23 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 ## Reply assist, track record, post scoring (9 Oct 2026; Tengku)
 - **Sync inbox tasks**: 9 daily team tasks "Sync inbox: <name>" (assignee Tengku, `supabase/2026-10-09-sync-inbox-tasks.sql`). Manual click only:
   never auto-sync on a timer (LinkedIn would see scripted page opens at fixed times; Tengku rejected it).
-- **Reply assist**: extension v2.2 "Draft a reply" (draft only, never types or sends) → edge function `reply-assist` (`x-capture-key`, `prompt.js` pure
-  helpers, test `node scripts/tests/test_reply_prompt.mjs`) → Claude API (`MODEL` in prompt.js) with the account's `reply_personas` row (the ONLY facts a draft may
-  claim), matching ready resources, and up to 3 threads that booked a meeting. Lead messages are untrusted data. Logs `reply_drafts`; cap `growth_settings.reply_daily_cap`.
-  Key `ANTHROPIC_API_KEY` pasted by an admin in HQ → Growth → Reply assist (RPC `set_anthropic_key`, write-only; never enter it for them). No personas seeded: drafts are generic until written.
+- **Reply assist** (Tengku: no Claude API, same engine as HQ chat): extension v2.4 "Draft a reply" (draft only, never types or sends) → edge function
+  `reply-assist` (`x-capture-key`; action draft → `reply_drafts` row status 'working' + `resource_jobs` row `payload.type='reply'` → fires the
+  resource-builder routine; action status = poll every 4 s; a finished draft stays tied to its chat). `input.source` = where the lead came from,
+  matched by profile slug then exact name: their comments on our posts (post caption + the post's linked lead magnet), Prosp campaign replies
+  (`lead_intake`, profile bio from `raw_payload.eventData.profileInfo`), our opener + matching DM test version. The routine (`routines/reply.md`)
+  works out source, the LEAD's background (`lead_type`: owner_operator / sponsor_or_fund / adviser_or_banker / investor / service_provider / other;
+  advisers = deal-flow partners) and stage, then picks a play (`approach`): **hostage rule first** (lead magnet asked for and our questions
+  unanswered → `hostage_ask`, no link; answered → `deliver`; pushback twice → send anyway), else qualify / book / nurture / close_out / holding.
+  Learning loop: views `reply_outcomes` (replied = later draft on the same chat or inbox sync shows them last after the draft) and
+  `reply_approach_stats`; the routine prefers the play with the best reply rate per lead type at 20+ results; HQ → Growth → Reply assist shows it.
+  Personas (`reply_personas`) are only the facts about OUR account a draft may claim, written by Claude (`supabase/2026-10-09-reply-personas.sql`;
+  Sara/Dev/Sahid/Reza: no title/employer on file, no booking link). Cap `reply_daily_cap`, 4 at once, `reply_sweep()` errors drafts stuck 15 min.
+  Reply jobs count against the routine's daily limit. `set_anthropic_key` / `anthropic_key_set` from the first version are unused.
 - **Track record** (`#/record`, `hq/record.js`, admin): RPC `track_record(from,to)` per person per day (planned/done/skipped/open/`no_record` = nobody opened HQ that day).
 - **Playbook** (Growth → Playbook, `hq/playbook.js`, engine `hq/scoring.js`, test `node hq/scoring-test.mjs`): each post vs its own account's median, factor effects shrunk toward 0 (K=3),
   predictor, library. SQL twin: view `post_scores`. Directional until ~100 tagged posts; link meetings to posts so "converted" counts.
-- Migrations: `2026-10-09-sync-inbox-tasks.sql`, `-reply-record-scores.sql`, `-anthropic-key.sql`.
+- Migrations: `2026-10-09-sync-inbox-tasks.sql`, `-reply-record-scores.sql`, `-reply-routine.sql`, `-reply-personas.sql`, `-reply-outcomes.sql` (`-anthropic-key.sql` unused).
 
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.
