@@ -1286,3 +1286,17 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .fsAct .btn:not(.primary){height:28px;border-color:transparent;background:none;color:var(--muted);font-weight:500}
 .fsAct .btn:not(.primary):hover{background:var(--hover);color:var(--ink)}
 @media (max-width:760px){.fsRow{grid-template-columns:40px minmax(0,1fr)}.fsAct{grid-column:2;grid-template-columns:auto 1fr auto auto;align-items:center}.fsAct .mkBtns{margin:0}.wyLine>span:last-child{white-space:normal}}
+
+/* Contact line on signal cards (hq/contacts.js): who to contact and how */
+.ct{display:grid;gap:4px;margin-top:10px;padding:8px 10px;border-radius:var(--r);background:var(--sunk);font-size:var(--fs-s)}
+.ctPerson{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
+.ctPerson b{font-weight:600;color:var(--ink)}
+.ctRole{min-width:30px;font-size:var(--fs-xs);font-weight:600;color:var(--muted)}
+.ctSrc{font-size:10px;font-weight:600;letter-spacing:.04em;padding:1px 5px;border-radius:4px;background:var(--surface);border:1px solid var(--line);color:var(--muted);text-decoration:none}
+.ctLink{padding:0;border:0;background:none;font:inherit;font-size:var(--fs-xs);font-weight:600;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line-2);cursor:pointer}
+.ctLink.muted{color:var(--muted);border-bottom-color:transparent}
+.ctLink:hover{color:var(--brass-2)}
+.ctOk{font-size:var(--fs-xs);font-weight:600;font-style:normal;color:var(--good)}
+.ctMeta{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;font-size:var(--fs-xs)}
+.ctNone{color:var(--muted)}
+.ctWarn{flex-basis:100%;color:var(--warn);font-weight:600;text-decoration:none}

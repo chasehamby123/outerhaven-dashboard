@@ -353,6 +353,20 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - **Colour-blind safe** toggle under the theme switch (`html[data-cb="on"]`, localStorage `hq-cb`): good = blue, bad = orange,
   warn = amber, need = purple, for light / dark / tan. Tengku is red-green colour-blind: never rely on red vs green alone.
 
+## Signal contacts (10 Oct 2026; `hq/contacts.js`, `supabase/functions/signal-contacts`, `scripts/officers.py`)
+- Contact block on every Credit / BDC / UCC card: CFO / CEO name, LinkedIn, work email (copy), company phone + website, officer-change
+  warning. Table `signal_contacts` (kind credit|bdc|ucc + key: cik / company_key; `people` jsonb). Migration `supabase/2026-10-10-signal-contacts.sql`.
+- Public companies: `scripts/officers.py` (workflow mode `officers`, also daily after credit) reads the "I, <name>, certify" lines in
+  Exhibits 31.1 (CEO) / 31.2 (CFO) of the latest 10-K/10-Q, flags an 8-K Item 5.02 filed after it, takes phone/website from the SEC
+  company file → ingest kinds `officers_todo` / `officers` (x-fund-ingest). Offline test: `python3 -I scripts/tests/test_officers.py`.
+- LinkedIn + website: Brave Search API (`BRAVE_SEARCH_KEY`) in the edge function; pg_cron `signal-contacts` every 30 min looks up 6
+  targets per run, 120/day (BDC best first, then credit, then UCC). SEC-named people are searched by name; others by company + role,
+  parsed from LinkedIn result titles (`parse.js`, test `node scripts/tests/test_contacts_parse.mjs`). Search finds are unconfirmed
+  until someone clicks ✓ Right / ✕ Wrong (action `mark`). Never Google scraping or AI Overviews (Tengku asked; wrong names, CAPTCHAs).
+- Email: Hunter email-finder (`HUNTER_API_KEY`), on click only ("Find email", one credit per person); needs the domain from the lookup.
+- Keys pasted by an admin in any signal tab → "Contacts setup" (RPC `set_contact_key`, write-only; never enter them for the user).
+- "Add to pipeline" pre-fills name, title and LinkedIn from the best person.
+
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.
 - Never enter passwords, API keys or tokens for the user, even with permission. Point them to the HQ field.

@@ -4,6 +4,7 @@
 // supabase/functions/bdc-signals/rules.js). Filters kept in localStorage 'hq-bdc-filters'.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
 import { whyBlock } from './kinds.js';
+import { loadContacts, contactHtml, bindContacts, bestPerson, contactsSetup } from './contacts.js';
 import { markBtns, markLine, bindMarks, MARK_VIEWS, inMarkView } from './marks.js';
 
 let el = null, rows = [], runs = [], view = 'target', onCount = () => {};
@@ -27,6 +28,7 @@ async function load() {
   ]);
   if (c.error) { rows = null; return; }
   rows = c.data || []; runs = r.data || [];
+  await loadContacts('bdc', true).catch(() => null);
 }
 export function bdcTargetCount() { return rows ? rows.filter(s => bucket(s) === 'target').length : 0; }
 
@@ -79,7 +81,7 @@ function draw() {
   const last = runs[0], st = last?.stats || {};
   el.innerHTML = `<div class="fs">
     <div class="fsTop"><p class="pHint" style="padding:0;margin:0;max-width:700px">Private companies with <b>$10–150M of debt</b> from public lending funds (BDCs), where the loan matures within 18 months or the lender has marked it down. Size, maturity and the lender's own valuation come straight from the lenders' SEC filings, not estimates.</p>
-      <div class="row fsBtns"><a class="btn sm ghost" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a><button class="btn sm ghost" id="bdHow">How it works</button><a class="btn sm ghost" href="#/rules">How we qualify</a></div></div>
+      <div class="row fsBtns"><a class="btn sm ghost" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a><button class="btn sm ghost" id="bdHow">How it works</button><a class="btn sm ghost" href="#/rules">How we qualify</a><button class="btn sm ghost" id="ctSetup">Contacts setup</button></div></div>
     <p class="pHint">Source: the SEC's BDC data sets (every BDC's loan list, monthly). Free.${last ? ` Last run <b>${new Date(last.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>${st.bdcs ? ` · ${st.bdcs} BDCs, ${Number(st.borrowers || 0).toLocaleString()} borrowers read` : ''}.` : ' Not run yet: on GitHub choose Run workflow, mode <b>bdc</b>.'}</p>
     <div class="ucFilters">
       <label class="ucF ucQ"><span>Search</span><input class="input" data-f="q" type="search" placeholder="Company, industry or lender" value="${esc(F.q)}"></label>
@@ -129,6 +131,7 @@ function rowHtml(s) {
       <h4>${esc(s.company_name)} <span class="fsVeh">${s.lenders} BDC lender${s.lenders === 1 ? '' : 's'}${s.pik ? ' · PIK' : ''}${s.nonaccrual ? ' · non-accrual' : ''}</span></h4>
       ${markLine(s)}
       <div class="fsFacts">${facts.map(x => `<span>${x}</span>`).join('')}</div>
+      ${contactHtml('bdc', s.company_key, s)}
       ${whyBlock(s.reasons, esc)}
       <details class="ucLiens"><summary>Lenders (${holders.length})</summary><table><tbody>${holders.map(h => `<tr><td>${h.url ? `<a href="${esc(h.url)}" target="_blank" rel="noopener">${esc(bdcShort(h.bdc))} ↗</a>` : esc(bdcShort(h.bdc))}</td><td>${money(h.principal)}</td><td>${h.principal ? Math.round(100 * h.fair / h.principal) + '¢' : ''}</td><td class="muted">${h.maturity ? 'matures ' + esc(mon(h.maturity)) : ''}${h.period ? ` · as of ${esc(mon(h.period))}` : ''}</td></tr>`).join('')}</tbody></table>
         ${s.sample ? `<p class="s muted" style="margin:6px 0 0">As filed: ${esc(s.sample)}</p>` : ''}</details>
@@ -156,6 +159,8 @@ function opener(s, name = '') {
 function bind(shown) {
   const find = id => shown.find(s => s.id === id) || rows.find(s => s.id === id);
   bindMarks(el, { table: 'bdc_signals', find, redraw: drawList });
+  bindContacts(el, 'bdc', drawList);
+  $('#ctSetup', el)?.addEventListener('click', contactsSetup);
   $$('[data-view]', el).forEach(b => b.onclick = () => { view = b.dataset.view; drawList(); });
   $$('[data-copy]', el).forEach(b => b.onclick = async () => {
     const t = opener(find(b.dataset.copy));
@@ -170,12 +175,13 @@ function bind(shown) {
 }
 
 function addModal(s) {
+  const cp = bestPerson('bdc', s.company_key);
   modal({
     title: 'Add to pipeline', submit: 'Add',
     body: `<div class="form pForm"><p class="s muted" style="grid-column:1/-1;margin:0"><b>${esc(s.company_name)}</b>: ${money(s.facility)} of BDC debt${s.earliest_maturity ? `, matures ${esc(mon(s.earliest_maturity))}` : ''}. Find the CFO first: <a href="${cfoSearch(s)}" target="_blank" rel="noopener">LinkedIn search ↗</a></p>
-      <label class="field">Name<input class="input" name="name" required placeholder="Jane Smith"></label>
-      <label class="field">Title<input class="input" name="title" value="CFO"></label>
-      <label class="field" style="grid-column:1/-1">LinkedIn URL (optional)<input class="input" name="li"></label>
+      <label class="field">Name<input class="input" name="name" required placeholder="Jane Smith" value="${esc(cp?.name || '')}"></label>
+      <label class="field">Title<input class="input" name="title" value="${esc(cp ? ({ cfo: 'CFO', ceo: 'CEO' }[cp.role] || cp.title || 'CFO') : 'CFO')}"></label>
+      <label class="field" style="grid-column:1/-1">LinkedIn URL (optional)<input class="input" name="li" value="${esc(cp?.linkedin || '')}"></label>
       <label class="field" style="grid-column:1/-1">First step<input class="input" name="next" value="Connect and send the opener (refinancing ahead of maturity)"></label>
       <label class="field">Owner<select class="select" name="owner">${opts(['Peter', 'Tengku', 'Chase', 'Anaz', 'Razeen'], 'Peter')}</select></label></div>`,
     async onSubmit(fd) {

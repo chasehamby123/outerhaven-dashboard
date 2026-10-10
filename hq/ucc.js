@@ -4,6 +4,7 @@
 // on the server (classifyUcc in supabase/functions/ucc-signals/rules.js). Every verdict shows its reasons.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
 import { whyBlock } from './kinds.js';
+import { loadContacts, contactHtml, bindContacts, bestPerson, contactsSetup } from './contacts.js';
 import { markBtns, markLine, bindMarks, MARK_VIEWS, inMarkView } from './marks.js';
 
 let el = null, rows = [], runs = [], view = 'target', onCount = () => {};
@@ -26,6 +27,7 @@ async function load() {
   ]);
   if (c.error) { rows = null; return; }
   rows = (c.data || []).filter(s => s.company_key !== 'ZZTEST|CT'); runs = r.data || [];
+  await loadContacts('ucc', true).catch(() => null);
 }
 export function uccTargetCount() { return rows ? rows.filter(s => bucket(s) === 'target').length : 0; }
 
@@ -75,7 +77,7 @@ function draw() {
   const regs = tally(s => s.sources || []).map(([k]) => k).sort();
   el.innerHTML = `<div class="fs">
     <div class="fsTop"><p class="pHint" style="padding:0;margin:0;max-width:680px">Private companies with roughly $30M+ revenue whose lien filings show they need money: tax or judgment liens, stacked merchant cash advances, or a bank facility about to lapse. Sizes are 2020 estimates and loan amounts are unknown, so these mostly suit asset-based and factoring lenders. For direct lenders, start with <b>BDC loans</b> (real loan sizes).</p>
-      <div class="row fsBtns"><a class="btn sm ghost" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a><button class="btn sm ghost" id="ucHow">How it works</button><a class="btn sm ghost" href="#/rules">How we qualify</a></div></div>
+      <div class="row fsBtns"><a class="btn sm ghost" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a><button class="btn sm ghost" id="ucHow">How it works</button><a class="btn sm ghost" href="#/rules">How we qualify</a><button class="btn sm ghost" id="ctSetup">Contacts setup</button></div></div>
     <p class="pHint">Source: ${regs.length ? regs.join(', ') : 'state'} UCC data (Florida = federal tax liens only), sized by SBA PPP loans. Refreshed daily on GitHub, free.${last ? ` Last run <b>${new Date(last.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>${st.filings ? ` · ${Number(st.filings).toLocaleString()} filings on sized companies read` : ''}${st.complete === false ? ' · <b style="color:var(--bad)">not every state loaded</b>' : ''}.` : ' Not run yet: on GitHub choose Run workflow, mode <b>ucc</b>.'}</p>
     <div class="ucFilters">
       <label class="ucF ucQ"><span>Search</span><input class="input" data-f="q" type="search" placeholder="Company or city" value="${esc(F.q)}"></label>
@@ -127,6 +129,7 @@ function rowHtml(s) {
       <h4>${esc(s.company_name)} <span class="fsVeh">${esc((s.sources || []).join(' · '))} UCC</span></h4>
       ${markLine(s)}
       <div class="fsFacts">${facts.map(x => `<span>${x}</span>`).join('')}</div>
+      ${contactHtml('ucc', s.company_key, s)}
       ${whyBlock(s.reasons, esc)}
       ${liens.length ? `<details class="ucLiens"><summary>Filings (${(s.liens || []).length})</summary><table><tbody>${liens.map(l => `<tr><td>${esc(mon(l.filed))}</td><td>${esc(CLASS[l.class] || l.class)}</td><td>${esc(l.party)}</td><td class="muted">${l.status === 'active' ? (l.lapse && !l.lapse.startsWith('9999') ? 'lapses ' + esc(mon(l.lapse)) : 'active') : 'released'}</td></tr>`).join('')}</tbody></table></details>` : ''}
       <div class="fsPeople"><a href="${ceoSearch(s)}" target="_blank" rel="noopener">Find the owner / CEO on LinkedIn ↗</a><a href="${webSearch(s)}" target="_blank" rel="noopener">Website ↗</a></div>
@@ -154,6 +157,8 @@ function opener(s, name = '') {
 function bind(shown) {
   const find = id => shown.find(s => s.id === id) || rows.find(s => s.id === id);
   bindMarks(el, { table: 'ucc_signals', find, redraw: drawList });
+  bindContacts(el, 'ucc', drawList);
+  $('#ctSetup', el)?.addEventListener('click', contactsSetup);
   $$('[data-view]', el).forEach(b => b.onclick = () => { view = b.dataset.view; drawList(); });
   $$('[data-copy]', el).forEach(b => b.onclick = async () => {
     const t = opener(find(b.dataset.copy));
@@ -168,12 +173,13 @@ function bind(shown) {
 }
 
 function addModal(s) {
+  const cp = bestPerson('ucc', s.company_key);
   modal({
     title: 'Add to pipeline', submit: 'Add',
     body: `<div class="form pForm"><p class="s muted" style="grid-column:1/-1;margin:0"><b>${esc(s.company_name)}</b>${s.city ? `, ${esc(s.city)}` : ''}. Find the owner or CEO first: <a href="${ceoSearch(s)}" target="_blank" rel="noopener">LinkedIn search ↗</a></p>
-      <label class="field">Name<input class="input" name="name" required placeholder="Jane Smith"></label>
-      <label class="field">Title<input class="input" name="title" value="CEO"></label>
-      <label class="field" style="grid-column:1/-1">LinkedIn URL (optional)<input class="input" name="li"></label>
+      <label class="field">Name<input class="input" name="name" required placeholder="Jane Smith" value="${esc(cp?.name || '')}"></label>
+      <label class="field">Title<input class="input" name="title" value="${esc(cp ? ({ cfo: 'CFO', ceo: 'CEO' }[cp.role] || cp.title || 'CEO') : 'CEO')}"></label>
+      <label class="field" style="grid-column:1/-1">LinkedIn URL (optional)<input class="input" name="li" value="${esc(cp?.linkedin || '')}"></label>
       <label class="field" style="grid-column:1/-1">First step<input class="input" name="next" value="Connect and send the opener (Peter's private credit angle)"></label>
       <label class="field">Owner<select class="select" name="owner">${opts(['Peter', 'Tengku', 'Chase', 'Anaz', 'Razeen'], 'Peter')}</select></label></div>`,
     async onSubmit(fd) {
