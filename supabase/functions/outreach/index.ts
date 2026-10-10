@@ -41,6 +41,17 @@ const settings = async () => (await sb.from("outreach_settings").select("*").eq(
 const live = (c: any) => (c?.people || []).filter((p: any) => p.status !== "wrong");
 const okEmail = (p: any, min: number) => p?.email && (p.email_status === "valid" || (p.email_score ?? 0) >= min);
 
+// The name a person would write in an email: "HYDROFARM HOLDINGS GROUP, INC." → "Hydrofarm", "Boxlight Corp" → "Boxlight".
+// ALL-CAPS SEC names are title-cased; short all-caps words (XCF, ORL) stay as acronyms. {{company}} in both campaigns uses this.
+export function cleanName(n: string) {
+  let s = String(n || "").replace(/\s*\/[A-Z]{2}\/?\s*$/, "").replace(/\s*\(.*?\)\s*/g, " ");
+  const SUF = /,?\s+(incorporated|inc|corp|corporation|co|company|ltd|llc|l\.l\.c|plc|lp|l\.p|holdings?|holding corp|group|buyer|midco|bidco|topco|holdco|parent|intermediate|acquisition|borrower|finco|us|usa)\.?$/i;
+  for (let i = 0; i < 6 && SUF.test(s.trim()) && s.trim().split(/\s+/).length > 1; i++) s = s.trim().replace(SUF, "");
+  s = s.replace(/[,.\s]+$/, "").replace(/\s+/g, " ").trim();
+  if (s === s.toUpperCase()) s = s.split(" ").map(w => w.length <= 3 && /^[A-Z]+$/.test(w) ? w : w.charAt(0) + w.slice(1).toLowerCase()).join(" ");
+  return s || String(n || "");
+}
+
 // Send one company on both channels. Returns the enrollment row.
 async function sendOne(it: any, st: any, keys: { prosp: string; pv: string }, who: string) {
   const kind = String(it.kind), key = String(it.key);
@@ -54,7 +65,7 @@ async function sendOne(it: any, st: any, keys: { prosp: string; pv: string }, wh
   if (!p) return { kind, key, skipped: "no contact person yet" };
   const email = okEmail(p, st.min_email_score ?? 90) ? p.email : null;
   if (!p.linkedin && !email) return { kind, key, skipped: "no LinkedIn or valid email" };
-  const company = sig.company_name, parts = String(p.name).trim().split(/\s+/), first = parts[0], last = parts.slice(1).join(" ");
+  const company = sig.company_name, short = cleanName(company), parts = String(p.name).trim().split(/\s+/), first = parts[0], last = parts.slice(1).join(" ");
   const opener = String(it.opener || "").slice(0, 1500);
   const need = String(it.need || "").slice(0, 300);
   // Which LinkedIn account sends it: the requested owner, else round-robin over accounts with a campaign.
@@ -81,7 +92,7 @@ async function sendOne(it: any, st: any, keys: { prosp: string; pv: string }, wh
   if (p.linkedin && acct && keys.prosp) {
     try {
       await post(`${PROSP}/leads`, { api_key: keys.prosp, linkedin_url: p.linkedin, list_id: acct.list_id, campaign_id: acct.campaign_id,
-        data: [{ property: "first_name", value: first }, { property: "company", value: company }, { property: "opener", value: opener }, { property: "need", value: need }] });
+        data: [{ property: "first_name", value: first }, { property: "company", value: short }, { property: "opener", value: opener }, { property: "need", value: need }] });
       row.prosp_status = "added"; row.prosp_campaign_id = acct.campaign_id;
     } catch (e) { row.prosp_status = "failed"; row.prosp_error = String((e as Error).message || e); }
   } else row.prosp_status = !p.linkedin ? "skipped: no LinkedIn" : !keys.prosp ? "skipped: no Prosp key" : "skipped: no Prosp campaign for this account";
@@ -89,7 +100,7 @@ async function sendOne(it: any, st: any, keys: { prosp: string; pv: string }, wh
   if (email && keys.pv && st.plusvibe_workspace_id && st.plusvibe_campaign_id) {
     try {
       const r = await post(`${PV}/lead/add`, { workspace_id: st.plusvibe_workspace_id, campaign_id: st.plusvibe_campaign_id, skip_lead_in_active_pause_camp: true,
-        leads: [{ email, first_name: first, last_name: last, company_name: company, company_website: c?.website || undefined, linkedin_person_url: p.linkedin || undefined,
+        leads: [{ email, first_name: first, last_name: last, company_name: short, company_website: c?.website || undefined, linkedin_person_url: p.linkedin || undefined,
           phone_number: c?.phone || undefined, custom_variables: { opener, need, title: p.title || "" } }] }, { "x-api-key": keys.pv });
       row.plusvibe_status = (r?.leads_uploaded ?? 1) > 0 ? "added" : `skipped: ${r?.already_in_campaign ? "already in campaign" : r?.invalid_email_count ? "invalid email" : "not uploaded"}`;
     } catch (e) { row.plusvibe_status = "failed"; row.plusvibe_error = String((e as Error).message || e); }
