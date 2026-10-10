@@ -94,6 +94,12 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   stores `teaser_job_id`, and HQ copies `payload.teaser` onto the deal when the job is ready. Uploaded teasers/CIMs go to the private
   bucket `deal-docs` (`<deal id>/<ts>-<file>`, doc_links `{label, path}`) and open in a popup through a 1-hour signed link; Drive/Docs
   links open as /preview.
+- **Their teaser first (10 Oct 2026, Tengku: rewrites came out thinner than their own teaser):** a deal with their document on file
+  (`theirDoc`: label/path like teaser/CIM/deck, else first PDF) shows **Their teaser** as the main button; ours is a secondary
+  "Our anonymised version" or "Make anonymised version". Import no longer auto-fires Claude. A Claude write always reads their full PDF
+  (re-extracted from `deal-docs` with deal-import.js) and never wipes the current teaser: `teaser_job_id` = latest job asked for,
+  `teaser_ready_job` = job the stored teaser came from; HQ copies a finished job only when they differ. "Rebuild from deal fields" is
+  hidden when their document exists. Migration `supabase/2026-10-10-deals-teaser-ready.sql`.
 
 ## Fund signals (Pipeline → Fund signals tab, `hq/funds.js`, admin only)
 - Finds US funds raising now (Form D, II/III in the name, pooled fund, $50–250M, <60% sold, no sales commissions) and Fund I / Fund II
