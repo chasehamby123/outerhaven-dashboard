@@ -66,7 +66,7 @@ async function lookup(kind: string, key: string, name?: string) {
   // Named officers (SEC): search each by name for their LinkedIn. Otherwise search the company for finance / top roles.
   const named = people.filter((p: any) => p.source === "sec" && !p.linkedin).slice(0, 2);
   for (const p of named) {
-    const hit = (await brave(`"${p.name}" "${b}" site:linkedin.com/in`, bk)).map(r => profileFrom(r, company)).find(x => x && x.name.split(" ").pop()!.toLowerCase() === String(p.name).split(" ").pop()!.toLowerCase());
+    const hit = (await brave(`"${p.name}" "${b}" site:linkedin.com/in`, bk)).map(r => profileFrom(r, company, true)).find(x => x && x.name.split(" ").pop()!.toLowerCase() === String(p.name).split(" ").pop()!.toLowerCase());
     if (hit) found.push({ ...p, linkedin: hit.linkedin });
   }
   if (!named.length) {

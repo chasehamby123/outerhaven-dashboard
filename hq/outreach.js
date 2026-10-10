@@ -52,7 +52,7 @@ export async function sendBatchModal(onDone) {
       ${list.length ? `<table class="tbl obTbl"><thead><tr><th></th><th>Company</th><th>Contact</th><th>LinkedIn</th><th>Email</th><th>From</th></tr></thead><tbody>
       ${list.map((x, i) => `<tr><td><input type="checkbox" name="pick" value="${i}" checked aria-label="Send to ${esc(x.s.company_name)}"></td>
         <td><b>${esc(x.s.company_name)}</b><br><span class="s muted">${x.kind === 'bdc' ? 'BDC' : 'Public'} · ${esc(needLine(x.s.reasons) || '')}</span></td>
-        <td>${esc(x.p.name)}<br><span class="s muted">${esc(x.p.title || x.p.role?.toUpperCase() || '')}${x.p.source === 'sec' ? ' · SEC' : x.p.status === 'confirmed' ? ' · confirmed' : ' · unconfirmed'}</span></td>
+        <td>${esc(x.p.name)}<br><span class="s muted">${esc(x.p.title || x.p.role?.toUpperCase() || '')}${x.p.employer ? ' at ' + esc(x.p.employer) : ''}${x.p.source === 'sec' ? ' · SEC' : x.p.status === 'confirmed' ? ' · confirmed' : ' · unconfirmed'}</span></td>
         <td>${x.p.linkedin ? `<a href="${esc(x.p.linkedin)}" target="_blank" rel="noopener">✓ ↗</a>` : '—'}</td>
         <td>${emailOk(x.p, st.min_email_score) ? '✓' : x.p.email ? '<span class="s muted">low score</span>' : '—'}</td>
         <td><select class="select sm" name="owner${i}">${opts(owners, owners[i % owners.length])}</select></td></tr>`).join('')}
@@ -60,7 +60,7 @@ export async function sendBatchModal(onDone) {
     async onSubmit(fd) {
       if (!list.length) return;
       const idx = fd.getAll('pick').map(Number);
-      const items = idx.map(i => { const x = list[i]; return { kind: x.kind, key: x.key, owner: fd.get(`owner${i}`), need: needLine(x.s.reasons),
+      const items = idx.map(i => { const x = list[i]; return { kind: x.kind, key: x.key, person: x.p.name, owner: fd.get(`owner${i}`), need: needLine(x.s.reasons),
         opener: x.kind === 'bdc' ? bdcOpener(x.s, x.p.name) : creditOpener(x.s, x.p.name) }; });
       if (!items.length) return;
       const { data, error } = await sb.functions.invoke('outreach', { body: { action: 'send', items } });
@@ -72,6 +72,10 @@ export async function sendBatchModal(onDone) {
     },
   });
   $('#obSetup')?.addEventListener('click', () => { document.querySelector('.modal .x, .modal [data-close]')?.click(); outreachSetup(); });
+  // The send button counts what is ticked, so "Send 10" never goes out with 3 ticked.
+  const btn = document.querySelector('.modal button[type=submit]');
+  const recount = () => { const n = $$('.modal input[name=pick]:checked').length; if (btn) { btn.textContent = n ? `Send ${n}` : 'Nothing ticked'; btn.disabled = !n; } };
+  $$('.modal input[name=pick]').forEach(b => b.addEventListener('change', recount));
 }
 
 export async function outreachSetup() {

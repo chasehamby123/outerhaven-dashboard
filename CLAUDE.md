@@ -363,6 +363,11 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   targets per run, 120/day (BDC best first, then credit, then UCC). SEC-named people are searched by name; others by company + role,
   parsed from LinkedIn result titles (`parse.js`, test `node scripts/tests/test_contacts_parse.mjs`). Search finds are unconfirmed
   until someone clicks ✓ Right / ✕ Wrong (action `mark`). Never Google scraping or AI Overviews (Tengku asked; wrong names, CAPTCHAs).
+  Matching rules (10 Oct, after ~half the first BDC finds were wrong): the role must be in the person's OWN LinkedIn title (snippets are
+  often posts about someone else); the employer on the profile (`employerOf`: "at X", a non-role title segment, or "Experience: X") must
+  pass `sameCompany()` = every distinctive brand word present and no distinctive word the company's name lacks (FILLER words ignored), so
+  "Colonnade Advisors" ≠ Colonnade Parent and "Marquis Companies" ≠ Marquis Software; "Vice President" is not a CEO; former / fractional
+  / consultant rejected. Stored `employer` shows in the batch window. Add every bad match to `scripts/tests/test_contacts_parse.mjs`.
 - Email: Hunter email-finder (`HUNTER_API_KEY`), on click only ("Find email", one credit per person); needs the domain from the lookup.
 - Keys pasted by an admin in any signal tab → "Contacts setup" (RPC `set_contact_key`, write-only; never enter them for the user).
 - "Add to pipeline" pre-fills name, title and LinkedIn from the best person.
@@ -392,6 +397,7 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   no LinkedIn reply came in. No LinkedIn = email right away. `{{company}}` (Prosp) / `{{company_name}}` (PlusVibe) get `cleanName()`
   ("HYDROFARM HOLDINGS GROUP, INC." → "Hydrofarm"). `{{deadline}}` = `deadlineOf()`: "a loan maturing in March 2027" (BDC earliest_maturity), "debt coming due by June 2027" (credit debt_current, period_end + 1y), else "debt that will need refinancing". PlusVibe campaign "Private credit – Q4 (HQ)": 3 steps, step 1 A/B (Tengku vs Claude).
   Migration `supabase/2026-10-10-outreach-linkedin-first.sql`.
+- The batch window sends the exact person shown (`items[].person`); the Send button counts ticked rows.
 - Hunter: one key, 50 lookups/month. Don't build rotation across extra free accounts (Tengku floated it; it breaks Hunter's terms).
 
 ## Rules

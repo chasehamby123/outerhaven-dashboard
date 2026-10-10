@@ -71,7 +71,8 @@ async function sendOne(it: any, st: any, keys: { prosp: string; pv: string }, wh
   const c = (await sb.from("signal_contacts").select("*").eq("kind", kind).eq("key", key).maybeSingle()).data;
   const sig = (await sb.from(TABLE[kind]).select("*").eq(KEYCOL[kind], key).maybeSingle()).data;
   if (!sig) return { kind, key, skipped: "company not found" };
-  const p = live(c)[0];
+  // The person the sender saw in HQ's batch window (same name), else the best stored contact.
+  const p = live(c).find((x: any) => it.person && x.name === it.person) || live(c)[0];
   if (!p) return { kind, key, skipped: "no contact person yet" };
   const email = okEmail(p, st.min_email_score ?? 90) ? p.email : null;
   if (!p.linkedin && !email) return { kind, key, skipped: "no LinkedIn or valid email" };
