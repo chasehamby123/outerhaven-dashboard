@@ -103,12 +103,15 @@ async function cron() {
   const today = (await sb.from("signal_contacts").select("key", { count: "exact", head: true }).gte("looked_up_at", since)).count || 0;
   if (today >= DAILY_CAP) return { skipped: "daily cap" };
   const done = new Set(((await sb.from("signal_contacts").select("kind,key,looked_up_at").not("looked_up_at", "is", null)).data || []).map((r: any) => `${r.kind}:${r.key}`));
-  // Order: BDC targets (best first), credit targets, UCC targets; nothing already looked up.
-  const todo: [string, string, string][] = [];
+  // Order: BDC and credit targets alternately (best first in each, so both outreach lanes fill), then UCC; nothing already looked up.
+  const lists: Record<string, [string, string, string][]> = {};
   for (const kind of ["bdc", "credit", "ucc"]) {
     const rows = (await sb.from(TABLE[kind]).select(`${KEYCOL[kind]},company_name,score`).eq("verdict", "target").in("status", ["new", "added"]).order("score", { ascending: false }).limit(1000)).data || [];
-    for (const r of rows as any[]) { const k = String(r[KEYCOL[kind]]); if (!done.has(`${kind}:${k}`)) todo.push([kind, k, r.company_name]); }
+    lists[kind] = (rows as any[]).map(r => [kind, String(r[KEYCOL[kind]]), r.company_name] as [string, string, string]).filter(([k, key]) => !done.has(`${k}:${key}`));
   }
+  const todo: [string, string, string][] = [];
+  for (let i = 0; i < Math.max(lists.bdc.length, lists.credit.length); i++) { if (lists.bdc[i]) todo.push(lists.bdc[i]); if (lists.credit[i]) todo.push(lists.credit[i]); }
+  todo.push(...lists.ucc);
   let n = 0;
   for (const [kind, key, name] of todo.slice(0, Math.min(PER_RUN, DAILY_CAP - today))) {
     try { await lookup(kind, key, name); n++; } catch (e) { if (String(e).includes("rate limit")) break; await save(kind, key, { company_name: name, looked_up_at: new Date().toISOString(), lookup_note: String((e as Error).message || e) }); }
