@@ -47,3 +47,6 @@ export function whyBlock(reasons, esc) {
   const groups = ['need', 'risk', 'fit', 'check', 'cut', 'info'].map(k => [k, of(k)]).filter(([, l]) => l.length);
   return `<div class="wy">${top}<details class="wyAll"><summary>Why · ${rs.length} reasons</summary>${groups.map(([k, l]) => `<div class="wyGrp" data-kind="${k}"><b><span aria-hidden="true">${KINDS[k].sym}</span> ${KINDS[k].label}</b><ul>${l.map(r => `<li>${esc(r.text)}</li>`).join('')}</ul></div>`).join('')}<a class="wyRules" href="#/rules">How we qualify →</a></details></div>`;
 }
+
+// First Need headline for a reason list (e.g. "Matures Nov 2026 (2 months)"): sent to the outreach tools as {{need}}.
+export const needLine = reasons => { const r = (reasons || []).find(x => kindOf(x) === 'need'); return r ? headline(r.text) : ''; };

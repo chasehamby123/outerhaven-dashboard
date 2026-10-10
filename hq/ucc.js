@@ -143,7 +143,7 @@ function rowHtml(s) {
 }
 
 // Peter's first message. Never mentions the liens (public, but naming them reads as surveillance); leads with the fix.
-function opener(s, name = '') {
+export function opener(s, name = '') {
   const who = firstName(name) || 'there', co = shortName(s.company_name), f = s.facts || {}, sec = sector(s).toLowerCase();
   const peers = sec ? `${sec} companies` : 'companies';
   const body = f.mca_18m || f.mca_12m || f.fintech_18m || f.factoring_24m

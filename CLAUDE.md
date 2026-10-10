@@ -374,6 +374,21 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Sidebar grouped: Overview | Daily work (Today, Scoreboard, Schedule) | Deals (Pipeline, Deals, How we qualify) | Marketing (Growth,
   Resources) | Team (Track record, Team access, old board). Bigger nav text for Peter. Keep new pages inside a group.
 
+## Omnichannel outreach (10 Oct 2026; `hq/outreach.js`, `supabase/functions/outreach`, `supabase/2026-10-10-outreach.sql`)
+- Today → Daily 3 → **Send today's batch**: picks `bdc_per_day` BDC targets (soonest maturity) + `credit_per_day` lendable credit targets
+  (EBITDA > 0, revenue >= $20M, no going concern) that have a contact with LinkedIn or a valid email (Hunter valid / score >= min), not yet
+  enrolled. A person unticks bad rows and clicks Send (the one human gate Tengku agreed to). Edge function `outreach` action `send`:
+  people + task (counts in Daily 3), Prosp `POST /api/v1/leads` (api_key in body, list_id + campaign_id per account in
+  `outreach_settings.prosp`), PlusVibe `POST https://api.plusvibe.ai/api/v1/lead/add` (x-api-key, workspace_id, campaign_id,
+  custom_variables). Personalisation sent: first_name, company, opener (the tab's opener()), need (first Need headline). Copy lives in the
+  Prosp / PlusVibe campaigns. Results in `outreach_enrollments` (one per company).
+- Replies: PlusVibe webhook `?hook=plusvibe&token=` (RPC `plusvibe_webhook_url()`) → `lead_intake` (source 'plusvibe') + Prosp
+  `/leads/campaign/delete`. Prosp replies already land in lead_intake (prosp-reply); pg_cron `outreach-cron` every 20 min matches them by
+  LinkedIn slug → PlusVibe `/lead/update/status` COMPLETED, and pulls Prosp `/campaigns/analytics` daily → `outreach_daily`.
+- Keys (PROSP_API_KEY, PLUSVIBE_API_KEY) via Daily 3 → Outreach setup (RPC `set_contact_key`, write-only). Scoreboard counts sends.
+- Untested against the live Prosp / PlusVibe APIs until keys + campaign IDs exist: first real batch is the test; check `outreach_enrollments.*_error`.
+- Hunter: one key, 50 lookups/month. Don't build rotation across extra free accounts (Tengku floated it; it breaks Hunter's terms).
+
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.
 - Never enter passwords, API keys or tokens for the user, even with permission. Point them to the HQ field.

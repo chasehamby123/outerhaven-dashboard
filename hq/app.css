@@ -1328,3 +1328,12 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .sbFunnel span{font-size:var(--fs-xs);color:var(--ink-2)}
 .sbFunnel em{font-style:normal;font-size:var(--fs-xs);color:var(--muted)}
 @media (max-width:760px){.sbKpis,.sbFunnel{grid-template-columns:1fr 1fr}.sbTbl{font-size:var(--fs-xs)}}
+
+/* Outreach (hq/outreach.js): send-batch table and setup */
+.obWarn{margin:0 0 12px;padding:10px 12px;border-radius:var(--r);background:var(--warn-bg);color:var(--warn);font-size:var(--fs-s);font-weight:500}
+.obTbl td,.obTbl th{vertical-align:top;font-size:var(--fs-s)}
+.obTbl td:first-child{width:28px}
+.obTbl .select.sm{height:30px;min-width:92px;font-size:var(--fs-xs)}
+.obH{grid-column:1/-1;margin:10px 0 0;font:600 14px/1.3 var(--sans);color:var(--ink)}
+.obRow{grid-column:1/-1;display:grid;grid-template-columns:70px minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:center}
+@media (max-width:640px){.obRow{grid-template-columns:1fr}.obTbl{display:block;overflow-x:auto}}

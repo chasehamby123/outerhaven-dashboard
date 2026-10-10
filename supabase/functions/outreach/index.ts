@@ -1,0 +1,203 @@
+// outreach: omnichannel sends for Credit / BDC / UCC targets (10 Oct 2026).
+// Admin (user JWT):
+//   action 'campaigns' → Prosp campaigns (POST https://prosp.ai/api/v1/campaigns/lists)
+//   action 'send' {items: [{kind, key, opener, owner?}]} → per company: best contact from signal_contacts → people + task
+//     (like "Add to pipeline") → Prosp POST /api/v1/leads (LinkedIn, campaign of the owner's account) and PlusVibe
+//     POST /api/v1/lead/add (email, only when Hunter says valid / score >= min_email_score). Copy lives in the campaigns;
+//     we send personalisation: first_name, company, opener, need.
+// Webhook: ?hook=plusvibe&token=PLUSVIBE_WEBHOOK_TOKEN (Email Replies event) → lead_intake row + stop LinkedIn (Prosp delete
+//   from campaign). Prosp replies arrive via the existing prosp-reply webhook into lead_intake; the cron stops their email.
+// Cron (x-outerhaven-cron, every 20 min): replied on LinkedIn → PlusVibe lead COMPLETED; once a day Prosp analytics → outreach_daily.
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!, SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-outerhaven-cron", "Access-Control-Allow-Methods": "POST, OPTIONS" };
+const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "content-type": "application/json" } });
+const TABLE: Record<string, string> = { credit: "credit_signals", bdc: "bdc_signals", ucc: "ucc_signals" };
+const KEYCOL: Record<string, string> = { credit: "cik", bdc: "company_key", ucc: "company_key" };
+const SOURCE: Record<string, string> = { credit: "SEC credit signal", bdc: "BDC loan signal", ucc: "UCC signal" };
+const PROSP = "https://prosp.ai/api/v1", PV = "https://api.plusvibe.ai/api/v1";
+
+async function secret(key: string) {
+  const r = await sb.from("integration_secrets").select("secret_value").eq("key", key).maybeSingle();
+  return (r.data?.secret_value as string) || "";
+}
+async function admin(req: Request) {
+  const auth = req.headers.get("authorization") || "";
+  if (!auth.toLowerCase().startsWith("bearer ")) return null;
+  const u = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } });
+  const { data: { user } } = await u.auth.getUser();
+  if (!user) return null;
+  return (await u.rpc("dashboard_role")).data === "admin" ? user : null;
+}
+async function post(url: string, body: unknown, headers: Record<string, string> = {}) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j?.message || j?.error || `HTTP ${r.status}`);
+  return j;
+}
+const settings = async () => (await sb.from("outreach_settings").select("*").eq("id", 1).maybeSingle()).data || { prosp: [] };
+const live = (c: any) => (c?.people || []).filter((p: any) => p.status !== "wrong");
+const okEmail = (p: any, min: number) => p?.email && (p.email_status === "valid" || (p.email_score ?? 0) >= min);
+
+// Send one company on both channels. Returns the enrollment row.
+async function sendOne(it: any, st: any, keys: { prosp: string; pv: string }, who: string) {
+  const kind = String(it.kind), key = String(it.key);
+  if (!TABLE[kind]) throw new Error("bad kind");
+  const already = (await sb.from("outreach_enrollments").select("id,status").eq("kind", kind).eq("key", key).maybeSingle()).data;
+  if (already) return { kind, key, skipped: "already sent" };
+  const c = (await sb.from("signal_contacts").select("*").eq("kind", kind).eq("key", key).maybeSingle()).data;
+  const sig = (await sb.from(TABLE[kind]).select("*").eq(KEYCOL[kind], key).maybeSingle()).data;
+  if (!sig) return { kind, key, skipped: "company not found" };
+  const p = live(c)[0];
+  if (!p) return { kind, key, skipped: "no contact person yet" };
+  const email = okEmail(p, st.min_email_score ?? 90) ? p.email : null;
+  if (!p.linkedin && !email) return { kind, key, skipped: "no LinkedIn or valid email" };
+  const company = sig.company_name, parts = String(p.name).trim().split(/\s+/), first = parts[0], last = parts.slice(1).join(" ");
+  const opener = String(it.opener || "").slice(0, 1500);
+  const need = String(it.need || "").slice(0, 300);
+  // Which LinkedIn account sends it: the requested owner, else round-robin over accounts with a campaign.
+  const accounts = (st.prosp || []).filter((a: any) => a.campaign_id && a.list_id);
+  const acct = accounts.find((a: any) => a.owner === it.owner) || accounts[Number(it.slot || 0) % Math.max(accounts.length, 1)] || null;
+  const owner = acct?.owner || it.owner || "Peter";
+  const now = new Date().toISOString();
+
+  // Pipeline person + task (same as "Add to pipeline"), so the Daily 3 / Scoreboard count it.
+  let personId = sig.person_id || null;
+  if (!personId) {
+    const facts = `${company}: ${(sig.reasons || []).filter((x: any) => x.tone === "good").map((x: any) => x.text).join(". ")}`;
+    const pr = await sb.from("people").insert({ name: p.name, primary_side: "Sell Side", relationship_type: "Sell-side Relationship", pipeline_stage: "New Relationship", pipeline_active: true,
+      waiting_on: "them", waiting_on_since: now, company_name: company, headline: p.title || (p.role === "ceo" ? "CEO" : "CFO"), linkedin_url: p.linkedin || null, has_linkedin: !!p.linkedin,
+      source: SOURCE[kind], last_inbound_message: facts }).select().single();
+    if (pr.error) throw new Error(pr.error.message);
+    personId = pr.data.id;
+    await sb.from("tasks").insert({ person_id: personId, action: "Outreach sent (LinkedIn + email). Watch for a reply.", owner_name: owner, due_date: now.slice(0, 10) });
+    await sb.from(TABLE[kind]).update({ status: "added", person_id: personId, updated_at: now }).eq(KEYCOL[kind], key);
+  }
+
+  const row: any = { kind, key, company_name: company, person_name: p.name, title: p.title || null, linkedin_url: p.linkedin || null, email, owner, person_id: personId, approved_by: who };
+  // LinkedIn via Prosp
+  if (p.linkedin && acct && keys.prosp) {
+    try {
+      await post(`${PROSP}/leads`, { api_key: keys.prosp, linkedin_url: p.linkedin, list_id: acct.list_id, campaign_id: acct.campaign_id,
+        data: [{ property: "first_name", value: first }, { property: "company", value: company }, { property: "opener", value: opener }, { property: "need", value: need }] });
+      row.prosp_status = "added"; row.prosp_campaign_id = acct.campaign_id;
+    } catch (e) { row.prosp_status = "failed"; row.prosp_error = String((e as Error).message || e); }
+  } else row.prosp_status = !p.linkedin ? "skipped: no LinkedIn" : !keys.prosp ? "skipped: no Prosp key" : "skipped: no Prosp campaign for this account";
+  // Email via PlusVibe
+  if (email && keys.pv && st.plusvibe_workspace_id && st.plusvibe_campaign_id) {
+    try {
+      const r = await post(`${PV}/lead/add`, { workspace_id: st.plusvibe_workspace_id, campaign_id: st.plusvibe_campaign_id, skip_lead_in_active_pause_camp: true,
+        leads: [{ email, first_name: first, last_name: last, company_name: company, company_website: c?.website || undefined, linkedin_person_url: p.linkedin || undefined,
+          phone_number: c?.phone || undefined, custom_variables: { opener, need, title: p.title || "" } }] }, { "x-api-key": keys.pv });
+      row.plusvibe_status = (r?.leads_uploaded ?? 1) > 0 ? "added" : `skipped: ${r?.already_in_campaign ? "already in campaign" : r?.invalid_email_count ? "invalid email" : "not uploaded"}`;
+    } catch (e) { row.plusvibe_status = "failed"; row.plusvibe_error = String((e as Error).message || e); }
+  } else row.plusvibe_status = !email ? "skipped: no valid email" : !keys.pv ? "skipped: no PlusVibe key" : "skipped: no PlusVibe campaign set";
+  row.status = row.prosp_status === "added" || row.plusvibe_status === "added" ? "sent" : "failed";
+  const ins = await sb.from("outreach_enrollments").insert(row);
+  if (ins.error) throw new Error(ins.error.message);
+  return row;
+}
+
+async function stopEmail(e: any, st: any, pvKey: string) {
+  if (!e.email || e.plusvibe_status !== "added" || !pvKey || !st.plusvibe_workspace_id) return;
+  try { await post(`${PV}/lead/update/status`, { workspace_id: st.plusvibe_workspace_id, campaign_id: st.plusvibe_campaign_id, email: e.email, new_status: "COMPLETED" }, { "x-api-key": pvKey }); } catch (_) { /* keep going */ }
+}
+async function stopLinkedIn(e: any, prospKey: string) {
+  if (!e.linkedin_url || e.prosp_status !== "added" || !prospKey) return;
+  try { await post(`${PROSP}/leads/campaign/delete`, { api_key: prospKey, linkedin_url: e.linkedin_url }); } catch (_) { /* keep going */ }
+}
+const slug = (u: string) => String(u || "").toLowerCase().replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").pop() || "";
+
+async function plusvibeReply(b: any) {
+  const st = await settings(), email = String(b.email || b.from_email || "").toLowerCase();
+  const e = email ? (await sb.from("outreach_enrollments").select("*").ilike("email", email).maybeSingle()).data : null;
+  const hash = `plusvibe:${b.message_id || b.source_message_id || b.thread_id || email + ":" + (b.created_at || Date.now())}`;
+  const positive = String(b.label || "").toUpperCase() === "INTERESTED" || String(b.sentiment || "").toUpperCase() === "POSITIVE";
+  await sb.from("lead_intake").upsert({ source: "plusvibe", external_lead_id: b.lead_id || null, linkedin_url: b.linkedin_person_url || e?.linkedin_url || null,
+    name: [b.first_name, b.last_name].filter(Boolean).join(" ") || e?.person_name || email, headline: b.job_title || e?.title || null, company_name: b.company_name || e?.company_name || null,
+    reply_text: String(b.text_body || b.snippet || "").slice(0, 4000), campaign_id: b.campaign_id || null, campaign_name: b.campaign_name || "PlusVibe email",
+    source_account: b.from_email ? `email:${b.to_email || b.email_account_name || ""}` : null, decision: positive ? "qualified_sell_side" : "needs_review",
+    reason: `Email reply (${b.label || "no label"}, ${b.sentiment || "no sentiment"})`, person_id: null, payload_hash: hash, raw_payload: b }, { onConflict: "payload_hash", ignoreDuplicates: true });
+  if (e && e.status === "sent") {
+    await sb.from("outreach_enrollments").update({ status: "replied", reply_channel: "email", replied_at: new Date().toISOString() }).eq("id", e.id);
+    await stopLinkedIn(e, await secret("PROSP_API_KEY"));
+    if (e.person_id) await sb.from("people").update({ waiting_on: "us", waiting_on_since: new Date().toISOString() }).eq("id", e.person_id);
+  }
+  return { stored: true, matched: !!e };
+}
+
+async function cron() {
+  const st = await settings(), pv = await secret("PLUSVIBE_API_KEY"), pk = await secret("PROSP_API_KEY");
+  // 1. LinkedIn replies (Prosp → lead_intake) stop the email sequence.
+  const open = (await sb.from("outreach_enrollments").select("*").eq("status", "sent").not("linkedin_url", "is", null).limit(1000)).data || [];
+  let stopped = 0;
+  if (open.length) {
+    const since = open.reduce((m: string, e: any) => e.created_at < m ? e.created_at : m, open[0].created_at);
+    const replies = (await sb.from("lead_intake").select("linkedin_url,created_at,source").gte("created_at", since).neq("source", "plusvibe").limit(5000)).data || [];
+    for (const e of open as any[]) {
+      const hit = (replies as any[]).find(r => slug(r.linkedin_url) && slug(r.linkedin_url) === slug(e.linkedin_url) && r.created_at > e.created_at);
+      if (!hit) continue;
+      await sb.from("outreach_enrollments").update({ status: "replied", reply_channel: "linkedin", replied_at: hit.created_at }).eq("id", e.id);
+      await stopEmail(e, st, pv); stopped++;
+    }
+  }
+  // 2. Once a day: Prosp analytics per campaign → outreach_daily.
+  const last = (await sb.from("outreach_daily").select("day").eq("channel", "linkedin").order("day", { ascending: false }).limit(1)).data?.[0]?.day;
+  const today = new Date().toISOString().slice(0, 10);
+  let pulled = 0;
+  if (pk && last !== today) {
+    const d = (x: Date) => `${String(x.getUTCDate()).padStart(2, "0")}-${String(x.getUTCMonth() + 1).padStart(2, "0")}-${x.getUTCFullYear()}`;
+    const end = new Date(), start = new Date(Date.now() - 7 * 864e5), totals = new Map<string, number>();
+    for (const a of (st.prosp || []).filter((x: any) => x.campaign_id)) {
+      try {
+        const j = await post(`${PROSP}/campaigns/analytics`, { api_key: pk, campaign_id: a.campaign_id, start_date: d(start), end_date: d(end) });
+        for (const r of j?.data || []) { const k = `${String(r.date).slice(0, 10)}|${String(r.action || "other").toLowerCase().replace(/\s+/g, "_")}`; totals.set(k, (totals.get(k) || 0) + (Number(r.count) || 0)); }
+      } catch (_) { /* next campaign */ }
+    }
+    const rows = [...totals].map(([k, n]) => { const [day, action] = k.split("|"); return { day: /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : today, channel: "linkedin", action, count: n }; });
+    if (rows.length) { await sb.from("outreach_daily").upsert(rows, { onConflict: "day,channel,action" }); pulled = rows.length; }
+  }
+  return { stopped, pulled };
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  try {
+    const url = new URL(req.url);
+    const body = await req.json().catch(() => ({}));
+    if (url.searchParams.get("hook") === "plusvibe") {
+      const want = await secret("PLUSVIBE_WEBHOOK_TOKEN");
+      if (!want || url.searchParams.get("token") !== want) return json({ ok: false, error: "Bad token" }, 401);
+      const ev = String(body.webhook_event || body.event || "").toUpperCase();
+      if (ev && !ev.includes("REPL")) return json({ ok: true, ignored: ev });
+      return json({ ok: true, ...(await plusvibeReply(body)) });
+    }
+    const cronKey = req.headers.get("x-outerhaven-cron");
+    if (cronKey) {
+      const want = await secret("LINKEDIN_CRON_SECRET");
+      if (!want || cronKey !== want) return json({ ok: false, error: "Bad cron key." }, 401);
+      return json({ ok: true, ...(await cron()) });
+    }
+    const user = await admin(req);
+    if (!user) return json({ ok: false, error: "Admins only." }, 403);
+    if (body.action === "campaigns") {
+      const pk = await secret("PROSP_API_KEY");
+      if (!pk) return json({ ok: false, error: "No Prosp key yet." }, 400);
+      const j = await post(`${PROSP}/campaigns/lists`, { api_key: pk });
+      return json({ ok: true, prosp: j?.data || [] });
+    }
+    if (body.action === "send") {
+      const st = await settings(), keys = { prosp: await secret("PROSP_API_KEY"), pv: await secret("PLUSVIBE_API_KEY") };
+      const who = (user.email || "").split("@")[0], out: any[] = [];
+      for (const [i, it] of (Array.isArray(body.items) ? body.items : []).slice(0, 40).entries()) {
+        try { out.push(await sendOne({ ...it, slot: i }, st, keys, who)); } catch (e) { out.push({ kind: it.kind, key: it.key, error: String((e as Error).message || e) }); }
+      }
+      return json({ ok: true, results: out });
+    }
+    return json({ ok: false, error: "Unknown action" }, 400);
+  } catch (e) {
+    return json({ ok: false, error: String((e as Error)?.message || e) }, 500);
+  }
+});

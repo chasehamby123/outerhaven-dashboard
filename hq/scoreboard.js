@@ -15,13 +15,14 @@ const isWeekday = iso => { const g = new Date(iso + 'T12:00:00Z').getUTCDay(); r
 export async function renderScoreboard(el) {
   el.innerHTML = '<div class="empty">Loading the scoreboard…</div>';
   const today = opsDate(), from = addDays(today, -29), since = new Date(`${from}T02:00:00+08:00`).toISOString();
-  const [ppl, rev, inn, mtg, names, deals] = await Promise.all([
+  const [ppl, rev, inn, mtg, names, deals, enr] = await Promise.all([
     sb.from('people').select('id,created_at,source').in('source', SOURCES).gte('created_at', since).limit(5000),
     sb.from('lead_intake').select('reviewed_at,reviewed_by').gte('reviewed_at', since).limit(5000),
     sb.from('lead_intake').select('id', { count: 'exact', head: true }).gte('created_at', since),
     sb.from('growth_meetings').select('created_at,created_by,account_name').gte('created_at', since).limit(2000),
     sb.rpc('team_user_names'),
     sb.from('opportunities').select('id', { count: 'exact', head: true }).eq('pipeline_active', true),
+    sb.from('outreach_enrollments').select('created_at,prosp_status,plusvibe_status,status').gte('created_at', since).limit(5000),
   ]);
   if (!el.isConnected) return;
   const who = new Map((names.data || []).map(r => [r.id, r.name]));
@@ -36,6 +37,7 @@ export async function renderScoreboard(el) {
   (ppl.data || []).forEach(p => ev.push([dayOf(p.created_at), owner.get(p.id) || 'Unassigned', 'worked']));
   (rev.data || []).forEach(r => ev.push([dayOf(r.reviewed_at), who.get(r.reviewed_by) || 'Someone', 'cleared']));
   (mtg.data || []).forEach(m => ev.push([dayOf(m.created_at), who.get(m.created_by) || m.account_name || 'Someone', 'calls']));
+  (enr.data || []).forEach(e => { if (e.prosp_status === 'added') ev.push([dayOf(e.created_at), 'Outreach', 'li']); if (e.plusvibe_status === 'added') ev.push([dayOf(e.created_at), 'Outreach', 'em']); });
   const sum = (f) => ev.filter(f).length;
 
   // Last 7 ops days, team totals vs the daily targets.
@@ -49,7 +51,7 @@ export async function renderScoreboard(el) {
   const cell = (v, goal) => `<td class="${goal ? (v >= goal ? 'sbHit' : v ? 'sbPart' : 'sbMiss') : ''}">${goal ? (v >= goal ? '✓ ' : v ? '' : '✕ ') : ''}${v}</td>`;
 
   // Per person, last 7 days.
-  const people = [...new Set(ev.filter(e => e[0] >= days[0]).map(e => e[1]))].sort();
+  const people = [...new Set(ev.filter(e => e[0] >= days[0] && e[1] !== 'Outreach').map(e => e[1]))].sort();
   const per = people.map(p => ({ p, worked: sum(e => e[1] === p && e[0] >= days[0] && e[2] === 'worked'), cleared: sum(e => e[1] === p && e[0] >= days[0] && e[2] === 'cleared'), calls: sum(e => e[1] === p && e[0] >= days[0] && e[2] === 'calls'), zero: workdays.filter(r => !ev.some(e => e[1] === p && e[0] === r.d)).length }))
     .sort((a, b) => (b.worked + b.calls * 10) - (a.worked + a.calls * 10));
 
@@ -70,6 +72,8 @@ export async function renderScoreboard(el) {
     <section class="card"><header><div><h2>Last 7 days, whole team</h2><p>✓ = target hit, ✕ = nothing done. Targets: ${DAILY3.contact} worked and ${DAILY3.calls} call a day.</p></div></header>
       <div class="body flush"><table class="tbl sbTbl"><thead><tr><th></th>${week.map(r => `<th class="${r.d === today ? 'sbToday' : ''}">${esc(label(r.d))}</th>`).join('')}</tr></thead><tbody>
         <tr><th>Targets worked</th>${week.map(r => cell(r.worked, isWeekday(r.d) ? DAILY3.contact : 0)).join('')}</tr>
+        <tr><th>Sent on LinkedIn</th>${week.map(r => `<td>${sum(e => e[0] === r.d && e[2] === 'li')}</td>`).join('')}</tr>
+        <tr><th>Sent by email</th>${week.map(r => `<td>${sum(e => e[0] === r.d && e[2] === 'em')}</td>`).join('')}</tr>
         <tr><th>Replies cleared</th>${week.map(r => `<td>${r.cleared}</td>`).join('')}</tr>
         <tr><th>Calls booked</th>${week.map(r => cell(r.calls, isWeekday(r.d) ? DAILY3.calls : 0)).join('')}</tr>
       </tbody></table></div></section>
@@ -84,6 +88,6 @@ export async function renderScoreboard(el) {
         <li><b>${f30.calls}</b><span>Calls booked</span><em>${pct(f30.calls, f30.replies)} of replies</em></li>
         <li><b>${f30.deals}</b><span>Live deals in Pipeline</span></li>
       </ol>
-      <p class="s muted" style="margin:12px 0 0">Messages sent aren't counted yet: paste the Prosp key in Growth → Outbound so reply rates can be measured.</p></div></section>
+      <p class="s muted" style="margin:12px 0 0">Sends from "Send today's batch" are counted above. Messages sent by hand outside HQ are not.</p></div></section>
   </div>`;
 }

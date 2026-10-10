@@ -85,7 +85,7 @@ function rowHtml(s) {
 }
 
 // First message from Peter's side, using the numbers from their own filing. Personalise before sending.
-function opener(s, name = '') {
+export function opener(s, name = '') {
   const who = firstName(name) || 'there', f = s.flags || {}, co0 = s.company_name.replace(/,?\s+(inc|corp|corporation|co|ltd|llc|plc|holdings)\.?$/i, ''), co = co0 === co0.toUpperCase() ? co0.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase()) : co0;
   // Lead with the date, never the distress: no "going concern" / "forbearance" in a first message (the CFO knows; naming it
   // reads as an accusation). Sent from Peter's account, CFO to a credit peer.

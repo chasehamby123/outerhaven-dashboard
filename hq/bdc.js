@@ -146,7 +146,7 @@ function rowHtml(s) {
 }
 
 // Peter's first message: leads with the refinancing window, never with the lender's mark (that's the lender's private view).
-function opener(s, name = '') {
+export function opener(s, name = '') {
   const who = firstName(name) || 'there', co = brand(s.company_name), mo = monthsTo(s.earliest_maturity);
   const body = s.mark != null && s.mark < 85
     ? `When a facility gets tight, the options are wider than most owners hear from their current lender: junior or structured capital alongside the senior debt, a recap, or a partial sale that resets the balance sheet. I work with family offices and private lenders who do exactly that at ${co}'s size.`
