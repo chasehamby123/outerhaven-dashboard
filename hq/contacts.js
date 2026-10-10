@@ -41,7 +41,7 @@ export function contactHtml(kind, key, s) {
   if (!cache[kind]) return `<div class="ct" data-ctkey="${esc(key)}"><span class="ctNone">Loading contacts…</span></div>`;
   const c = get(kind, key), people = live(c).slice(0, 2);
   const extra = [c?.phone ? `<a class="ctLink" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : '', c?.website ? `<a class="ctLink" href="${esc(c.website)}" target="_blank" rel="noopener">${esc(c.domain || 'Website')} ↗</a>` : ''].filter(Boolean).join('');
-  const change = c?.officer_change ? `<a class="ctWarn" href="${esc(c.officer_change.url)}" target="_blank" rel="noopener">⚠ Officer change filed ${esc(c.officer_change.date)}: check the name</a>` : '';
+  const change = c?.officer_change ? `<a class="ctWarn" href="${esc(c.officer_change.url)}" target="_blank" rel="noopener">⚠ Board or officer change filed ${esc(c.officer_change.date)} (8-K 5.02): check the name is current</a>` : '';
   const action = people.length && c?.looked_up_at ? '' : `<button type="button" class="ctLink muted" data-ctlookup="${esc(key)}">${c?.looked_up_at ? 'Search again' : people.length ? 'Find LinkedIn' : 'Find contacts'}</button>`;
   const none = !people.length ? `<span class="ctNone">${esc(c?.lookup_note || (c?.looked_up_at ? 'No CFO / CEO found.' : 'No contact yet.'))}</span>` : '';
   return `<div class="ct" data-ctkey="${esc(key)}">${people.map(p => personHtml(kind, key, p, c)).join('')}${none || extra || action || change ? `<div class="ctMeta">${none}${extra}${action}${change}</div>` : ''}</div>`;
