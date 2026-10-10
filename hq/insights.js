@@ -4,7 +4,7 @@
 // Factors, split into what the creative is, what the caption says, and when it went out.
 // Values are filled by hand (Tag) or by the weekly Claude analysis (ai_tags); hand tags win.
 export const DIMENSIONS = {
-  format: { label: 'Format', group: 'creative', values: ['Text only', 'Single image', 'Carousel / document', 'Video', 'Article', 'Poll', 'Infographic'] },
+  format: { label: 'Format', group: 'creative', values: ['Text only', 'Single image', 'Multi-image', 'Presentation', 'PDF carousel', 'Carousel / document', 'Video', 'Article', 'Poll', 'Infographic'] },
   creative: { label: 'Visual', group: 'creative', values: ['Person photo', 'Chart / data', 'Quote card', 'Screenshot', 'Map', 'Branded graphic', 'Meme', 'None'] },
   face: { label: 'Face in creative', group: 'creative', values: ['Yes', 'No'] },
   textOnImage: { label: 'Text on image', group: 'creative', values: ['None', 'Headline only', 'Text-heavy'] },
@@ -34,7 +34,11 @@ export const confidenceLabel = { solid: 'Solid sample', early: 'Early signal', a
 const minN = (...ns) => Math.min(...ns);
 
 // Normalise a raw daily_ops_posts row (+ accounts + meetings) into the engine's shape.
-const FORMAT_FROM_TYPE = { text: 'Text only', image: 'Single image', document: 'Carousel / document', video: 'Video', article: 'Article' };
+// Format is measured, not guessed: the scraper's detected_format (post_formats key; Presentation = landscape document,
+// PDF carousel = portrait/square) beats Claude's text-only guess. A hand tag still wins.
+const FORMAT_FROM_TYPE = { text: 'Text only', image: 'Single image', multi_image: 'Multi-image', document: 'Carousel / document', video: 'Video', article: 'Article', poll: 'Poll' };
+const FORMAT_FROM_KEY = { text: 'Text only', image: 'Single image', multi_image: 'Multi-image', presentation: 'Presentation', pdf: 'PDF carousel', video: 'Video', article: 'Article', poll: 'Poll' };
+const measuredFormat = row => FORMAT_FROM_KEY[row.detected_format] || FORMAT_FROM_TYPE[row.linkedin_type] || FORMAT_FROM_TYPE[row.content_type];
 export function toPost(row, accountName, meetingCount = 0, resharedBy = []) {
   const ai = row.ai_tags || {}, manual = row.tags || {}, m = row.metrics || {};
   // Hand tags win; Claude's weekly tags fill the gaps.
@@ -48,8 +52,8 @@ export function toPost(row, accountName, meetingCount = 0, resharedBy = []) {
   return {
     id: row.id, name: row.post_name || row.post_key || 'LinkedIn post', url: row.linkedin_post_url || null,
     account: accountName || '—', date: row.posted_at || row.work_date || null, text: row.post_text || '',
-    autoFormat: !manual.format && !ai.format && !!FORMAT_FROM_TYPE[row.content_type], aiTagged: !!row.ai_tagged_at, aiNotes: ai.notes || '',
-    tags: { ...t, format: t.format || FORMAT_FROM_TYPE[row.content_type] || undefined, timeslot: t.timeslot || (hour == null ? undefined : hour < 11 ? 'Morning' : hour < 16 ? 'Midday' : 'Evening') },
+    autoFormat: !manual.format && !!measuredFormat(row), aiTagged: !!row.ai_tagged_at, aiNotes: ai.notes || '',
+    tags: { ...t, format: manual.format || measuredFormat(row) || t.format || undefined, timeslot: t.timeslot || (hour == null ? undefined : hour < 11 ? 'Morning' : hour < 16 ? 'Midday' : 'Evening') },
     boostedBy: boosted, resharedBy, group: t.creative_group || null,
     // Comments: our own accounts' comments (engagement pod) are excluded once the thread has been scraped.
     // Until then only LinkedIn's total is known, which includes them (commentsExact = false).

@@ -5,6 +5,7 @@ import { sb, state, esc, $, $$, toast, fail, modal, opts, acIdx, avatar } from '
 import { opsDate } from './today.js';
 import { renderCreation } from './creation.js';
 import { renderTeamTasks } from './tasks.js';
+import { loadFormats, formatList, fmtLabel, fmtIcon, fmtOf, loadPlans, nextDates, editFormats } from './formats.js';
 
 // The slider at the top of Schedule: posting calendar vs the weekend post creation batch.
 const viewToggle = on => `<div class="viewSw" data-on="${on}" role="tablist"><a href="#/schedule" class="${on === 'post' ? 'on' : ''}">Posting</a><a href="#/schedule/creation" class="${on === 'create' ? 'on' : ''}">Post creation</a><a href="#/schedule/tasks" class="${on === 'tasks' ? 'on' : ''}">Team tasks</a><i></i></div>`;
@@ -16,7 +17,7 @@ const PX = 1.15;                        // pixels per minute
 const SNAP = 15, POST_MIN = 60, ENGAGE_MIN = 15, PRE_MIN = 30;
 const TZ = 'Asia/Singapore';
 
-let root, posts = [], accounts = [], loaded = false, channel = null, scrolled = false, spot = null;
+let root, posts = [], accounts = [], loaded = false, channel = null, scrolled = false, spot = null, plans = new Map();
 
 // What a post is, from its content code: lead magnet versions (A, B, C…), video, or a credibility ("human") post.
 const kind = code => /vid/i.test(code || '') ? 'vid' : /cred|human|life|personal/i.test(code || '') ? 'cred' : 'lm';
@@ -33,14 +34,18 @@ const toTime = n => { n = ((n % 1440) + 1440) % 1440; return `${String(Math.floo
 const label12 = n => { n = ((n % 1440) + 1440) % 1440; const h = Math.floor(n / 60), m = n % 60; return `${((h + 11) % 12) + 1}${m ? ':' + String(m).padStart(2, '0') : ''} ${h >= 12 ? 'PM' : 'AM'}`; };
 const todayDow = () => new Date(opsDate() + 'T12:00:00').getDay();
 const nowMin = () => { const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()).map(x => [x.type, x.value])); const n = +p.hour * 60 + +p.minute; return n < 120 ? n + 1440 : n; };
+const fmtDay = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 const isSara = o => String(o || '').trim().toLowerCase() === 'sara';
 const ownerNames = () => [...new Set([...accounts.map(a => a.owner_name), ...posts.map(p => p.owner_name)].filter(Boolean))].sort();
 
 async function load() {
-  const [w, a] = await Promise.all([
+  const [w, a, , pl] = await Promise.all([
     sb.from('daily_ops_weekly_posts').select('*').order('day_of_week').order('start_time'),
     sb.from('daily_ops_accounts').select('id,owner_name,active').order('sort_order'),
+    loadFormats(),
+    loadPlans(opsDate()).catch(() => new Map()),
   ]);
+  plans = pl || new Map();
   if (fail(w, 'Load schedule')) return;
   posts = w.data || []; accounts = (a.data || []).filter(x => x.active !== false); loaded = true;
 }
@@ -81,8 +86,12 @@ function blockHtml(it) {
   const p = it.p, top = (it.s - START) * PX, w = 100 / it.lanes, left = it.lane * w, k = kind(p.content_code);
   const sara = isSara(p.owner_name), off = p.active === false, pushed = it.real != null && it.real !== it.s;
   const dim = spot && p.owner_name !== spot;
+  // Format: the weekly default, and the next date's one-off plan when it differs (experiments, overrides).
+  const nextD = nextDates(p.day_of_week, 1, opsDate())[0], one = plans.get(`${p.id}|${nextD}`);
+  const fk = one?.format_key || p.format_key, oneOff = one?.format_key && one.format_key !== p.format_key;
+  const fmtTxt = fk ? `<span class="sFmt${oneOff ? ' one' : ''}" title="${esc(oneOff ? `${fmtDay(nextD)} only: ${fmtLabel(fk)}${one.arm ? ` (test arm ${one.arm})` : ''}. Every other week: ${fmtLabel(p.format_key)}` : fmtOf(fk)?.how_to || '')}">${fmtIcon(fk)} ${esc(fmtLabel(fk))}${oneOff ? ' *' : ''}</span>` : '<span class="sFmt none">No format set</span>';
   return `<div class="sBlock t-${k}${off ? ' off' : ''}${sara ? ' nr' : ''}${dim ? ' dim' : ''}" data-ac="${acIdx(p.owner_name)}" data-id="${p.id}" title="${esc(`${p.owner_name} · ${KIND_LABEL[k]}${k === 'lm' ? ' ' + (p.content_code || '') : ''} · ${label12(it.s)}`)}" style="top:${top}px;left:calc(${left}% + 3px);width:calc(${w}% - 6px)">
-      <div class="sPost" style="height:${POST_MIN * PX - 2}px"><div class="top">${avatar(p.owner_name, 'xs')}<b>${esc(p.owner_name || 'Account')}</b><span class="code">${codeHtml(p)}</span></div><span class="tm">${label12(it.s)}${off ? ' · paused' : ''}</span>${pushed ? `<em title="The post before it and its reply block run until then, so this one starts later">Runs ${label12(it.real)}</em>` : ''}</div>
+      <div class="sPost" style="height:${POST_MIN * PX - 2}px"><div class="top">${avatar(p.owner_name, 'xs')}<b>${esc(p.owner_name || 'Account')}</b><span class="code">${codeHtml(p)}</span></div><span class="tm">${label12(it.s)}${off ? ' · paused' : ''}</span>${fmtTxt}${pushed ? `<em title="The post before it and its reply block run until then, so this one starts later">Runs ${label12(it.real)}</em>` : ''}</div>
       ${sara ? '' : `<div class="sEngage" style="height:${ENGAGE_MIN * PX - 1}px" title="15 minutes replying to comments on the previous post">+15 min replies</div>`}
     </div>`;
 }
@@ -118,7 +127,7 @@ function draw() {
   const active = posts.filter(p => p.active !== false);
   const perDay = DAYS.map(([d]) => active.filter(p => p.day_of_week === d).length), avg = perDay.reduce((a, b) => a + b, 0) / 7;
   root.innerHTML = `${viewToggle('post')}<div class="head"><div><h1>Schedule</h1><p>The weekly posting plan in Malaysia time, with New York time under each hour. Drag a post to move it, click it to edit, click an empty slot to add one.</p></div>
-      <div class="row"><div class="row s muted" style="gap:14px;margin-right:6px"><span class="sKey"><i class="k1"></i>Lead magnet / video</span><span class="sKey"><i class="k3"></i>Credibility</span><span class="sKey"><i class="k2"></i>Replies</span></div><button class="btn primary sm" id="sAdd">Add post</button></div></div>
+      <div class="row"><div class="row s muted" style="gap:14px;margin-right:6px"><span class="sKey"><i class="k1"></i>Lead magnet / video</span><span class="sKey"><i class="k3"></i>Credibility</span><span class="sKey"><i class="k2"></i>Replies</span></div><button class="btn sm" id="sFormats" title="The list of formats (Presentation, PDF carousel…) and how to make each">Formats</button><button class="btn primary sm" id="sAdd">Add post</button></div></div>
     ${summaryHtml(active)}
     <div class="card sCal">
       <div class="sScroll" id="sScroll"><div class="sHead"><div>MYT</div>${DAYS.map(([d, n], i) => {
@@ -148,6 +157,7 @@ function draw() {
   $$('.sBlock', root).forEach(b => b.addEventListener('pointerdown', startDrag));
   $$('[data-spot]', root).forEach(b => b.onclick = () => { const v = b.dataset.spot; spot = !v || spot === v ? null : v; draw(); });
   $('#sAdd', root).onclick = () => editPost(null, { day_of_week: tdow, start: 20 * 60 });
+  $('#sFormats', root).onclick = () => editFormats(async () => { await load(); draw(); });
   const slotAt = (c, e) => { const r = c.getBoundingClientRect(); return snap(START + Math.floor((e.clientY - r.top) / PX / SNAP) * SNAP); };
   $$('.sCol', root).forEach(c => {
     const hov = $('.sHover', c);
@@ -204,12 +214,12 @@ async function endDrag(e) {
 }
 
 // Writes a post's slot, then rebuilds Today if today's column was touched.
-async function save(p, { day_of_week, start, owner_name = p.owner_name, content_code = p.content_code, active = p.active }) {
-  const patch = { day_of_week, start_time: toTime(start) + ':00', end_time: toTime(start + POST_MIN) + ':00', owner_name, content_code, active, label: `${owner_name} ${content_code || ''}`.trim(), updated_at: new Date().toISOString(), updated_by: state.user?.id || null };
+async function save(p, { day_of_week, start, owner_name = p.owner_name, content_code = p.content_code, active = p.active, format_key = p.format_key ?? null }) {
+  const patch = { format_key: format_key || null, day_of_week, start_time: toTime(start) + ':00', end_time: toTime(start + POST_MIN) + ':00', owner_name, content_code, active, label: `${owner_name} ${content_code || ''}`.trim(), updated_at: new Date().toISOString(), updated_by: state.user?.id || null };
   const touched = [p.day_of_week, day_of_week].includes(todayDow());
-  const res = p.id ? await sb.from('daily_ops_weekly_posts').update(patch).eq('id', p.id) : await sb.from('daily_ops_weekly_posts').insert({ ...patch, timezone: TZ, created_by: state.user?.id || null });
+  const res = p.id ? await sb.from('daily_ops_weekly_posts').update(patch).eq('id', p.id) : await sb.from('daily_ops_weekly_posts').insert({ ...patch, timezone: TZ, created_by: state.user?.id || null }).select('id').single();
   if (fail(res, 'Save schedule')) { draw(); return false; }
-  if (p.id) Object.assign(p, patch);
+  if (p.id) Object.assign(p, patch); else p.id = res.data?.id;
   if (touched || (!p.id && day_of_week === todayDow())) { const s = await sb.rpc('sync_daily_ops_today'); if (s.error) console.warn('sync', s.error.message); }
   await load(); draw();
   return true;
@@ -223,19 +233,44 @@ function undoToast(msg, undo) {
 }
 
 // ---------------- Edit / add ----------------
+// Format: the slot's every-week format, plus one-off formats for the next 4 dates (post_plan). Experiment dates are shown locked.
 function editPost(p, init = {}) {
-  const isNew = !p, cur = p || { owner_name: '', content_code: 'A', day_of_week: init.day_of_week, active: true };
+  const isNew = !p, cur = p || { owner_name: '', content_code: 'A', day_of_week: init.day_of_week, active: true, format_key: 'image' };
   const start = p ? toMin(p.start_time) : init.start;
   const times = []; for (let m = START; m <= END - POST_MIN; m += SNAP) times.push([m, label12(m)]);
+  const fl = formatList().map(f => [f.key, f.label]);
+  const dates = nextDates(cur.day_of_week, 4, opsDate());
+  const oneOffs = isNew ? '' : `<div class="field full"><span>One-off format for a date <em class="muted s">(the scraper checks each post against it)</em></span><div class="sOnce">${dates.map(d => {
+      const pl = plans.get(`${p.id}|${d}`), locked = pl?.experiment_id;
+      return `<label class="row s" style="gap:8px"><b style="min-width:92px">${esc(fmtDay(d))}</b>${locked ? `<span class="fmtChip">${fmtIcon(pl.format_key)} ${esc(fmtLabel(pl.format_key))}</span><span class="muted">format test, arm ${esc(pl.arm || '')}</span>` : `<select class="select" name="once_${d}"><option value="">Same as every week</option>${opts(fl, pl?.format_key || '')}</select>`}</label>`;
+    }).join('')}</div></div>`;
   const { el } = modal({ title: isNew ? 'Add a post' : `${p.owner_name} · ${p.content_code || 'Post'}`, submit: isNew ? 'Add' : 'Save', body: `<div class="form">
       <label class="field">Account<select class="select" name="owner" required><option value="">Choose…</option>${opts(ownerNames(), cur.owner_name)}</select></label>
       <label class="field">Content<input class="input" name="code" required value="${esc(cur.content_code || '')}" placeholder="A, B, C = lead magnet · Video · Cred Post" list="sCodes"><datalist id="sCodes">${[...new Set(posts.map(x => x.content_code).filter(Boolean))].map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
       <label class="field">Day<select class="select" name="dow">${opts(DAYS.map(([d]) => [d, DAY_NAME[d]]), cur.day_of_week)}</select></label>
       <label class="field">Time (Malaysia)<select class="select" name="start">${opts(times, start)}</select></label>
+      <label class="field full">Format, every week<select class="select" name="format"><option value="">Not set</option>${opts(fl, cur.format_key || '')}</select><small class="muted" id="sFmtHow">${esc(fmtOf(cur.format_key)?.how_to || '')}</small></label>
+      ${oneOffs}
       ${isNew ? '' : `<label class="field full row" style="gap:8px"><input type="checkbox" name="active" ${cur.active !== false ? 'checked' : ''}> Active (turn off to pause without deleting)</label>`}
     </div>${!isNew && state.role === 'admin' ? '<div class="row" style="margin-top:14px"><button type="button" class="link s" id="sDel" style="color:var(--bad)">Delete this post from the schedule</button></div>' : ''}`,
-    onSubmit: async fd => save(cur, { day_of_week: Number(fd.get('dow')), start: Number(fd.get('start')), owner_name: fd.get('owner'), content_code: String(fd.get('code')).trim(), active: isNew ? true : fd.get('active') === 'on' }),
+    onSubmit: async fd => {
+      const ok = await save(cur, { day_of_week: Number(fd.get('dow')), start: Number(fd.get('start')), owner_name: fd.get('owner'), content_code: String(fd.get('code')).trim(), active: isNew ? true : fd.get('active') === 'on', format_key: fd.get('format') || null });
+      if (!ok || isNew) return ok;
+      // One-off formats: set, change or clear (experiment rows are left alone).
+      const sets = [], clears = [];
+      for (const d of dates) {
+        if (!fd.has(`once_${d}`)) continue;
+        const v = fd.get(`once_${d}`), pl = plans.get(`${cur.id}|${d}`);
+        if (v && v !== pl?.format_key) sets.push({ weekly_post_id: cur.id, work_date: d, format_key: v, note: 'one-off', created_by: state.user?.id || null });
+        else if (!v && pl && !pl.experiment_id) clears.push(pl.id);
+      }
+      if (sets.length && fail(await sb.from('post_plan').upsert(sets, { onConflict: 'weekly_post_id,work_date' }), 'Save one-off format')) return false;
+      if (clears.length && fail(await sb.from('post_plan').delete().in('id', clears), 'Clear one-off format')) return false;
+      if (sets.length || clears.length) { await load(); draw(); }
+      return true;
+    },
   });
+  const fsel = $('[name=format]', el); fsel.onchange = () => { $('#sFmtHow', el).textContent = fmtOf(fsel.value)?.how_to || ''; };
   const del = $('#sDel', el);
   if (del) del.onclick = async () => {
     if (!confirm(`Delete ${p.owner_name} · ${p.content_code} on ${DAY_NAME[p.day_of_week]}s?`)) return;

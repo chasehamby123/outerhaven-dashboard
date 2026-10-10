@@ -85,10 +85,18 @@ async function startAnalysis(by: string) {
   if (open.data?.length) return { ok: false, error: "An analysis is already running." };
   // The routine can't read the private bucket: hand it week-long signed links to the saved creatives (last 8 weeks).
   const since = new Date(Date.now() - 56 * 864e5).toISOString();
-  const { data: posts } = await sb.from("daily_ops_posts").select("id,creative_path").eq("is_repost", false).gte("posted_at", since).not("creative_path", "is", null).neq("creative_path", "unavailable").limit(200);
-  const creatives: Record<string, string> = {};
-  for (const p of posts || []) { const { data } = await sb.storage.from("growth-assets").createSignedUrl(p.creative_path, 7 * 86400); if (data?.signedUrl) creatives[p.id] = data.signedUrl; }
-  const { data: row, error } = await sb.from("resource_jobs").insert({ kind: "analysis", format: "analysis", topic: `Weekly growth analysis · week of ${monday}`, requested_by: by, fired_at: new Date().toISOString(), payload: { week_start: monday, creatives } }).select("id").single();
+  const { data: posts } = await sb.from("daily_ops_posts").select("id,creative_path,creative_paths").eq("is_repost", false).gte("posted_at", since).not("creative_path", "is", null).neq("creative_path", "unavailable").limit(200);
+  const creatives: Record<string, string> = {}, slides: Record<string, string[]> = {};
+  for (const p of posts || []) {
+    const { data } = await sb.storage.from("growth-assets").createSignedUrl(p.creative_path, 7 * 86400); if (data?.signedUrl) creatives[p.id] = data.signedUrl;
+    // Every saved image / slide / PDF of the post (scraper v11), in order, so the breakdown sees the whole creative.
+    const all = (Array.isArray(p.creative_paths) ? p.creative_paths : []).map((x: any) => x?.path).filter(Boolean);
+    if (all.length > 1 || all.some((x: string) => x.endsWith(".pdf"))) {
+      const s = await sb.storage.from("growth-assets").createSignedUrls(all, 7 * 86400);
+      slides[p.id] = (s.data || []).map((x: any) => x.signedUrl).filter(Boolean);
+    }
+  }
+  const { data: row, error } = await sb.from("resource_jobs").insert({ kind: "analysis", format: "analysis", topic: `Weekly growth analysis · week of ${monday}`, requested_by: by, fired_at: new Date().toISOString(), payload: { week_start: monday, creatives, slides } }).select("id").single();
   if (error) return { ok: false, error: error.message };
   return await fireAndRecord(row.id);
 }

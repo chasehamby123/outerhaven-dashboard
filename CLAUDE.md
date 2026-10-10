@@ -411,6 +411,30 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - The batch window sends the exact person shown (`items[].person`); the Send button counts ticked rows.
 - Hunter: one key, 50 lookups/month. Don't build rotation across extra free accounts (Tengku floated it; it breaks Hunter's terms).
 
+## Post formats, format tests, breakdowns (11 Oct 2026; `hq/formats.js`, `hq/formattest.js`, `supabase/2026-10-11-post-formats.sql`)
+- `post_formats`: our names mapped to what LinkedIn shows (`linkedin_type`) + page shape for documents. **Presentation = landscape
+  document, PDF carousel = portrait or square document** (our definition; editable in Schedule → Formats; two document formats must
+  not overlap in shape or the scraper can't tell them apart).
+- Planned format of a slot on a date = `post_plan` row (one-off override or format test: `experiment_id` + `arm`) ?? the weekly slot's
+  `daily_ops_weekly_posts.format_key`. Set in Schedule (slot modal: every-week format + one-off for the next 4 dates). Shown on Today
+  post tasks (format, how to make it, ★ test arm), Schedule blocks (`*` = next date differs), Post creation ("Make these for the next 7
+  days"), Overview post check (✓ Right format / ✕ Wrong format).
+- Scraper v11 (`daily-ops-linkedin-auto`): `linkedin_type`, `image_count`, every image / the PDF saved (`creative_paths`), PDF pages +
+  orientation from MediaBox (`doc_pages`, `doc_orientation`), caption counts (`text_features`), then `matchSlots()`: each own post takes
+  the closest free post slot of its account within 4 h (closest pairs first) → `slot_weekly_id`, `slot_date`, `planned_format`,
+  `detected_format`, `format_check` (match / mismatch / unknown / unplanned), `experiment_id/arm`. Free actions (cron key):
+  `{"action":"save_creatives","days":14}`, `{"action":"match_slots"}`.
+- **posted_at fix (v11):** when an account reshares its OWN old post, the actor's posted_at is the reshare time (Sahid's 3-week-old post
+  showed as last night's). Own posts now take the time from the post id (LinkedIn ids are snowflakes: ms = id >> 22). 18 rows repaired.
+- Format tests (Growth → Post experiments → New format test): account + format per arm, posts per arm; books the next free slots as
+  post_plan rows (same account on both arms alternates A/B). Results count only `format_check = 'match'` posts, each vs its own
+  account's 60-day median (accounts differ too much to compare raw); missed / wrong-format slots are listed and can be replaced
+  ("Book N replacements"). Under 4 counted posts per arm = directional.
+- Breakdowns: `.claude/skills/post-breakdown/SKILL.md` (fixed JSON of cover / pages / copy parts) → `daily_ops_posts.breakdown`, run by
+  the weekly analysis (`routines/weekly-analysis.md` §2), which gets signed links to every slide in `payload.slides` (resource-request v5).
+  Insights uses the measured format (hand tag > `detected_format` > Claude's guess). Document-post PDF extraction is untested live
+  (no document posts yet): the PDF link keys tried are doc.pdf_url / url / document_url / manifest_url.
+
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.
 - Never enter passwords, API keys or tokens for the user, even with permission. Point them to the HQ field.

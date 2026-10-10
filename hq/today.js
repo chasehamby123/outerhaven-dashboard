@@ -5,6 +5,7 @@ import { leadHeat } from './pipeline.js';
 import { renderNeedsReply } from './inbox.js';
 import { taskModal, openTaskById, me, TEAM, syncTeamTasks } from './tasks.js';
 import { renderDaily3 } from './daily3.js';
+import { loadFormats, loadPlans, fmtChip, fmtOf, checkHtml } from './formats.js';
 
 const TZ = 'Asia/Singapore';
 // Ops day rolls over at 2am GMT+8, matching the server's schedule builder.
@@ -19,6 +20,16 @@ const nowMin = () => { const p = Object.fromEntries(new Intl.DateTimeFormat('en-
 // Links that save a click: the post(s) whose comments need replies, or the profile to post from.
 const linkify = t => esc(t).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u.length > 48 ? u.slice(0, 47) + '…' : u}</a>`);
 const REPLY_CAP = 20; // LinkedIn comments per account per day (30+ is possible but risky)
+// Post tasks: which format this post must go out in, how to make it, the format test it belongs to, and (once the
+// scraper has seen it) whether it went out in that format.
+function formatLine(r) {
+  if (!/^post:/.test(r.auto_key || '')) return '';
+  const wid = r.auto_key.slice(5), pl = plans.get(`${wid}|${date}`), key = pl?.format_key || weekly.get(wid);
+  if (!key) return '';
+  const test = pl?.experiment_id ? exps.get(pl.experiment_id) : null;
+  const seen = posts.find(p => p.slot_weekly_id === wid && p.slot_date === date);
+  return `<small class="fmtLine">${fmtChip(key, 'strong')}${test ? `<span class="fmtTest" title="Part of a format test: post it exactly in this format or the test can't use it">Test: ${esc(test.name)} · arm ${esc(pl.arm || '')}</span>` : ''}${seen ? checkHtml(seen, { short: true }) : ''}${fmtOf(key)?.how_to ? `<span class="fmtHow">${esc(fmtOf(key).how_to)}</span>` : ''}</small>`;
+}
 function taskLinks(r) {
   const a = accounts.find(x => x.id === r.account_id); if (!a) return '';
   const link = (href, text, sub = '') => `<a class="tLink" href="${esc(href)}" target="_blank" rel="noopener">${esc(text)} ↗${sub ? `<em>${esc(sub)}</em>` : ''}</a>`;
@@ -59,7 +70,7 @@ function weekDays(today, todayRows, earlier) {
 }
 const week = () => weekDays(date, rows, past);
 
-let leads = [];
+let leads = [], weekly = new Map(), plans = new Map(), exps = new Map();
 let rows = [], past = [], accounts = [], posts = [], date = '', channel = null, loading = false, root = null, lastLoad = 0;
 // Whose tasks Today shows: a person, or 'Everyone'. Remembered per browser; defaults to whoever is signed in.
 let who = (() => { try { return localStorage.getItem('hq-today-who'); } catch { return null; } })();
@@ -77,9 +88,12 @@ async function load() {
     const [s, a, p, h] = await Promise.all([
       sb.from('daily_ops_schedule').select('*').eq('work_date', date),
       sb.from('daily_ops_accounts').select('id,owner_name,linkedin_url'),
-      sb.from('daily_ops_posts').select('id,account_id,linkedin_post_url,work_date,post_name,commenter_count,external_comment_count,unreplied_count,is_repost').or('is_repost.is.null,is_repost.eq.false').not('linkedin_post_url', 'is', null).order('work_date', { ascending: false }).limit(200),
+      sb.from('daily_ops_posts').select('id,account_id,linkedin_post_url,work_date,post_name,commenter_count,external_comment_count,unreplied_count,is_repost,slot_weekly_id,slot_date,format_check,planned_format,detected_format').or('is_repost.is.null,is_repost.eq.false').not('linkedin_post_url', 'is', null).order('work_date', { ascending: false }).limit(200),
       sb.from('daily_ops_schedule').select('*').gte('work_date', weekStart(date)).lt('work_date', date),
       loadDms().catch(e => console.warn('dms', e)),
+      // Post formats: the slot's planned format (one-off plan / format test ?? weekly default) shown on each post task.
+      Promise.all([loadFormats(), sb.from('daily_ops_weekly_posts').select('id,format_key'), loadPlans(date, date), sb.from('daily_ops_experiments').select('id,name,status').eq('status', 'running')])
+        .then(([, w, pl, ex]) => { weekly = new Map((w.data || []).map(x => [x.id, x.format_key])); plans = pl; exps = new Map((ex.data || []).map(x => [x.id, x])); }, e => console.warn('formats', e)),
       sb.from('lead_intake').select('name,reply_text,decision,created_at,source_account').is('person_id', null).is('reviewed_at', null).neq('decision', 'not_qualified').limit(500).then(r => { leads = r.data || []; }, () => {}),
     ]);
     if (fail(s, 'Load tasks')) return;
@@ -106,7 +120,7 @@ function itemHtml(r) {
   return `<li ${acct ? `data-ac="${acIdx(acct)}"` : ''} data-row="${r.id}" class="${r.status === 'done' ? 'done' : ''} ${isNow ? 'now' : ''} ${isLate ? 'late' : ''} ${fresh ? 'pop' : ''}"><label>
     <input type="checkbox" data-t="${r.id}" ${r.status === 'done' ? 'checked' : ''} aria-label="${esc(r.task)}">
     <span class="time">${r.start_time ? fmtTime(r.start_time) : '<em class="anytime">Any time</em>'}</span>
-    <span class="what"><span class="t">${acct ? avatar(acct) : ''}<b>${esc(r.task)}</b>${isNow ? '<span class="nowTag">Now</span>' : isLate ? '<span class="lateTag">Late</span>' : ''}${isTask ? `<button type="button" class="tEdit" data-edittask="${esc(r.auto_key.slice(5))}" title="Edit this task">Edit</button>` : ''}</span>${r.notes ? `<small>${linkify(r.notes)}</small>` : ''}${taskLinks(r)}${r.status === 'done' && r.completed_by_name ? `<small class="up">Done by ${esc(r.completed_by_name)}</small>` : ''}</span>
+    <span class="what"><span class="t">${acct ? avatar(acct) : ''}<b>${esc(r.task)}</b>${isNow ? '<span class="nowTag">Now</span>' : isLate ? '<span class="lateTag">Late</span>' : ''}${isTask ? `<button type="button" class="tEdit" data-edittask="${esc(r.auto_key.slice(5))}" title="Edit this task">Edit</button>` : ''}</span>${r.notes ? `<small>${linkify(r.notes)}</small>` : ''}${taskLinks(r)}${formatLine(r)}${r.status === 'done' && r.completed_by_name ? `<small class="up">Done by ${esc(r.completed_by_name)}</small>` : ''}</span>
   </label></li>`;
 }
 

@@ -3,9 +3,10 @@
 // day's blocks as tasks (sync_daily_ops_today, auto_key 'create:<id>').
 import { sb, esc, $, $$, toast, fail, modal, opts, avatar } from './core.js';
 import { opsDate } from './today.js';
+import { loadFormats, loadPlans, nextDates, fmtIcon, fmtLabel, fmtOf } from './formats.js';
 
 const DAYS = [[1, 'Monday'], [2, 'Tuesday'], [3, 'Wednesday'], [4, 'Thursday'], [5, 'Friday'], [6, 'Saturday'], [0, 'Sunday']];
-let root, blocks = [], owners = [], loaded = false, channel = null;
+let root, blocks = [], owners = [], loaded = false, channel = null, need = [];
 
 const toMin = t => { const [h, m] = String(t || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
 const toTime = n => `${String(Math.floor(n / 60) % 24).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
@@ -20,6 +21,13 @@ async function load() {
   ]);
   if (b.error) { blocks = null; console.error(b.error); } else blocks = b.data || [];
   owners = [...new Set((a.data || []).filter(x => x.active !== false).map(x => x.owner_name))];
+  // What has to be made for the next 7 days: every posting slot with its planned format (format tests included).
+  const from = opsDate(), to = nextDates(new Date(from + 'T12:00:00Z').getUTCDay(), 2, from)[1];
+  const [w, pl] = await Promise.all([sb.from('daily_ops_weekly_posts').select('id,owner_name,day_of_week,start_time,active,format_key,content_code'), loadPlans(from, to).catch(() => new Map()), loadFormats()]);
+  need = [];
+  for (const x of (w.data || []).filter(x => x.active !== false)) for (const d of nextDates(x.day_of_week, 1, from)) {
+    const p = pl.get(`${x.id}|${d}`); need.push({ owner: x.owner_name, d, key: p?.format_key || x.format_key || null, test: !!p?.experiment_id, arm: p?.arm, code: x.content_code });
+  }
   loaded = true;
 }
 
@@ -40,6 +48,7 @@ function draw(toggleHtml) {
   const days = DAYS.map(([d, name]) => ({ d, name, list: blocks.filter(b => b.day_of_week === d).sort((a, b) => toMin(a.start_time) - toMin(b.start_time)) })).filter(x => x.list.length);
 
   root.innerHTML = `${head}
+    ${needHtml()}
     <div class="cTotals">
       <div><b>${totC}</b><span>creatives a week</span></div>
       <div><b>${hrs(totM)}</b><span>of creation time</span></div>
@@ -71,6 +80,16 @@ function draw(toggleHtml) {
     fail(await sb.from('daily_ops_creation_blocks').update({ creatives: n, updated_at: new Date().toISOString() }).eq('id', id), 'Save');
     syncToday();
   });
+}
+
+// "Make these": per account, how many of each format the next 7 days of posts need. Format-test posts are marked,
+// because a test post made in the wrong format can't be counted.
+function needHtml() {
+  if (!need.length) return '';
+  const by = {}; for (const n of need) ((by[n.owner] ||= {})[n.key || '_'] ||= []).push(n);
+  const day = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short' });
+  return `<section class="card cNeed"><header><div><h2>Make these for the next 7 days</h2><p>From the posting plan. ★ = format test post: it has to be exactly this format or the test can't count it.</p></div></header>
+    <div class="cNeedGrid">${Object.entries(by).sort().map(([o, f]) => `<div class="cNeedAcct"><span class="cAcct">${avatar(o, 'xs')}<b>${esc(o)}</b></span><ul>${Object.entries(f).map(([k, list]) => `<li title="${esc(fmtOf(k)?.how_to || '')}"><b>${list.length}×</b> ${k === '_' ? '<span class="muted">Format not set</span>' : `${fmtIcon(k)} ${esc(fmtLabel(k))}`} <span class="muted s">${list.sort((a, b) => a.d.localeCompare(b.d)).map(n => `${day(n.d)}${n.test ? ` ★${esc(n.arm || '')}` : ''}`).join(', ')}</span></li>`).join('')}</ul></div>`).join('')}</div></section>`;
 }
 
 const syncToday = () => sb.rpc('sync_daily_ops_today').then(() => {}, () => {});

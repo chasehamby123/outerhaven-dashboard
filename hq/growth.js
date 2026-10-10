@@ -10,6 +10,8 @@ import { outboundView } from './inbox.js';
 import { playbookView } from './playbook.js';
 import { replyView } from './reply.js';
 import { sb, state } from './core.js';
+import { isFormatTest, loadTestData, editFormatTest, formatTestHtml, bindFormatTests } from './formattest.js';
+import { loadFormats, fmtChip, checkHtml } from './formats.js';
 
 const TABS = [['scraper', 'Scraper'], ['posts', 'Posts'], ['insights', 'Insights'], ['playbook', 'Playbook'], ['reply', 'Reply assist'], ['outbound', 'Outbound'], ['dms', 'DM tests'], ['experiments', 'Post experiments'], ['meetings', 'Meetings'], ['sheet', 'Sheet history']];
 const EXP_METRICS = [['impressions', 'Impressions'], ['sent', 'Messages sent'], ['comments', 'Comments'], ['reactions', 'Reactions'], ['saves', 'Saves'], ['sends', 'Sends (shares)'], ['replies', 'Replies'], ['dms', 'Inbound DMs'], ['meetings', 'Meetings']];
@@ -45,18 +47,20 @@ function tagSummary(p) {
   if (p.boostedBy.length) bits.push('Boosted: ' + p.boostedBy.join(', '));
   return bits.length ? bits.map(b => `<span class="tag">${esc(b)}</span>`).join(' ') : '<span class="s muted">Untagged</span>';
 }
-function postsView(body) {
+async function postsView(body) {
+  await loadFormats().catch(() => {});
   const posts = store.posts, tagged = posts.filter(isTagged).length;
   const avg = posts.length ? posts.reduce((n, p) => n + METRIC_DEFS.engagement.get(p), 0) / posts.length : 0;
   body.innerHTML = `<section class="card"><header><div><h2>Posts</h2><p>${posts.length} original posts, scraped automatically. Reshares count as boosts. Add tags so Insights can explain why posts worked.</p></div><div class="row"><select class="select sm" id="pAcct" style="width:auto"><option value="">All accounts</option>${opts(accountNames())}</select></div></header>
-  <div class="body flush scroll"><table class="tbl"><thead><tr><th>Creative</th><th>Post</th><th>Account</th><th>Date</th><th class="n" title="Comments from people outside the team. Our own accounts' comments are shown underneath.">Comments</th><th class="n">Reactions</th><th class="n">Reposts</th><th class="n">vs avg</th><th class="n">Meetings</th><th>Tags</th><th></th></tr></thead><tbody id="pRows"></tbody></table>${!posts.length ? '<div class="empty">No posts yet. They appear here as the LinkedIn sync picks them up.</div>' : ''}</div></section>`;
+  <div class="body flush scroll"><table class="tbl"><thead><tr><th>Creative</th><th>Post</th><th title="What went out (read from LinkedIn) and whether it matched the format planned for that slot">Format</th><th>Account</th><th>Date</th><th class="n" title="Comments from people outside the team. Our own accounts' comments are shown underneath.">Comments</th><th class="n">Reactions</th><th class="n">Reposts</th><th class="n">vs avg</th><th class="n">Meetings</th><th>Tags</th><th></th></tr></thead><tbody id="pRows"></tbody></table>${!posts.length ? '<div class="empty">No posts yet. They appear here as the LinkedIn sync picks them up.</div>' : ''}</div></section>`;
   const draw = () => {
     const f = $('#pAcct', body).value;
     $('#pRows', body).innerHTML = posts.filter(p => !f || p.account === f).map(p => {
       const eng = METRIC_DEFS.engagement.get(p), d = avg ? Math.round((eng - avg) / avg * 100) : 0;
       const raw = store.rawPosts.find(r => r.id === p.id), cp = raw?.creative_path;
-      const thumb = cp && cp !== 'unavailable' ? `<button type="button" class="cthumb" data-cthumb="${esc(cp)}" data-ctype="${esc(raw.creative_type || '')}" title="View creative"></button>` : `<span class="cthumb none" title="${cp === 'unavailable' ? 'Image link had expired before it was saved' : p.m && raw?.content_type === 'text' ? 'Text-only post' : 'Saved on the next posts scrape'}">${raw?.content_type === 'text' ? 'Text' : '—'}</span>`;
-      return `<tr><td>${thumb}</td><td style="max-width:280px">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a>` : esc(p.name)}${p.group ? `<div class="s muted">Creative: ${esc(p.group)}</div>` : ''}</td><td style="white-space:nowrap">${acctName(p.account)}</td><td class="muted" style="white-space:nowrap">${fmtDate(p.date)}</td><td class="n">${commentCell(p)}</td><td class="n">${fmt(p.m.reactions)}</td><td class="n">${fmt(p.m.reposts)}</td><td class="n ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '+' : ''}${d}%</td><td class="n">${p.meetings || '<span class="muted">0</span>'}</td><td>${tagSummary(p)}</td><td><button class="btn sm" data-edit="${p.id}">Tag</button></td></tr>`;
+      const slides = (raw?.creative_paths || []).filter(x => x.path), many = slides.length > 1 || slides.some(x => /pdf/.test(x.type));
+      const thumb = cp && cp !== 'unavailable' ? `<button type="button" class="cthumb" data-cthumb="${esc(slides.find(x => /^image/.test(x.type))?.path || cp)}" data-ctype="${esc(slides.find(x => /^image/.test(x.type))?.type || raw.creative_type || '')}" ${many ? `data-cpost="${esc(raw.id)}"` : ''} title="View creative">${slides.length > 1 ? `<em class="cnt">${slides.filter(x => !x.cover).length}${raw.doc_pages ? 'pg' : ''}</em>` : ''}</button>` : `<span class="cthumb none" title="${cp === 'unavailable' ? 'Image link had expired before it was saved' : p.m && raw?.content_type === 'text' ? 'Text-only post' : 'Saved on the next posts scrape'}">${raw?.content_type === 'text' ? 'Text' : '—'}</span>`;
+      return `<tr><td>${thumb}</td><td style="max-width:280px">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a>` : esc(p.name)}${p.group ? `<div class="s muted">Creative: ${esc(p.group)}</div>` : ''}</td><td class="s" style="white-space:nowrap">${fmtChip(raw?.detected_format)}${raw?.doc_pages ? `<div class="muted">${raw.doc_pages} pages · ${esc(raw.doc_orientation || '')}</div>` : ''}${raw?.format_check && raw.format_check !== 'unplanned' ? `<div>${checkHtml(raw, { short: true })}</div>` : ''}</td><td style="white-space:nowrap">${acctName(p.account)}</td><td class="muted" style="white-space:nowrap">${fmtDate(p.date)}</td><td class="n">${commentCell(p)}</td><td class="n">${fmt(p.m.reactions)}</td><td class="n">${fmt(p.m.reposts)}</td><td class="n ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '+' : ''}${d}%</td><td class="n">${p.meetings || '<span class="muted">0</span>'}</td><td>${tagSummary(p)}</td><td><button class="btn sm" data-edit="${p.id}">Tag</button></td></tr>`;
     }).join('');
     $$('[data-edit]', body).forEach(b => b.onclick = () => editPost(b.dataset.edit));
     loadCreativeThumbs(body);
@@ -68,9 +72,19 @@ function postsView(body) {
 async function loadCreativeThumbs(root) {
   for (const el of $$('[data-cthumb]', root)) {
     const url = await assetUrl(el.dataset.cthumb); if (!url) continue;
-    if (/pdf/.test(el.dataset.ctype)) { el.textContent = 'PDF'; el.onclick = () => window.open(url, '_blank', 'noopener'); }
+    if (/pdf/.test(el.dataset.ctype)) { el.insertAdjacentText('afterbegin', 'PDF'); el.onclick = () => window.open(url, '_blank', 'noopener'); }
     else { el.style.backgroundImage = `url("${url}")`; el.onclick = () => lightbox(url); }
+    if (el.dataset.cpost) el.onclick = () => openSlides(el.dataset.cpost);
   }
+}
+// Every saved slide / image of a post (multi-image posts and documents), plus the PDF itself.
+async function openSlides(id) {
+  const raw = store.rawPosts.find(r => r.id === id); if (!raw) return;
+  const list = (raw.creative_paths || []).filter(x => x.path);
+  const urls = await Promise.all(list.map(x => assetUrl(x.path)));
+  modal({ title: raw.post_name || 'Creative', wide: true, submit: '', body: `<p class="s muted" style="margin:0 0 10px">${esc(raw.linkedin_type || '')}${raw.doc_pages ? ` · ${raw.doc_pages} pages, ${esc(raw.doc_orientation || '')}` : ''}${raw.image_count > 1 ? ` · ${raw.image_count} images` : ''}</p>
+    <div class="slides">${list.map((x, i) => !urls[i] ? '' : /pdf/.test(x.type) ? `<a class="btn sm" href="${esc(urls[i])}" target="_blank" rel="noopener">Open the PDF ↗</a>` : `<button type="button" class="slide" data-src="${esc(urls[i])}"><img src="${esc(urls[i])}" alt="${x.cover ? 'Cover' : `Image ${i + 1}`}" loading="lazy"></button>`).join('')}</div>` });
+  $$('.slide').forEach(b => b.onclick = () => lightbox(b.dataset.src));
 }
 
 function editPost(id) {
@@ -117,10 +131,17 @@ function variantHtml(e, v, win) {
     ${(() => { const k = e.primary_metric || 'comments', base = m.impressions ? 'impressions' : m.sent ? 'sent' : null; return base && m[k] != null ? `<div class="s muted">${esc((EXP_METRICS.find(x => x[0] === k) || [k, k])[1])} per ${base === 'sent' ? 'message sent' : 'impression'}: ${pct(Number(m[k]), Number(m[base]), 2)}</div>` : ''; })()}
   </div>`;
 }
-function experimentsView(body) {
+async function experimentsView(body) {
+  if (!body.innerHTML) body.innerHTML = '<div class="empty">Loading…</div>';
+  await loadTestData().catch(e => console.warn('format tests', e));
+  if (!body.isConnected) return;
   const ex = store.experiments;
   const running = ex.filter(e => e.status !== 'complete'), done = ex.filter(e => e.status === 'complete');
   const card = e => {
+    if (isFormatTest(e)) return `<article class="card"><header><div><h2>${esc(e.name)}</h2><p>Format test · judged on ${esc(e.primary_metric || 'comments')} vs each account's usual · started ${fmtDate(e.started_at)}${e.ended_at ? ` · ended ${fmtDate(e.ended_at)}` : ''}</p></div>
+      <div class="row"><button class="btn sm ghost" data-editexp="${e.id}">Edit</button></div></header>
+      ${e.hypothesis ? `<div class="body s" style="padding-top:12px;padding-bottom:12px"><span class="muted">Hypothesis:</span> ${esc(e.hypothesis)}</div>` : ''}
+      ${formatTestHtml(e)}${e.learning ? `<div class="body s" style="border-top:1px solid var(--line)"><span class="muted">Learning:</span> ${esc(e.learning)}</div>` : ''}</article>`;
     const v = verdict(e), winner = e.winner && e.winner !== 'Tie' ? e.winner : (v.state === 'win' ? v.winner : null);
     return `<article class="card"><header><div><h2>${esc(e.name)}</h2><p>${esc(e.variable || 'Variable not set')} · primary metric: ${esc(e.primary_metric || 'comments')} · started ${fmtDate(e.started_at)}${e.ended_at ? ` · ended ${fmtDate(e.ended_at)}` : ''}</p></div>
       <div class="row"><span class="tag ${v.state === 'win' ? 'good' : v.state === 'lean' ? 'warn' : ''}">${esc(v.text)}</span><button class="btn sm" data-result="${e.id}">Enter results</button><button class="btn sm ghost" data-editexp="${e.id}">Edit</button></div></header>
@@ -128,9 +149,11 @@ function experimentsView(body) {
       <div class="variants">${variantHtml(e, 'A', winner === 'A')}${variantHtml(e, 'B', winner === 'B')}</div>
       ${e.learning ? `<div class="body s" style="border-top:1px solid var(--line)"><span class="muted">Learning:</span> ${esc(e.learning)}</div>` : ''}</article>`;
   };
-  body.innerHTML = `<div class="row" style="margin-bottom:16px"><div class="grow s muted">${running.length} running · ${done.length} complete. Change one variable at a time. Log impressions so results can be called with confidence.</div><button class="btn primary" id="newExp">New experiment</button></div>
+  body.innerHTML = `<div class="row" style="margin-bottom:16px"><div class="grow s muted">${running.length} running · ${done.length} complete. Change one variable at a time. Log impressions so results can be called with confidence.</div><button class="btn" id="newFmtTest" title="Book the next posting slots of two accounts in two formats; the scraper checks each one went out in that format">New format test</button><button class="btn primary" id="newExp">New experiment</button></div>
     <div class="stack">${running.map(card).join('')}${done.length ? `<h3 class="s muted" style="margin:8px 0 -8px;font-weight:500">Completed</h3>${done.map(card).join('')}` : ''}${!ex.length ? '<div class="card"><div class="empty">No experiments yet. Start one, or pick a suggestion from Insights.</div></div>' : ''}</div>`;
   $('#newExp', body).onclick = () => editExperiment();
+  $('#newFmtTest', body).onclick = () => editFormatTest();
+  bindFormatTests(body);
   $$('[data-editexp]', body).forEach(b => b.onclick = () => editExperiment(b.dataset.editexp));
   $$('[data-result]', body).forEach(b => b.onclick = () => enterResults(b.dataset.result));
   $$('[data-up]', body).forEach(inp => inp.onchange = async () => {
@@ -182,6 +205,7 @@ export function editExperiment(id, preset = {}) {
   $('#delExp', m.el)?.addEventListener('click', async () => {
     if (!confirm('Delete this experiment and its images?')) return;
     for (const a of e.assets || []) await removeAsset(a.path);
+    await sb.from('post_plan').delete().eq('experiment_id', id); // free the booked slots (format tests)
     if (!fail(await deleteExperiment(id), 'Delete')) { m.close(); toast('Deleted'); await load(); }
   });
 }
