@@ -1204,3 +1204,44 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .d3Body small{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:var(--fs-xs);color:var(--muted)}
 .d3Who{display:inline-flex;align-items:center;gap:4px;color:var(--ink)}
 @media (max-width:640px){.d3Row{grid-template-columns:28px minmax(0,1fr);padding:12px 16px}.d3Row .btn{grid-column:2;justify-self:start}}
+
+/* Reason kinds on the signal tabs (hq/kinds.js): every reason carries a symbol + word, never colour alone.
+   Need = why they must act (blue/indigo), Risk = distress, harder to finance (--bad), Fit = in range (--good). */
+:root{--need:#2554c7;--need-bg:#e3eafc}
+:root[data-theme="dark"]{--need:#8aa8ff;--need-bg:#152245}
+:root[data-theme="tan"]{--need:#3d55a3;--need-bg:#e1e2ee}
+.fsWhy li[data-kind]{display:flex;align-items:flex-start;gap:8px;padding-left:0;font-weight:500;color:var(--ink-2)}
+.fsWhy li[data-kind]::before{display:none}
+.rk{flex:none;display:inline-flex;align-items:center;gap:4px;min-width:62px;height:18px;padding:0 6px;border-radius:4px;font:600 11px/1 var(--sans);letter-spacing:.01em;background:var(--sunk);color:var(--muted)}
+.rk i{font-style:normal;font-size:10px}
+[data-kind=need] .rk{background:var(--need-bg);color:var(--need)}
+[data-kind=risk] .rk{background:var(--bad-bg);color:var(--bad)}
+[data-kind=fit] .rk{background:var(--good-bg);color:var(--good)}
+[data-kind=check] .rk{background:var(--warn-bg);color:var(--warn)}
+[data-kind=cut] .rk{background:var(--sunk);color:var(--muted);text-decoration:line-through}
+.fsWhy li[data-kind=risk]>span:last-child{color:var(--ink)}
+.rkLegend{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;margin:10px 0 4px;font-size:var(--fs-xs);color:var(--muted)}
+.rkLegend>span{display:inline-flex;align-items:center;gap:6px}
+.rkLegend a{margin-left:auto;font-weight:600;color:var(--ink)}
+
+/* Colour-blind safe (red-green): html[data-cb="on"], toggled in the sidebar. Okabe-Ito hues: good = blue,
+   bad = vermillion/orange, warn = amber, need = purple. Applies to every good/bad/warn colour in HQ. */
+:root[data-cb="on"]{--good:#0b62a8;--good-bg:#e1eef8;--bad:#c25100;--bad-bg:#fbe6d6;--warn:#7d6300;--warn-bg:#fbf1cc;--need:#6a3d9a;--need-bg:#efe6f7;--win-bg:#eef5fb;--live:#e06a00}
+:root[data-theme="dark"][data-cb="on"]{--good:#56b4e9;--good-bg:#0b2433;--bad:#f39a4c;--bad-bg:#3a1f0c;--warn:#f0d050;--warn-bg:#352c06;--need:#c79be6;--need-bg:#2a1a38;--win-bg:#0b1d29;--live:#f39a4c}
+:root[data-theme="tan"][data-cb="on"]{--good:#1f5f99;--good-bg:#dde6ee;--bad:#b0490c;--bad-bg:#f2dcc8;--warn:#7a5d00;--warn-bg:#f1e3b8;--need:#6a3d9a;--need-bg:#e8dcef;--win-bg:#e6ecef}
+.cbSw{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;height:28px;margin-top:6px;padding:0 10px;border:1px solid var(--side-line);border-radius:8px;background:var(--side-2);color:var(--side-ink);font-size:11px;font-weight:600;cursor:pointer}
+.cbSw b{color:var(--side-strong);font-weight:600}
+.cbSw:hover{color:var(--side-strong)}
+
+/* Rules page (#/rules) */
+.rulesPage{max-width:920px}
+.rulesPage h1{margin:0 0 6px;font:600 30px/1.15 var(--serif)}
+.rulesPage .lede{margin:0 0 20px;color:var(--ink-2);font-size:var(--fs-l)}
+.rulesPage .card{margin-bottom:18px}
+.rulesPage .body{padding:16px 20px}
+.rulesPage h3{margin:14px 0 6px;font:600 13px/1.3 var(--sans);text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.rulesPage h3:first-child{margin-top:0}
+.rulesPage ul.fsWhy{margin:0;gap:6px}
+.rulesPage ul.fsWhy li{font-size:var(--fs-s)}
+.rulesPage ol.focus{margin:0;padding-left:20px;display:grid;gap:6px;font-size:var(--fs)}
+.rulesPage .pts{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600}

@@ -12,6 +12,7 @@ import { mountChat } from './chat.js';
 import { renderChaseDaily } from './chase-daily.js';
 import { renderTeam } from './team.js';
 import { renderRecord } from './record.js';
+import { renderRules } from './rules.js';
 
 const ROUTES = {
   today: { label: 'Today', render: r => renderToday(r), ops: true },
@@ -22,6 +23,7 @@ const ROUTES = {
   deals: { label: 'Deals', render: r => renderDealsPage(r) },
   resources: { label: 'Resources', render: (r, sub) => renderResources(r, sub), ops: true },
   record: { label: 'Track record', render: r => renderRecord(r) },
+  rules: { label: 'How we qualify', render: r => renderRules(r) },
   team: { label: 'Team access', render: r => renderTeam(r) },
   'chase-daily': { label: 'My Daily Ops', render: r => renderChaseDaily(r), chaseOnly: true },
 };
@@ -55,6 +57,7 @@ const ICON = {
   deals: '<svg viewBox="0 0 24 24"><path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M4 12h16"/></svg>',
   record: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 10h18M8 2v4M16 2v4M8 14h2M13 14h3M8 18h2"/></svg>',
   team: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><rect x="15" y="11" width="6.5" height="5" rx="1"/><path d="M16.5 11V9.5a1.75 1.75 0 0 1 3.5 0V11"/></svg>',
+  rules: '<svg viewBox="0 0 24 24"><path d="M9 11l2 2 4-4"/><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/></svg>',
   pipeline: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="6" rx="1.5"/></svg>',
 };
 const THEMES = [['light', 'Light', '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>'], ['dark', 'Dark', '<svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>'], ['tan', 'Tan', '<i></i>']];
@@ -65,6 +68,16 @@ function setTheme(t) {
   $$('.themeSw button').forEach(b => b.classList.toggle('on', b.dataset.theme === t));
 }
 const themeSwitch = () => `<div class="themeSw" role="group" aria-label="Theme">${THEMES.map(([k, l, ic]) => `<button type="button" data-theme="${k}" class="${getTheme() === k ? 'on' : ''}" title="${l} mode">${ic}<span>${l}</span></button>`).join('')}</div>`;
+// Colour-blind safe mode (red-green): swaps every good/bad/warn token for blue/orange/amber. Per browser.
+const getCb = () => { try { return localStorage.getItem('hq-cb') === 'on'; } catch { return false; } };
+function setCb(on) {
+  if (on) document.documentElement.dataset.cb = 'on'; else delete document.documentElement.dataset.cb;
+  try { localStorage.setItem('hq-cb', on ? 'on' : 'off'); } catch { }
+  $$('.cbSw b').forEach(b => { b.textContent = on ? 'On' : 'Off'; });
+  $$('.cbSw').forEach(b => b.setAttribute('aria-pressed', String(on)));
+}
+setCb(getCb());
+const cbSwitch = () => `<button type="button" class="cbSw" aria-pressed="${getCb()}" title="Red-green colour-blind safe colours">Colour-blind safe <b>${getCb() ? 'On' : 'Off'}</b></button>`;
 const navLink = (page, href, label) => `<a href="${href}" data-page="${page}">${ICON[page]}<span>${label}</span></a>`;
 
 function shell() {
@@ -73,12 +86,14 @@ function shell() {
     <aside class="side">
       <div class="brand"><b>O</b><span>Outerhaven</span><em>HQ</em></div>
       ${themeSwitch()}
+      ${cbSwitch()}
       <nav class="nav">${state.role === 'ops' ? navLink('today', '#/today', 'Today') + navLink('schedule', '#/schedule', 'Schedule') + navLink('resources', '#/resources', 'Resources') : `
         ${navLink('overview', '#/overview', 'Overview')}
         ${navLink('today', '#/today', 'Today')}
         ${navLink('schedule', '#/schedule', 'Schedule')}
         ${navLink('pipeline', '#/pipeline', 'Pipeline')}
         ${navLink('deals', '#/deals', 'Deals')}
+        ${navLink('rules', '#/rules', 'How we qualify')}
         ${navLink('growth', '#/growth/posts', 'Growth')}
         ${navLink('resources', '#/resources', 'Resources')}
         ${navLink('record', '#/record', 'Track record')}
@@ -92,6 +107,7 @@ function shell() {
     <main class="main" id="view"></main></div>`;
   $('#signOut').onclick = signOut;
   $$('.themeSw button').forEach(b => b.onclick = () => setTheme(b.dataset.theme));
+  $$('.cbSw').forEach(b => b.onclick = () => setCb(!getCb()));
   // Clicking Today (even when already there) arms the overdue check; see today.js / whip.js.
   $('.nav a[data-page="today"]')?.addEventListener('click', () => { armWhip(); if (route().page === 'today') render(); });
 }

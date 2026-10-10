@@ -340,6 +340,16 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   queue = `lead_intake` unreviewed, not not_qualified (goal 0) + cleared today (`reviewed_at`); (3) calls booked = `growth_meetings` today vs
   `DAILY3.calls` (1). Quotas are constants at the top of daily3.js. Tengku's rule: volume first, no new scrapers/rules for 30 days.
 
+## Reason labels, rules page, colour-blind mode (10 Oct 2026; `hq/kinds.js`, `hq/rules.js`)
+- Server rules tag anything that raises the score `good`, which coloured distress (going concern, forbearance, PIK, low marks) green.
+  HQ now relabels every reason client-side by text (`kindOf()` in kinds.js): **Need** (deadline, why we call), **Risk** (distress, harder
+  for Peter's lenders), **Fit**, **Check** (maybe), **Cut**, Info. Each shows symbol + word (▲ ⚠ ✓ ? ✕), never colour alone. Legend above
+  every signal list. If you add a reason in a rules.js, check `kindOf` labels it right (RISK / NEED regexes).
+- **How we qualify** page (`#/rules`, sidebar): every rule for BDC / Credit / UCC / Fund signals with points, plus the focus order.
+  Hand-written from the rules files: change it in the same commit as any rule change. BDC "How it works" modal points fixed to match rules.js.
+- **Colour-blind safe** toggle under the theme switch (`html[data-cb="on"]`, localStorage `hq-cb`): good = blue, bad = orange,
+  warn = amber, need = purple, for light / dark / tan. Tengku is red-green colour-blind: never rely on red vs green alone.
+
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.
 - Never enter passwords, API keys or tokens for the user, even with permission. Point them to the HQ field.

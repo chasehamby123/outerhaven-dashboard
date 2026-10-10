@@ -3,6 +3,7 @@
 // number, not an estimate. Filled by scripts/bdc_signals.py on GitHub; judged on the server (classifyBdc in
 // supabase/functions/bdc-signals/rules.js). Filters kept in localStorage 'hq-bdc-filters'.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
+import { whyItem, kindLegend } from './kinds.js';
 import { markBtns, markLine, bindMarks, MARK_VIEWS, inMarkView } from './marks.js';
 
 let el = null, rows = [], runs = [], view = 'target', onCount = () => {};
@@ -104,7 +105,7 @@ function drawList() {
   onCount(rows.filter(s => bucket(s) === 'target').length);
   pass.forEach(s => { counts[bucket(s)] = (counts[bucket(s)] || 0) + 1; if (s.starred_at) counts.starred++; if (s.flagged_at) counts.flagged++; });
   const shown = pass.filter(s => inMarkView(view, s) ?? bucket(s) === view).sort(sorter[F.sort] || sorter.score);
-  body.innerHTML = `<div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['added', 'In pipeline'], ['dismissed', 'Dismissed'], ...MARK_VIEWS].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : ''}">${l} <b>${counts[k] || 0}</b></button>`).join('')}</div>
+  body.innerHTML = `<div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['added', 'In pipeline'], ['dismissed', 'Dismissed'], ...MARK_VIEWS].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : ''}">${l} <b>${counts[k] || 0}</b></button>`).join('')}</div>${kindLegend()}
     ${active() ? `<p class="pHint" style="margin:0">${pass.length.toLocaleString()} of ${rows.length.toLocaleString()} companies match the filters.</p>` : ''}
     <div class="fsList">${shown.length ? shown.slice(0, 200).map(rowHtml).join('') : `<div class="empty">${rows.length ? (active() ? 'Nothing matches these filters.' : 'Nothing here.') : 'No companies yet. Run the scan on GitHub (mode bdc); it takes about 5 minutes.'}</div>`}</div>
     ${shown.length > 200 ? `<p class="pHint">Showing the top 200 of ${shown.length}. Narrow it with the filters.</p>` : ''}`;
@@ -128,7 +129,7 @@ function rowHtml(s) {
       <h4>${esc(s.company_name)} <span class="fsVeh">${s.lenders} BDC lender${s.lenders === 1 ? '' : 's'}${s.pik ? ' · PIK' : ''}${s.nonaccrual ? ' · non-accrual' : ''}</span></h4>
       ${markLine(s)}
       <div class="fsFacts">${facts.map(x => `<span>${x}</span>`).join('')}</div>
-      <ul class="fsWhy">${(s.reasons || []).map(r => `<li data-tone="${toneOf(r.tone)}">${esc(r.text)}</li>`).join('')}</ul>
+      <ul class="fsWhy">${(s.reasons || []).map(r => whyItem(r, esc)).join('')}</ul>
       <details class="ucLiens"><summary>Lenders (${holders.length})</summary><table><tbody>${holders.map(h => `<tr><td>${h.url ? `<a href="${esc(h.url)}" target="_blank" rel="noopener">${esc(bdcShort(h.bdc))} ↗</a>` : esc(bdcShort(h.bdc))}</td><td>${money(h.principal)}</td><td>${h.principal ? Math.round(100 * h.fair / h.principal) + '¢' : ''}</td><td class="muted">${h.maturity ? 'matures ' + esc(mon(h.maturity)) : ''}${h.period ? ` · as of ${esc(mon(h.period))}` : ''}</td></tr>`).join('')}</tbody></table>
         ${s.sample ? `<p class="s muted" style="margin:6px 0 0">As filed: ${esc(s.sample)}</p>` : ''}</details>
       <div class="fsPeople"><a href="${cfoSearch(s)}" target="_blank" rel="noopener">Find the CFO / CEO on LinkedIn ↗</a><a href="${webSearch(s)}" target="_blank" rel="noopener">Website ↗</a></div>
@@ -203,13 +204,13 @@ function howModal() {
       <li><b>EBITDA</b> is implied: debt ÷ 4–5.5× (normal senior leverage at this size).</li></ul>
       <h4>3. Size (Tengku, 8 Oct)</h4><p>Under $10M of debt is cut (not worth Peter's time). $10–75M is the core (~$2–17M EBITDA). $75–150M is the upper end. Over $150M is cut: the big banks and placement agents cover it.</p>
       <h4>4. Triggers (any one makes it a Target, if nothing below rules it out)</h4><ul>
-      <li><b>+35</b> matures within 12 months, <b>+25</b> within 18, <b>+30</b> past maturity and still outstanding (extended or in default).</li>
-      <li><b>+30</b> marked under 80¢, <b>+20</b> under 90¢; <b>+10</b> marked down 5+ points in a quarter; <b>+15</b> non-accrual.</li>
-      <li>Also: <b>+8</b> PIK, <b>+5</b> priced at S+7% or more, <b>+10</b> maturing in 18–24 months.</li></ul>
+      <li>Need: <b>+25</b> matures within 12 months, <b>+18</b> within 18, <b>+7</b> in 18–24 months; <b>+15</b> matured after the lenders' last report.</li>
+      <li>Risk: <b>+22</b> past maturity and marked down; <b>+25</b> marked under 80¢, <b>+15</b> under 90¢; <b>+8</b> marked down 5+ points in a quarter; <b>+10</b> non-accrual; <b>+5</b> PIK; <b>+3</b> priced at S+7% or more. Risk raises the score (they need help) but makes the loan harder for Peter's lenders.</li></ul>
       <h4>5. Who lends</h4><ul>
-      <li><b>+10</b> lower-middle-market lenders only (Main Street, Monroe, Fidus, Stellus, Saratoga…): owner-run or small-sponsor companies, the kind that hire an adviser.</li>
+      <li><b>+8</b> lower-middle-market lenders only (Main Street, Monroe, Fidus, Stellus, Saratoga…): owner-run or small-sponsor companies, the kind that hire an adviser.</li>
       <li><b>−10</b> a big platform in the deal (Ares, Blackstone, Golub, Blue Owl, HPS…): the full facility is bigger than shown, and the PE sponsor usually runs the refinancing.</li>
       <li>Cut: controlled by its lender, held only by syndicated-loan buyers, public companies (see Credit signals). Maybe: venture debt, a lender that also owns 5–25%, non-US, or marked under 50¢ (likely already restructuring).</li></ul>
+      <p><a href="#/rules">Every rule for every list: How we qualify →</a></p>
       <h4>6. Limits</h4><ul><li>Borrower names are read from free text that every BDC formats differently; "As filed" under Lenders shows the original line.</li>
       <li>Holding-company names (Buyer, Midco, Parent) usually mean PE-owned: the decision maker is often the sponsor's deal team.</li></ul>
       <p class="s muted">The opener never mentions the lender's mark: that's the lender's private view of the company.</p></div>`,
