@@ -19,16 +19,23 @@ export function profileFrom(r, company) {
   if (!/^https:\/\/([a-z]{2,3}\.)?linkedin\.com\/in\//i.test(url)) return null;
   const title = String(r.title || '').replace(/\s*\|\s*LinkedIn\s*$/i, '').trim();
   const desc = String(r.description || '').replace(/<[^>]+>/g, '');
-  const b = brand(company).toLowerCase();
-  const first = b.split(' ')[0];
-  const hay = (title + ' ' + desc).toLowerCase();
-  if (!b || !(hay.includes(b) || (first.length >= 5 && hay.includes(first)))) return null;
+  // Generic trailing words ("Solutions", "Systems") are often dropped on LinkedIn, so match on the brand without them.
+  const GENERIC = /\s+(solutions|systems|technologies|technology|services|partners|industries|international|communications|enterprises|company|companies)$/i;
+  let b = brand(company).toLowerCase(); while (GENERIC.test(b) && b.split(' ').length > 1) b = b.replace(GENERIC, '');
   const parts = title.split(/\s+[-–—|]\s+/);
+  // The company must appear outside the person's name (a person called "Essence Montgomery" is not at Essence), as the whole
+  // brand when it has several words ("Global Integrated Flooring", not just "Global").
+  const who = (parts[0] || '').trim().toLowerCase();
+  const hay = (parts.slice(1).join(' ') + ' ' + desc).toLowerCase().split(who).join(' ');
+  const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!b || !new RegExp(`(^|[^a-z0-9])${esc(b)}([^a-z0-9]|$)`).test(hay)) return null;
+  if (/\b(fractional|freelance|consultant|outsourced|part-time cfo|cfo services|advisor to|for smbs?)\b/i.test(parts.slice(1).join(' ') + ' ' + desc.slice(0, 120))) return null;
   const name = (parts[0] || '').replace(/,.*$/, '').replace(/\b(MBA|CPA|CFA|PhD|Jr\.?|Sr\.?)\b/g, '').replace(/\s+/g, ' ').trim();
   if (!/^[A-Z][\p{L}'.-]+(\s+[A-Z][\p{L}'.-]*){1,3}$/u.test(name)) return null;
   const role = roleOf(parts.slice(1).join(' ') + ' ' + desc.slice(0, 160));
   if (role === 'other') return null;
-  const jobTitle = (parts.slice(1).find(p => roleOf(p) !== 'other') || (role === 'cfo' ? 'Finance' : 'Executive')).trim();
+  const raw = (parts.slice(1).find(p => roleOf(p) !== 'other') || (role === 'cfo' ? 'Finance' : 'Executive')).replace(/[^\x20-\x7E]+.*$/, '').trim();
+  const jobTitle = raw.length > 60 ? raw.slice(0, 58).trim() + '…' : raw;
   return { name, title: jobTitle, role, linkedin: url.split('?')[0] };
 }
 
@@ -39,9 +46,9 @@ export function websiteFrom(results, company) {
   for (const r of results || []) {
     let host = '';
     try { host = new URL(r.url).hostname.replace(/^www\./, ''); } catch { continue; }
-    if (NOT_SITE.test(host)) continue;
-    const flat = host.replace(/[^a-z0-9]/g, '');
-    if (words.some(w => flat.includes(w.replace(/[^a-z0-9]/g, '')))) return { website: `https://${host}`, domain: host };
+    if (NOT_SITE.test(host) || !/\.(com|net|io|co|us|org|biz|ai|health|tech)$/.test(host)) continue;
+    const flat = host.replace(/\.[a-z]+$/, '').replace(/[^a-z0-9]/g, ''), all = words.join('').replace(/[^a-z0-9]/g, '');
+    if ((all.length >= 4 && flat.includes(all)) || words.some(w => w.length >= 5 && flat.includes(w.replace(/[^a-z0-9]/g, '')))) return { website: `https://${host}`, domain: host };
   }
   return null;
 }

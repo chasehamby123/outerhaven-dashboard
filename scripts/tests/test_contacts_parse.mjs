@@ -26,4 +26,12 @@ const m = mergePeople([{ name: 'Robert Allen', role: 'cfo', status: 'confirmed',
   [{ name: 'Robert Allen', role: 'cfo', linkedin: 'https://linkedin.com/in/ra', title: 'CFO' }, { name: 'New CEO', role: 'ceo' }]);
 assert.equal(m[0].name, 'Robert Allen'); assert.equal(m[0].email, 'r@x.com'); assert.equal(m[0].linkedin, 'https://linkedin.com/in/ra');
 assert.equal(m[m.length - 1].name, 'Old CEO');
+// Real false positives from the first live run (10 Oct 2026)
+assert.equal(profileFrom({ url: 'https://www.linkedin.com/in/em', title: 'Essence Montgomery - Finance Manager - Acme | LinkedIn', description: 'Acme' }, 'Essence Communications Inc.'), null);
+assert.equal(profileFrom({ url: 'https://www.linkedin.com/in/fg', title: 'Fidel Gbesso - Global CFO - Contoso | LinkedIn', description: 'Global CFO at Contoso' }, 'Global Integrated Flooring Systems Inc.'), null);
+assert.equal(profileFrom({ url: 'https://www.linkedin.com/in/co', title: 'Chris Ortega - Fractional CFO for SMBs ($1M–$50M) | LinkedIn', description: 'ORL' }, 'ORL Holdco, Inc.'), null);
+assert.equal(profileFrom({ url: 'https://www.linkedin.com/in/jw', title: 'John Watson - Chief Financial Officer - Global Integrated Flooring Systems | LinkedIn', description: '' }, 'Global Integrated Flooring Systems Inc.').name, 'John Watson');
+assert.equal(websiteFrom([{ url: 'https://www.orl.bc.ca/' }], 'ORL Holdco, Inc.'), null);
+assert.ok(profileFrom({ url: 'https://linkedin.com/in/cw', title: 'Caroline Wanga - President/CEO✨Mela-Preneur✨Thought Innovator - Essence Communications | LinkedIn', description: '' }, 'Essence Communications Inc.').title.length <= 60);
+assert.equal(profileFrom({ url: 'https://www.linkedin.com/in/em2', title: 'Essence Montgomery - Finance Manager | LinkedIn', description: 'Essence Montgomery. Finance Manager at Contoso.' }, 'Essence Communications Inc.'), null);
 console.log('contacts parse: all tests passed');

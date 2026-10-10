@@ -14,7 +14,7 @@ const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: fal
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-fund-ingest, x-outerhaven-cron", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "content-type": "application/json" } });
 const DAILY_CAP = 120;   // companies looked up per day by the cron (~2-3 Brave queries each)
-const PER_RUN = 6;       // per 30-min cron run (keeps each run well inside the function time limit)
+const PER_RUN = 6;       // per 30-min cron run: ~3 queries x 1.1 s each, well inside the function time limit
 const TABLE: Record<string, string> = { credit: "credit_signals", bdc: "bdc_signals", ucc: "ucc_signals" };
 const KEYCOL: Record<string, string> = { credit: "cik", bdc: "company_key", ucc: "company_key" };
 
@@ -36,11 +36,20 @@ async function save(kind: string, key: string, patch: Record<string, unknown>) {
   if (r.error) throw new Error(r.error.message);
 }
 
+// Brave's free plan allows 1 query per second: space calls 1.1 s apart and retry a 429 once.
+let lastBrave = 0;
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function brave(q: string, key: string) {
-  const r = await fetch(`https://api.search.brave.com/res/v1/web/search?count=10&q=${encodeURIComponent(q)}`, { headers: { Accept: "application/json", "X-Subscription-Token": key } });
-  if (r.status === 429) throw new Error("Brave rate limit");
-  if (!r.ok) throw new Error(`Brave HTTP ${r.status}`);
-  return ((await r.json())?.web?.results || []) as any[];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const wait = 1100 - (Date.now() - lastBrave); if (wait > 0) await sleep(wait);
+    lastBrave = Date.now();
+    const r = await fetch(`https://api.search.brave.com/res/v1/web/search?count=10&q=${encodeURIComponent(q)}`, { headers: { Accept: "application/json", "X-Subscription-Token": key } });
+    if (r.status === 429 && attempt === 0) { await sleep(1600); continue; }
+    if (r.status === 429) throw new Error("Brave rate limit");
+    if (!r.ok) throw new Error(`Brave HTTP ${r.status}`);
+    return ((await r.json())?.web?.results || []) as any[];
+  }
+  return [];
 }
 
 // Find contacts for one company: LinkedIn profiles of the CFO / CEO and the company website.
@@ -51,7 +60,8 @@ async function lookup(kind: string, key: string, name?: string) {
   if (!company) company = (await sb.from(TABLE[kind]).select("company_name").eq(KEYCOL[kind], key).maybeSingle()).data?.company_name;
   if (!company) throw new Error("Company not found");
   if (!bk) { await save(kind, key, { company_name: company, lookup_note: "No Brave Search key yet (HQ → Contacts setup)." }); return { ok: false, note: "no key" }; }
-  const b = brand(company), people = [...(row?.people || [])];
+  // A new search replaces earlier unconfirmed search finds; SEC names and anyone the team marked stay.
+  const b = brand(company), people = (row?.people || []).filter((p: any) => p.source === "sec" || p.status);
   const found: any[] = [];
   // Named officers (SEC): search each by name for their LinkedIn. Otherwise search the company for finance / top roles.
   const named = people.filter((p: any) => p.source === "sec" && !p.linkedin).slice(0, 2);
