@@ -1,5 +1,6 @@
 // Omnichannel outreach from HQ (10 Oct 2026): "Send today's batch" picks the day's BDC + credit targets that have a contact,
 // a person ticks them, and the outreach edge function enrols each in Prosp (LinkedIn) and PlusVibe (email).
+// LinkedIn first: when the LinkedIn step goes out, the email follows email_delay_days later, only if they haven't replied.
 // Copy lives in the Prosp / PlusVibe campaigns; HQ sends {{first_name}}, {{company}}, {{opener}}, {{need}}.
 import { sb, esc, $, $$, toast, modal, opts } from './core.js';
 import { loadContacts, bestPerson } from './contacts.js';
@@ -65,8 +66,8 @@ export async function sendBatchModal(onDone) {
       const { data, error } = await sb.functions.invoke('outreach', { body: { action: 'send', items } });
       if (error || data?.ok === false) { toast(data?.error || error?.message || 'Send failed'); return false; }
       const res = data.results || [], sent = res.filter(r => r.status === 'sent').length;
-      const li = res.filter(r => r.prosp_status === 'added').length, em = res.filter(r => r.plusvibe_status === 'added').length;
-      toast(`Sent ${sent} of ${items.length}: ${li} on LinkedIn, ${em} by email`);
+      const li = res.filter(r => r.prosp_status === 'added').length, em = res.filter(r => r.plusvibe_status === 'added').length, later = res.filter(r => r.plusvibe_status === 'scheduled').length;
+      toast(`Sent ${sent} of ${items.length}: ${li} on LinkedIn, ${em} by email${later ? `, ${later} emails follow in ${st.email_delay_days ?? 3} days unless they reply on LinkedIn` : ''}`);
       onDone?.();
     },
   });
@@ -97,6 +98,7 @@ export async function outreachSetup() {
       <h4 class="obH">Daily batch</h4>
       <label class="field">BDC per day<input class="input" name="bdc_n" type="number" min="0" max="40" value="${st.bdc_per_day ?? 10}"></label>
       <label class="field">Credit per day<input class="input" name="cr_n" type="number" min="0" max="40" value="${st.credit_per_day ?? 10}"></label>
+      <label class="field">Email after LinkedIn (days)<input class="input" name="delay" type="number" min="0" max="14" value="${st.email_delay_days ?? 3}"></label>
       <label class="field">Min Hunter email score<input class="input" name="min_score" type="number" min="50" max="100" value="${st.min_email_score ?? 90}"></label></div>`,
     async onSubmit(fd) {
       for (const [f, name] of [['prosp_key', 'PROSP_API_KEY'], ['pv_key', 'PLUSVIBE_API_KEY']]) {
@@ -106,7 +108,7 @@ export async function outreachSetup() {
       const prosp = OWNERS.map(o => ({ owner: o, campaign_id: String(fd.get(`camp_${o}`) || '').trim() || null, list_id: String(fd.get(`list_${o}`) || '').trim() || null,
         campaign_name: campaigns.find(c => c.campaign_id === fd.get(`camp_${o}`))?.campaign_name || null })).filter(a => a.campaign_id || a.list_id);
       const r = await sb.from('outreach_settings').update({ prosp, plusvibe_workspace_id: String(fd.get('pv_ws') || '').trim() || null, plusvibe_campaign_id: String(fd.get('pv_camp') || '').trim() || null,
-        bdc_per_day: Number(fd.get('bdc_n')) || 0, credit_per_day: Number(fd.get('cr_n')) || 0, min_email_score: Number(fd.get('min_score')) || 90, updated_at: new Date().toISOString() }).eq('id', 1);
+        bdc_per_day: Number(fd.get('bdc_n')) || 0, credit_per_day: Number(fd.get('cr_n')) || 0, min_email_score: Number(fd.get('min_score')) || 90, email_delay_days: Math.max(0, Number(fd.get('delay')) || 0), updated_at: new Date().toISOString() }).eq('id', 1);
       if (r.error) { toast(r.error.message); return false; }
       toast('Outreach settings saved');
     },

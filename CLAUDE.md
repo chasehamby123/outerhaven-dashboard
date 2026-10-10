@@ -387,6 +387,11 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   LinkedIn slug → PlusVibe `/lead/update/status` COMPLETED, and pulls Prosp `/campaigns/analytics` daily → `outreach_daily`.
 - Keys (PROSP_API_KEY, PLUSVIBE_API_KEY) via Daily 3 → Outreach setup (RPC `set_contact_key`, write-only). Scoreboard counts sends.
 - Untested against the live Prosp / PlusVibe APIs until keys + campaign IDs exist: first real batch is the test; check `outreach_enrollments.*_error`.
+- **LinkedIn first** (Tengku, 10 Oct): with a LinkedIn profile, Prosp gets them on send day and the email is stored (`email_payload`,
+  `plusvibe_status='scheduled'`, `email_due_at` = + `outreach_settings.email_delay_days`, default 3); the cron sends it to PlusVibe only if
+  no LinkedIn reply came in. No LinkedIn = email right away. `{{company}}` (Prosp) / `{{company_name}}` (PlusVibe) get `cleanName()`
+  ("HYDROFARM HOLDINGS GROUP, INC." → "Hydrofarm"). PlusVibe campaign "Private credit – Q4 (HQ)": 3 steps, step 1 A/B (Tengku vs Claude).
+  Migration `supabase/2026-10-10-outreach-linkedin-first.sql`.
 - Hunter: one key, 50 lookups/month. Don't build rotation across extra free accounts (Tengku floated it; it breaks Hunter's terms).
 
 ## Rules

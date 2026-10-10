@@ -96,19 +96,27 @@ async function sendOne(it: any, st: any, keys: { prosp: string; pv: string }, wh
       row.prosp_status = "added"; row.prosp_campaign_id = acct.campaign_id;
     } catch (e) { row.prosp_status = "failed"; row.prosp_error = String((e as Error).message || e); }
   } else row.prosp_status = !p.linkedin ? "skipped: no LinkedIn" : !keys.prosp ? "skipped: no Prosp key" : "skipped: no Prosp campaign for this account";
-  // Email via PlusVibe
+  // Email via PlusVibe. LinkedIn first: if the LinkedIn step went out, the email waits email_delay_days and the cron sends it
+  // only if they haven't replied on LinkedIn. No LinkedIn = email now.
+  const lead = { email, first_name: first, last_name: last, company_name: short, company_website: c?.website || undefined, linkedin_person_url: p.linkedin || undefined,
+    phone_number: c?.phone || undefined, custom_variables: { opener, need, title: p.title || "" } };
   if (email && keys.pv && st.plusvibe_workspace_id && st.plusvibe_campaign_id) {
-    try {
-      const r = await post(`${PV}/lead/add`, { workspace_id: st.plusvibe_workspace_id, campaign_id: st.plusvibe_campaign_id, skip_lead_in_active_pause_camp: true,
-        leads: [{ email, first_name: first, last_name: last, company_name: short, company_website: c?.website || undefined, linkedin_person_url: p.linkedin || undefined,
-          phone_number: c?.phone || undefined, custom_variables: { opener, need, title: p.title || "" } }] }, { "x-api-key": keys.pv });
-      row.plusvibe_status = (r?.leads_uploaded ?? 1) > 0 ? "added" : `skipped: ${r?.already_in_campaign ? "already in campaign" : r?.invalid_email_count ? "invalid email" : "not uploaded"}`;
-    } catch (e) { row.plusvibe_status = "failed"; row.plusvibe_error = String((e as Error).message || e); }
+    if (row.prosp_status === "added") {
+      row.plusvibe_status = "scheduled"; row.email_payload = lead;
+      row.email_due_at = new Date(Date.now() + (st.email_delay_days ?? 3) * 864e5).toISOString();
+    } else Object.assign(row, await addEmail(lead, st, keys.pv));
   } else row.plusvibe_status = !email ? "skipped: no valid email" : !keys.pv ? "skipped: no PlusVibe key" : "skipped: no PlusVibe campaign set";
   row.status = row.prosp_status === "added" || row.plusvibe_status === "added" ? "sent" : "failed";
   const ins = await sb.from("outreach_enrollments").insert(row);
   if (ins.error) throw new Error(ins.error.message);
   return row;
+}
+
+async function addEmail(lead: any, st: any, pvKey: string) {
+  try {
+    const r = await post(`${PV}/lead/add`, { workspace_id: st.plusvibe_workspace_id, campaign_id: st.plusvibe_campaign_id, skip_lead_in_active_pause_camp: true, leads: [lead] }, { "x-api-key": pvKey });
+    return { plusvibe_status: (r?.leads_uploaded ?? 1) > 0 ? "added" : `skipped: ${r?.already_in_campaign ? "already in campaign" : r?.invalid_email_count ? "invalid email" : "not uploaded"}` };
+  } catch (e) { return { plusvibe_status: "failed", plusvibe_error: String((e as Error).message || e) }; }
 }
 
 async function stopEmail(e: any, st: any, pvKey: string) {
@@ -152,7 +160,17 @@ async function cron() {
       if (!hit) continue;
       await sb.from("outreach_enrollments").update({ status: "replied", reply_channel: "linkedin", replied_at: hit.created_at }).eq("id", e.id);
       await stopEmail(e, st, pv); stopped++;
+      if (e.plusvibe_status === "scheduled") await sb.from("outreach_enrollments").update({ plusvibe_status: "skipped: replied on LinkedIn" }).eq("id", e.id);
     }
+  }
+  // 1b. Emails waiting behind LinkedIn: due and still no reply → PlusVibe now.
+  let emailed = 0;
+  const due = (await sb.from("outreach_enrollments").select("*").eq("status", "sent").eq("plusvibe_status", "scheduled").lte("email_due_at", new Date().toISOString()).limit(50)).data || [];
+  for (const e of due as any[]) {
+    if (!pv || !st.plusvibe_workspace_id || !st.plusvibe_campaign_id || !e.email_payload) continue;
+    const res = await addEmail(e.email_payload, st, pv);
+    await sb.from("outreach_enrollments").update(res).eq("id", e.id);
+    if (res.plusvibe_status === "added") emailed++;
   }
   // 2. Once a day: Prosp analytics per campaign → outreach_daily.
   const last = (await sb.from("outreach_daily").select("day").eq("channel", "linkedin").order("day", { ascending: false }).limit(1)).data?.[0]?.day;
@@ -170,7 +188,7 @@ async function cron() {
     const rows = [...totals].map(([k, n]) => { const [day, action] = k.split("|"); return { day: /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : today, channel: "linkedin", action, count: n }; });
     if (rows.length) { await sb.from("outreach_daily").upsert(rows, { onConflict: "day,channel,action" }); pulled = rows.length; }
   }
-  return { stopped, pulled };
+  return { stopped, emailed, pulled };
 }
 
 Deno.serve(async (req) => {
