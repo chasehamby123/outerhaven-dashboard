@@ -4,7 +4,7 @@
 //   action 'send' {items: [{kind, key, opener, owner?}]} → per company: best contact from signal_contacts → people + task
 //     (like "Add to pipeline") → Prosp POST /api/v1/leads (LinkedIn, campaign of the owner's account) and PlusVibe
 //     POST /api/v1/lead/add (email, only when Hunter says valid / score >= min_email_score). Copy lives in the campaigns;
-//     we send personalisation: first_name, company, opener, need.
+//     we send personalisation: first_name, company, opener, need, deadline.
 // Webhook: ?hook=plusvibe&token=PLUSVIBE_WEBHOOK_TOKEN (Email Replies event) → lead_intake row + stop LinkedIn (Prosp delete
 //   from campaign). Prosp replies arrive via the existing prosp-reply webhook into lead_intake; the cron stops their email.
 // Cron (x-outerhaven-cron, every 20 min): replied on LinkedIn → PlusVibe lead COMPLETED; once a day Prosp analytics → outreach_daily.
@@ -52,6 +52,16 @@ export function cleanName(n: string) {
   return s || String(n || "");
 }
 
+// {{deadline}}: the date that makes the message specific. "a loan maturing in March 2027" (BDC), "debt coming due by June 2027"
+// (public: debt due within 12 months of the last balance sheet). Fallback is true of every target: "debt that will need refinancing".
+const MON = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const monthYear = (d: Date) => `${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+export function deadlineOf(kind: string, sig: any, now = Date.now()) {
+  if (kind === "bdc" && sig.earliest_maturity) { const d = new Date(sig.earliest_maturity); if (d.getTime() > now) return `a loan maturing in ${monthYear(d)}`; }
+  if (kind === "credit" && Number(sig.debt_current) > 0 && sig.period_end) { const d = new Date(sig.period_end); d.setUTCFullYear(d.getUTCFullYear() + 1); if (d.getTime() > now) return `debt coming due by ${monthYear(d)}`; }
+  return "debt that will need refinancing";
+}
+
 // Send one company on both channels. Returns the enrollment row.
 async function sendOne(it: any, st: any, keys: { prosp: string; pv: string }, who: string) {
   const kind = String(it.kind), key = String(it.key);
@@ -67,7 +77,7 @@ async function sendOne(it: any, st: any, keys: { prosp: string; pv: string }, wh
   if (!p.linkedin && !email) return { kind, key, skipped: "no LinkedIn or valid email" };
   const company = sig.company_name, short = cleanName(company), parts = String(p.name).trim().split(/\s+/), first = parts[0], last = parts.slice(1).join(" ");
   const opener = String(it.opener || "").slice(0, 1500);
-  const need = String(it.need || "").slice(0, 300);
+  const need = String(it.need || "").slice(0, 300), deadline = deadlineOf(kind, sig);
   // Which LinkedIn account sends it: the requested owner, else round-robin over accounts with a campaign.
   const accounts = (st.prosp || []).filter((a: any) => a.campaign_id && a.list_id);
   const acct = accounts.find((a: any) => a.owner === it.owner) || accounts[Number(it.slot || 0) % Math.max(accounts.length, 1)] || null;
@@ -92,14 +102,14 @@ async function sendOne(it: any, st: any, keys: { prosp: string; pv: string }, wh
   if (p.linkedin && acct && keys.prosp) {
     try {
       await post(`${PROSP}/leads`, { api_key: keys.prosp, linkedin_url: p.linkedin, list_id: acct.list_id, campaign_id: acct.campaign_id,
-        data: [{ property: "first_name", value: first }, { property: "company", value: short }, { property: "opener", value: opener }, { property: "need", value: need }] });
+        data: [{ property: "first_name", value: first }, { property: "company", value: short }, { property: "opener", value: opener }, { property: "need", value: need }, { property: "deadline", value: deadline }] });
       row.prosp_status = "added"; row.prosp_campaign_id = acct.campaign_id;
     } catch (e) { row.prosp_status = "failed"; row.prosp_error = String((e as Error).message || e); }
   } else row.prosp_status = !p.linkedin ? "skipped: no LinkedIn" : !keys.prosp ? "skipped: no Prosp key" : "skipped: no Prosp campaign for this account";
   // Email via PlusVibe. LinkedIn first: if the LinkedIn step went out, the email waits email_delay_days and the cron sends it
   // only if they haven't replied on LinkedIn. No LinkedIn = email now.
   const lead = { email, first_name: first, last_name: last, company_name: short, company_website: c?.website || undefined, linkedin_person_url: p.linkedin || undefined,
-    phone_number: c?.phone || undefined, custom_variables: { opener, need, title: p.title || "" } };
+    phone_number: c?.phone || undefined, custom_variables: { opener, need, deadline, title: p.title || "" } };
   if (email && keys.pv && st.plusvibe_workspace_id && st.plusvibe_campaign_id) {
     if (row.prosp_status === "added") {
       row.plusvibe_status = "scheduled"; row.email_payload = lead;
