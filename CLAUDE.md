@@ -434,6 +434,15 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   the weekly analysis (`routines/weekly-analysis.md` §2), which gets signed links to every slide in `payload.slides` (resource-request v5).
   Insights uses the measured format (hand tag > `detected_format` > Claude's guess). Document-post PDF extraction is untested live
   (no document posts yet): the PDF link keys tried are doc.pdf_url / url / document_url / manifest_url.
+- **Recreate JSON** (`daily_ops_posts.recreate`, skill part B, `supabase/2026-10-11-post-recreate.sql`): the literal copy of the creative for
+  GPT image: canvas, palette, fonts, every page as back-to-front layers (exact text, % boxes, font size/weight/hex, images, shapes, charts) and a
+  standalone prompt per page + `gpt_image_pitfalls`. HQ: Growth → Posts → click a creative → Copy JSON for GPT image / Copy page N prompt /
+  Copy breakdown.
+- **Elements, ranked** (Growth → Playbook; `elementsOf()` / `elementEffects()` in scoring.js, tested in `node hq/scoring-test.mjs`): flattens
+  measured format + `text_features` (bucketed) + `breakdown` into element values and scores each like a factor (lift vs own account,
+  shrunk K=3). ▲/▼ symbols carry direction.
+- **Guide** (`#/guide/<section>`, `hq/guide.js`, ops too): the team tutorial for this workflow (post, make, specs, plan, test, learn, gpt,
+  fix). Linked from Today format lines, the format test modal and Post creation. Update it with any change to this workflow.
 
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.

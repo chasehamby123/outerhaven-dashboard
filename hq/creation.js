@@ -88,7 +88,7 @@ function needHtml() {
   if (!need.length) return '';
   const by = {}; for (const n of need) ((by[n.owner] ||= {})[n.key || '_'] ||= []).push(n);
   const day = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short' });
-  return `<section class="card cNeed"><header><div><h2>Make these for the next 7 days</h2><p>From the posting plan. ★ = format test post: it has to be exactly this format or the test can't count it.</p></div></header>
+  return `<section class="card cNeed"><header><div><h2>Make these for the next 7 days</h2><p>From the posting plan. ★ = format test post: it has to be exactly this format or the test can't count it. <a href="#/guide/specs">Format specs</a></p></div></header>
     <div class="cNeedGrid">${Object.entries(by).sort().map(([o, f]) => `<div class="cNeedAcct"><span class="cAcct">${avatar(o, 'xs')}<b>${esc(o)}</b></span><ul>${Object.entries(f).map(([k, list]) => `<li title="${esc(fmtOf(k)?.how_to || '')}"><b>${list.length}×</b> ${k === '_' ? '<span class="muted">Format not set</span>' : `${fmtIcon(k)} ${esc(fmtLabel(k))}`} <span class="muted s">${list.sort((a, b) => a.d.localeCompare(b.d)).map(n => `${day(n.d)}${n.test ? ` ★${esc(n.arm || '')}` : ''}`).join(', ')}</span></li>`).join('')}</ul></div>`).join('')}</div></section>`;
 }
 

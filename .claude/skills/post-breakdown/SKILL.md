@@ -1,9 +1,14 @@
 ---
 name: post-breakdown
-description: Break a LinkedIn post (its creative and its caption) into every part that could explain why it did well or badly, and store it as daily_ops_posts.breakdown. Use in the weekly growth analysis, or whenever asked to analyse, tag or compare OuterHaven posts.
+description: Break a LinkedIn post (creative + caption) into comparable parts (daily_ops_posts.breakdown) and a literal layer-by-layer render spec for rebuilding it in GPT image (daily_ops_posts.recreate). Use in the weekly growth analysis, or whenever asked to analyse, tag, compare or recreate OuterHaven posts.
 ---
 
 # Post breakdown
+
+Two outputs per post, from one look at the creative:
+- **A. `breakdown`**: the parts, on fixed scales, so posts can be compared and elements ranked (HQ → Growth → Playbook → Elements).
+- **B. `recreate`**: the literal copy: every page as layers with exact text, fonts, colours and positions, plus a prompt, so the
+  post can be rebuilt in GPT image with little touching up (HQ → Posts → creative → Copy for GPT image).
 
 Goal: turn one post into a fixed set of parts, the same for every post, so HQ can compare posts part by part
 ("posts whose cover has a number get 2x comments on Peter's account") instead of guessing from the whole.
@@ -108,13 +113,68 @@ Rules:
 - `ask_size`: tiny = one word in a comment; small = a DM or a question; large = book a call, buy, sign up.
 - Don't score quality with a number. Parts, not opinions; the comparison across posts does the judging.
 
+## 2B. The literal copy (`recreate`, version 1)
+
+Describe what is ON the page, not what it means. Someone who has never seen the post must be able to rebuild it from this alone.
+Measure, don't guess: read pixel sizes from the image file (`python3 -c "from PIL import Image; print(Image.open(f).size)"`), and
+sample colours from the image (`Image.open(f).convert('RGB').getpixel((x, y))`, or the most common colours of a region) instead of
+naming them by eye.
+
+```json
+{
+  "v": 1,
+  "canvas": { "width": 1080, "height": 1350, "aspect": "4:5" },
+  "style": {
+    "palette": ["#0B1B33", "#F4F1EA", "#C9A45C"],
+    "fonts": [{ "role": "headline", "family_guess": "Playfair Display", "category": "serif", "weight": 700 },
+              { "role": "body", "family_guess": "Inter", "category": "sans", "weight": 400 }],
+    "grid": "single column, 80px margins",
+    "mood": "editorial, calm, premium"
+  },
+  "pages": [
+    {
+      "n": 1,
+      "background": { "type": "solid | gradient | photo | texture", "colors": ["#0B1B33"], "description": "flat navy" },
+      "layers": [
+        { "type": "text", "role": "headline | subhead | body | label | number | list_item | cta | footer | handle | source",
+          "text": "EXACT text, line breaks as \n", "box": { "x": 7, "y": 12, "w": 86, "h": 22 },
+          "font": { "family_guess": "Playfair Display", "category": "serif", "weight": 700, "size_px": 96, "line_height": 1.05,
+                    "case": "upper | title | sentence | as_written", "color": "#F4F1EA", "align": "left | center | right" },
+          "emphasis": [{ "text": "900+", "color": "#C9A45C", "style": "colour | bold | underline | highlight | italic" }] },
+        { "type": "image", "role": "hero | portrait | logo | icon | screenshot | product | background_photo",
+          "subject": "head-and-shoulders photo of a man in a navy suit, smiling, grey studio background",
+          "style": "photo | 3d_render | flat_illustration | line_icon | screenshot",
+          "box": { "x": 55, "y": 60, "w": 40, "h": 35 }, "treatment": "none | rounded | circle | shadow | cutout | border" },
+        { "type": "shape", "shape": "rect | rounded_rect | circle | line | arrow | badge | divider",
+          "box": { "x": 7, "y": 36, "w": 20, "h": 0.5 }, "fill": "#C9A45C", "stroke": null, "radius": 0 },
+        { "type": "chart", "chart": "bar | line | pie | map | table | timeline | funnel",
+          "data": "what it plots, with the visible numbers and labels", "box": { "x": 7, "y": 40, "w": 86, "h": 45 },
+          "colors": ["#C9A45C", "#5B6B82"] }
+      ],
+      "prompt": "Ready to paste into GPT image: one paragraph that states size and aspect, background, then every layer top to bottom with its EXACT text in double quotes, font style, colour hex, position (top-left / centred / bottom third), and ends with: 'Render all text exactly as quoted; no extra text, no watermark.'"
+    }
+  ],
+  "consistent_across_pages": "what repeats on every page (logo bottom-left, page number top-right, same margins)",
+  "gpt_image_pitfalls": ["things GPT image tends to get wrong on this post, e.g. long body text, small footer, exact logo; say what to paste in afterwards instead"]
+}
+```
+
+Rules:
+- `box` = percent of the canvas (x, y = top-left corner). Every layer has one. Order layers back to front.
+- Text is copied character for character, including numbers, symbols and line breaks. Never fix typos.
+- Our own logos and faces: describe them (GPT image can't reproduce a real logo or person reliably) and list them in
+  `gpt_image_pitfalls` as "paste the real asset in after rendering".
+- One `pages` entry per page/image seen. Carousels over 12 pages: do all pages you looked at, and say which were skipped.
+- Each `prompt` must work on its own (no "same as page 1").
+
 ## 3. Save
 
 ```sql
 update public.daily_ops_posts
-set breakdown = '<json>'::jsonb, breakdown_at = now()
+set breakdown = '<breakdown json>'::jsonb, recreate = '<recreate json>'::jsonb, breakdown_at = now()
 where id = '<post id>';
 ```
+Text posts and videos: `recreate = null`.
 
 Re-do a post when `breakdown_at` is null, older than its `creative_saved_at`, or the caption changed. Never touch
 `tags` (hand tags) or the scraper columns.
@@ -125,6 +185,10 @@ text → Text only), `creative` from `cover.subject`, `face`, `textOnImage` from
 `hook` from `copy.hook_type`, `cta` from `copy.cta`, `leadMagnet`, `topic`.
 
 ## 4. Using breakdowns (analysis)
+
+HQ ranks every element automatically (Growth → Playbook → Elements: each post vs its own account's median, effect shrunk toward
+zero with K=3, so one lucky post can't crown an element). In the report, quote that ranking and add what it can't see.
+
 
 - Compare a part within the same account first (accounts have very different audiences), then across accounts with
   each post as a ratio to its own account's median.

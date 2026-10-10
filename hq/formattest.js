@@ -41,7 +41,7 @@ export async function editFormatTest() {
   const acc = [...new Set(weekly.map(w => w.owner_name).filter(Boolean))].sort();
   const fl = formatList().map(f => [f.key, f.label]);
   const taken = new Set([...plansByExp.values()].flat().map(p => `${p.weekly_post_id}|${p.work_date}`));
-  const { el } = modal({ title: 'New format test', wide: true, submit: 'Book the slots', body: `<div class="form">
+  const { el } = modal({ title: 'New format test', wide: true, submit: 'Book the slots', body: `<p class="s muted" style="margin:0 0 10px">Books the next free posting slots of each account in the test format. <a href="#/guide/test" data-x>How format tests work</a></p><div class="form">
       <label class="field full">Name<input class="input" name="name" required placeholder="Presentation vs PDF carousel"></label>
       <div class="field"><b>Arm A</b><select class="select" name="account_a" required><option value="">Account…</option>${opts(acc)}</select><select class="select" name="format_a" required>${opts(fl, 'presentation')}</select></div>
       <div class="field"><b>Arm B</b><select class="select" name="account_b" required><option value="">Account…</option>${opts(acc)}</select><select class="select" name="format_b" required>${opts(fl, 'pdf')}</select></div>

@@ -13,6 +13,7 @@ import { renderChaseDaily } from './chase-daily.js';
 import { renderTeam } from './team.js';
 import { renderRecord } from './record.js';
 import { renderRules } from './rules.js';
+import { renderGuide } from './guide.js';
 import { renderScoreboard } from './scoreboard.js';
 
 const ROUTES = {
@@ -25,6 +26,7 @@ const ROUTES = {
   resources: { label: 'Resources', render: (r, sub) => renderResources(r, sub), ops: true },
   record: { label: 'Track record', render: r => renderRecord(r) },
   rules: { label: 'How we qualify', render: r => renderRules(r) },
+  guide: { label: 'Guide', render: (r, sub) => renderGuide(r, sub), ops: true },
   score: { label: 'Scoreboard', render: r => renderScoreboard(r) },
   team: { label: 'Team access', render: r => renderTeam(r) },
   'chase-daily': { label: 'My Daily Ops', render: r => renderChaseDaily(r), chaseOnly: true },
@@ -59,6 +61,7 @@ const ICON = {
   deals: '<svg viewBox="0 0 24 24"><path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M4 12h16"/></svg>',
   record: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 10h18M8 2v4M16 2v4M8 14h2M13 14h3M8 18h2"/></svg>',
   team: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><rect x="15" y="11" width="6.5" height="5" rx="1"/><path d="M16.5 11V9.5a1.75 1.75 0 0 1 3.5 0V11"/></svg>',
+  guide: '<svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M9 7h6M9 11h6"/></svg>',
   rules: '<svg viewBox="0 0 24 24"><path d="M9 11l2 2 4-4"/><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/></svg>',
   score: '<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
   pipeline: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="6" rx="1.5"/></svg>',
@@ -90,12 +93,13 @@ function shell() {
       <div class="brand"><b>O</b><span>Outerhaven</span><em>HQ</em></div>
       ${themeSwitch()}
       ${cbSwitch()}
-      <nav class="nav">${state.role === 'ops' ? navLink('today', '#/today', 'Today') + navLink('schedule', '#/schedule', 'Schedule') + navLink('resources', '#/resources', 'Resources') : `
+      <nav class="nav">${state.role === 'ops' ? navLink('today', '#/today', 'Today') + navLink('schedule', '#/schedule', 'Schedule') + navLink('resources', '#/resources', 'Resources') + navLink('guide', '#/guide', 'Guide') : `
         ${navLink('overview', '#/overview', 'Overview')}
         <small>Daily work</small>
         ${navLink('today', '#/today', 'Today')}
         ${navLink('score', '#/score', 'Scoreboard')}
         ${navLink('schedule', '#/schedule', 'Schedule')}
+        ${navLink('guide', '#/guide', 'Guide')}
         ${String(state.user?.email || '').toLowerCase() === 'chasehamby@chproduction.org' ? navLink('chase-daily', '#/chase-daily', 'My Daily Ops') : ''}
         <small>Deals</small>
         ${navLink('pipeline', '#/pipeline', 'Pipeline')}

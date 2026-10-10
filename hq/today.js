@@ -28,7 +28,7 @@ function formatLine(r) {
   if (!key) return '';
   const test = pl?.experiment_id ? exps.get(pl.experiment_id) : null;
   const seen = posts.find(p => p.slot_weekly_id === wid && p.slot_date === date);
-  return `<small class="fmtLine">${fmtChip(key, 'strong')}${test ? `<span class="fmtTest" title="Part of a format test: post it exactly in this format or the test can't use it">Test: ${esc(test.name)} · arm ${esc(pl.arm || '')}</span>` : ''}${seen ? checkHtml(seen, { short: true }) : ''}${fmtOf(key)?.how_to ? `<span class="fmtHow">${esc(fmtOf(key).how_to)}</span>` : ''}</small>`;
+  return `<small class="fmtLine">${fmtChip(key, 'strong')}${test ? `<span class="fmtTest" title="Part of a format test: post it exactly in this format or the test can't use it">Test: ${esc(test.name)} · arm ${esc(pl.arm || '')}</span>` : ''}${seen ? checkHtml(seen, { short: true }) : ''}${fmtOf(key)?.how_to ? `<span class="fmtHow">${esc(fmtOf(key).how_to)} <a href="#/guide/post">How this works</a></span>` : ''}</small>`;
 }
 function taskLinks(r) {
   const a = accounts.find(x => x.id === r.account_id); if (!a) return '';

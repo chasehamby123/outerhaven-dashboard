@@ -3,9 +3,9 @@
 import { esc, fmt, fmtDate, opts, modal, $, $$, acctName } from './core.js';
 import { store } from './data.js';
 import { DIMENSIONS, GROUPS, METRIC_DEFS } from './insights.js';
-import { scorePosts, factorEffects, explain, predict, recipe, CONF_TEXT } from './scoring.js';
+import { scorePosts, factorEffects, explain, predict, recipe, CONF_TEXT, elementEffects, ELEMENT_GROUPS } from './scoring.js';
 
-const view = { metric: 'engagement', group: '', showWeak: false, outcome: 'winner', account: '', draft: {} };
+const view = { egroup: '', metric: 'engagement', group: '', showWeak: false, outcome: 'winner', account: '', draft: {} };
 const OUT = { converted: ['Booked a meeting', 'good'], winner: ['Winner', 'good'], typical: ['Typical', ''], flop: ['Flop', 'bad'], too_early: ['Too early', 'warn'] };
 const signed = x => (x >= 0 ? '+' : '') + Math.round(x * 100) + '%';
 const conf = c => `<span class="tag ${c === 'solid' ? 'good' : c === 'early' ? 'warn' : ''}" title="${esc(CONF_TEXT[c])}">${c === 'solid' ? 'Solid' : c === 'early' ? 'Early' : 'Anecdote'}</span>`;
@@ -47,6 +47,8 @@ export function playbookView(body) {
       <label class="s muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="pbWeak" ${view.showWeak ? 'checked' : ''}> show single posts</label></div></header>
       <div class="body flush scroll">${table}</div></section>
 
+    ${elementsCard(scored)}
+
     <div class="pbTwo">
     <section class="card"><header><div><h2>Score a draft</h2><p>Pick what the next post will be. Compared with the account's usual post.</p></div><button class="btn sm" id="pbClear" ${pred ? '' : 'disabled'}>Clear</button></header>
       <div class="body"><div class="pbSel">${sel}</div>
@@ -70,11 +72,25 @@ export function playbookView(body) {
     $('#pbWeak', body).onchange = e => { view.showWeak = e.target.checked; draw(); };
     $('#pbOut', body).onchange = e => { view.outcome = e.target.value; draw(); };
     $('#pbAcct', body).onchange = e => { view.account = e.target.value; draw(); };
+    $$('[data-eg]', body).forEach(b => b.onclick = () => { view.egroup = b.dataset.eg; draw(); });
     $('#pbClear', body).onclick = () => { view.draft = {}; draw(); };
     $$('[data-d]', body).forEach(s => s.onchange = () => { view.draft[s.dataset.d] = s.value; draw(); });
     $$('.pbRow', body).forEach(r => { const open = () => detail(scored.find(s => String(s.post.id) === r.dataset.id), fx); r.onclick = open; r.onkeydown = e => { if (e.key === 'Enter') open(); }; });
   };
   draw();
+}
+
+// Every element of the posts (format, cover, pages, caption parts from Claude's breakdown, caption counts from the scraper),
+// ranked by effect against each account's usual post. ▲ / ▼ carry the direction (never colour alone).
+function elementsCard(scored) {
+  const all = elementEffects(scored).filter(e => e.n >= 2 && (!view.egroup || e.group === view.egroup));
+  const broken = scored.filter(s => s.post.breakdown).length;
+  const up = all.filter(e => e.effect > 0.02).slice(0, 12), down = all.filter(e => e.effect < -0.02).sort((a, b) => a.effect - b.effect).slice(0, 12);
+  const row = e => `<li title="${esc(CONF_TEXT[e.confidence])} · raw average ${signed(e.raw)} before shrinking"><b aria-hidden="true">${e.effect >= 0 ? '▲' : '▼'}</b><span><span class="muted">${esc(e.label)}:</span> ${esc(e.value)}</span><em>${signed(e.lift)}</em><small>n=${e.n}</small>${conf(e.confidence)}</li>`;
+  return `<section class="card"><header><div><h2>Elements, ranked</h2><p>Every part of a post scored against its account's usual post. ${broken} of ${scored.length} posts have Claude's creative breakdown (weekly analysis); caption counts and format cover every post. Two posts minimum.</p></div>
+    <div class="row pbEg"><button class="btn sm ${view.egroup ? 'ghost' : ''}" data-eg="">All</button>${Object.entries(ELEMENT_GROUPS).map(([k, l]) => `<button class="btn sm ${view.egroup === k ? '' : 'ghost'}" data-eg="${k}">${esc(l)}</button>`).join('')}</div></header>
+    <div class="body">${all.length ? `<div class="pbEls"><div><h4>Goes with better posts</h4><ul>${up.map(row).join('') || '<li class="muted">Nothing clearly positive yet</li>'}</ul></div><div><h4>Goes with worse posts</h4><ul>${down.map(row).join('') || '<li class="muted">Nothing clearly negative yet</li>'}</ul></div></div>
+      <p class="s muted" style="margin:12px 0 0">Correlation, not proof: elements travel together (a long caption often also has a list). Turn the strongest one into a format or creative test that changes only that element.</p>` : '<div class="empty">No elements with 2+ posts yet.</div>'}</div></section>`;
 }
 
 function detail(s, fx) {

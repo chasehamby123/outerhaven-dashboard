@@ -59,7 +59,7 @@ async function postsView(body) {
       const eng = METRIC_DEFS.engagement.get(p), d = avg ? Math.round((eng - avg) / avg * 100) : 0;
       const raw = store.rawPosts.find(r => r.id === p.id), cp = raw?.creative_path;
       const slides = (raw?.creative_paths || []).filter(x => x.path), many = slides.length > 1 || slides.some(x => /pdf/.test(x.type));
-      const thumb = cp && cp !== 'unavailable' ? `<button type="button" class="cthumb" data-cthumb="${esc(slides.find(x => /^image/.test(x.type))?.path || cp)}" data-ctype="${esc(slides.find(x => /^image/.test(x.type))?.type || raw.creative_type || '')}" ${many ? `data-cpost="${esc(raw.id)}"` : ''} title="View creative">${slides.length > 1 ? `<em class="cnt">${slides.filter(x => !x.cover).length}${raw.doc_pages ? 'pg' : ''}</em>` : ''}</button>` : `<span class="cthumb none" title="${cp === 'unavailable' ? 'Image link had expired before it was saved' : p.m && raw?.content_type === 'text' ? 'Text-only post' : 'Saved on the next posts scrape'}">${raw?.content_type === 'text' ? 'Text' : '—'}</span>`;
+      const thumb = cp && cp !== 'unavailable' ? `<button type="button" class="cthumb" data-cthumb="${esc(slides.find(x => /^image/.test(x.type))?.path || cp)}" data-ctype="${esc(slides.find(x => /^image/.test(x.type))?.type || raw.creative_type || '')}" data-cpost="${esc(raw.id)}" title="View creative${raw.recreate ? ' · copy for GPT image' : ''}">${slides.length > 1 ? `<em class="cnt">${slides.filter(x => !x.cover).length}${raw.doc_pages ? 'pg' : ''}</em>` : ''}</button>` : `<span class="cthumb none" title="${cp === 'unavailable' ? 'Image link had expired before it was saved' : p.m && raw?.content_type === 'text' ? 'Text-only post' : 'Saved on the next posts scrape'}">${raw?.content_type === 'text' ? 'Text' : '—'}</span>`;
       return `<tr><td>${thumb}</td><td style="max-width:280px">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a>` : esc(p.name)}${p.group ? `<div class="s muted">Creative: ${esc(p.group)}</div>` : ''}</td><td class="s" style="white-space:nowrap">${fmtChip(raw?.detected_format)}${raw?.doc_pages ? `<div class="muted">${raw.doc_pages} pages · ${esc(raw.doc_orientation || '')}</div>` : ''}${raw?.format_check && raw.format_check !== 'unplanned' ? `<div>${checkHtml(raw, { short: true })}</div>` : ''}</td><td style="white-space:nowrap">${acctName(p.account)}</td><td class="muted" style="white-space:nowrap">${fmtDate(p.date)}</td><td class="n">${commentCell(p)}</td><td class="n">${fmt(p.m.reactions)}</td><td class="n">${fmt(p.m.reposts)}</td><td class="n ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '+' : ''}${d}%</td><td class="n">${p.meetings || '<span class="muted">0</span>'}</td><td>${tagSummary(p)}</td><td><button class="btn sm" data-edit="${p.id}">Tag</button></td></tr>`;
     }).join('');
     $$('[data-edit]', body).forEach(b => b.onclick = () => editPost(b.dataset.edit));
@@ -71,20 +71,31 @@ async function postsView(body) {
 // Saved creatives live in the private bucket; load short-lived links for the visible rows.
 async function loadCreativeThumbs(root) {
   for (const el of $$('[data-cthumb]', root)) {
+    if (el.dataset.cpost) el.onclick = () => openSlides(el.dataset.cpost);
     const url = await assetUrl(el.dataset.cthumb); if (!url) continue;
     if (/pdf/.test(el.dataset.ctype)) { el.insertAdjacentText('afterbegin', 'PDF'); el.onclick = () => window.open(url, '_blank', 'noopener'); }
     else { el.style.backgroundImage = `url("${url}")`; el.onclick = () => lightbox(url); }
     if (el.dataset.cpost) el.onclick = () => openSlides(el.dataset.cpost);
   }
 }
-// Every saved slide / image of a post (multi-image posts and documents), plus the PDF itself.
+// Every saved slide / image of a post, its breakdown, and the literal JSON for rebuilding it in GPT image (weekly analysis).
+const copy = async (txt, what) => { try { await navigator.clipboard.writeText(txt); toast(`${what} copied`); } catch { toast('Copy blocked by the browser'); } };
 async function openSlides(id) {
   const raw = store.rawPosts.find(r => r.id === id); if (!raw) return;
   const list = (raw.creative_paths || []).filter(x => x.path);
   const urls = await Promise.all(list.map(x => assetUrl(x.path)));
-  modal({ title: raw.post_name || 'Creative', wide: true, submit: '', body: `<p class="s muted" style="margin:0 0 10px">${esc(raw.linkedin_type || '')}${raw.doc_pages ? ` · ${raw.doc_pages} pages, ${esc(raw.doc_orientation || '')}` : ''}${raw.image_count > 1 ? ` · ${raw.image_count} images` : ''}</p>
-    <div class="slides">${list.map((x, i) => !urls[i] ? '' : /pdf/.test(x.type) ? `<a class="btn sm" href="${esc(urls[i])}" target="_blank" rel="noopener">Open the PDF ↗</a>` : `<button type="button" class="slide" data-src="${esc(urls[i])}"><img src="${esc(urls[i])}" alt="${x.cover ? 'Cover' : `Image ${i + 1}`}" loading="lazy"></button>`).join('')}</div>` });
-  $$('.slide').forEach(b => b.onclick = () => lightbox(b.dataset.src));
+  const rc = raw.recreate, bd = raw.breakdown, pages = Array.isArray(rc?.pages) ? rc.pages : [];
+  const head = `<p class="s muted" style="margin:0 0 10px">${esc(raw.linkedin_type || '')}${raw.doc_pages ? ` · ${raw.doc_pages} pages, ${esc(raw.doc_orientation || '')}` : ''}${raw.image_count > 1 ? ` · ${raw.image_count} images` : ''}</p>`;
+  const tools = `<div class="gptBox">${rc ? `<div><b>Rebuild in GPT image</b><p class="s muted">Paste the whole JSON with "Render page 1 exactly as specified." For one page, copy its prompt. Paste real logos and faces in afterwards.</p></div>
+      <div class="row" style="flex-wrap:wrap;gap:6px"><button type="button" class="btn sm primary" data-cp="all">Copy JSON for GPT image</button>${pages.map((pg, i) => pg.prompt ? `<button type="button" class="btn sm" data-cp="${i}">Copy page ${esc(pg.n || i + 1)} prompt</button>` : '').join('')}${bd ? '<button type="button" class="btn sm ghost" data-cp="bd">Copy breakdown</button>' : ''}</div>
+      ${rc.gpt_image_pitfalls?.length ? `<p class="s" style="margin:8px 0 0"><b>⚠ Watch for:</b> ${esc(rc.gpt_image_pitfalls.join(' · '))}</p>` : ''}`
+    : `<div><b>No GPT image JSON yet</b><p class="s muted">Claude writes it for every image and document post in the weekly analysis (Mondays, or Growth → Insights → Run analysis now).</p></div>`}</div>`;
+  const parts = bd ? `<details class="bdBox"><summary>What it's made of</summary><dl>${[['Cover promise', bd.cover?.promise], ['Number on cover', bd.cover?.has_number == null ? null : bd.cover.has_number ? 'yes' : 'no'], ['Cover subject', bd.cover?.subject], ['Text on cover', bd.cover?.text_density], ['Structure', bd.structure], ['Pages', Array.isArray(bd.pages) ? bd.pages.length : null], ['Hook type', bd.copy?.hook_type], ['CTA', bd.copy?.cta], ['Ask size', bd.copy?.ask_size], ['Reading grade', bd.copy?.reading_grade], ['Angle', bd.copy?.angle]].filter(([, v]) => v != null && v !== '').map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(String(v).replace(/_/g, ' '))}</dd>`).join('')}</dl>
+      ${bd.why_it_might_work?.length ? `<p class="s"><b>▲ Might work:</b> ${esc(bd.why_it_might_work.join(' · '))}</p>` : ''}${bd.why_it_might_not?.length ? `<p class="s"><b>▼ Might not:</b> ${esc(bd.why_it_might_not.join(' · '))}</p>` : ''}</details>` : '';
+  const { el } = modal({ title: raw.post_name || 'Creative', wide: true, submit: '', body: `${head}${tools}${parts}
+    <div class="slides">${list.map((x, i) => !urls[i] ? '' : /pdf/.test(x.type) ? `<a class="btn sm" href="${esc(urls[i])}" target="_blank" rel="noopener">Open the PDF ↗</a>` : `<button type="button" class="slide" data-src="${esc(urls[i])}"><img src="${esc(urls[i])}" alt="${x.cover ? 'Cover' : `Image ${i + 1}`}" loading="lazy"></button>`).join('') || '<p class="s muted">No saved images for this post.</p>'}</div>` });
+  $$('.slide', el).forEach(b => b.onclick = () => lightbox(b.dataset.src));
+  $$('[data-cp]', el).forEach(b => b.onclick = () => { const k = b.dataset.cp; if (k === 'all') copy(JSON.stringify(rc, null, 2), 'GPT image JSON'); else if (k === 'bd') copy(JSON.stringify(bd, null, 2), 'Breakdown'); else copy(pages[+k].prompt, `Page ${pages[+k].n || +k + 1} prompt`); });
 }
 
 function editPost(id) {

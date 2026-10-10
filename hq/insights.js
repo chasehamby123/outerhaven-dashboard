@@ -50,6 +50,7 @@ export function toPost(row, accountName, meetingCount = 0, resharedBy = []) {
   const hour = posted ? (posted.getUTCHours() + 8) % 24 : null;
   const boosted = [...new Set([...(Array.isArray(t.boosted_by) ? t.boosted_by : []), ...resharedBy])];
   return {
+    breakdown: row.breakdown || null, features: row.text_features || null, recreate: row.recreate || null,
     id: row.id, name: row.post_name || row.post_key || 'LinkedIn post', url: row.linkedin_post_url || null,
     account: accountName || '—', date: row.posted_at || row.work_date || null, text: row.post_text || '',
     autoFormat: !manual.format && !!measuredFormat(row), aiTagged: !!row.ai_tagged_at, aiNotes: ai.notes || '',

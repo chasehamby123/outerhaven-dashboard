@@ -38,7 +38,7 @@ hasn't been scraped yet and the number still includes our accounts; say so when 
 
 Follow `.claude/skills/post-breakdown/SKILL.md` for every own post where `breakdown_at` is null, older than
 `creative_saved_at`, or the caption changed: look at EVERY image / page (`payload.slides[post_id]`, else
-`payload.creatives[post_id]`), fill `breakdown`, save it. The format itself is measured by the scraper
+`payload.creatives[post_id]`), fill `breakdown` (part A) and `recreate` (part B, the literal layer-by-layer copy for GPT image), save both. The format itself is measured by the scraper
 (`detected_format`); never guess it from the text.
 
 Then the coarse tags below, which must agree with the breakdown. If there is no creative link, the post is text-only
