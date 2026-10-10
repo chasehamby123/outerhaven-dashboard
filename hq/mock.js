@@ -148,6 +148,7 @@
         const cut = l => new Set((db.fund_signals || []).filter(x => x.list === l && x.verdict === 'cut' && (x.status || 'new') === 'new').map(x => x.fund_key || x.id)).size;
         return { data: { funds: c('fund_signals'), funds_cut: { live: cut('live'), fund1: cut('fund1') }, credit: c('credit_signals'), bdc: c('bdc_signals'), ucc: c('ucc_signals') }, error: null }; }
       if (n === 'chat_sweep') return { data: 0, error: null };
+      if (n === 'team_user_names') return { data: [], error: null };
       if (n === 'anthropic_key_set') return { data: !!window.__anthKey, error: null };
       if (n === 'set_anthropic_key') { window.__anthKey = a.p_value; return { data: null, error: null }; }
       if (n === 'reply_usage') return { data: [{ requested_by: 'Anaz', drafts_today: 7, drafts_7d: 31 }, { requested_by: 'Chase', drafts_today: 1, drafts_7d: 4 }], error: null };

@@ -367,6 +367,13 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Keys pasted by an admin in any signal tab → "Contacts setup" (RPC `set_contact_key`, write-only; never enter them for the user).
 - "Add to pipeline" pre-fills name, title and LinkedIn from the best person.
 
+## Scoreboard + sidebar groups (10 Oct 2026; `hq/scoreboard.js`, `supabase/2026-10-10-team-names.sql`)
+- `#/score` (admin): Daily 3 outcomes only. Weekdays hit, 7-day team grid vs `DAILY3` targets (✓ / ✕ symbols, not colour alone),
+  per person (targets by task owner, replies cleared by `reviewed_by`, calls by `growth_meetings.created_by`, mapped with RPC
+  `team_user_names()`), 30-day funnel. Vanity metrics (posts, likes) stay under Growth on purpose.
+- Sidebar grouped: Overview | Daily work (Today, Scoreboard, Schedule) | Deals (Pipeline, Deals, How we qualify) | Marketing (Growth,
+  Resources) | Team (Track record, Team access, old board). Bigger nav text for Peter. Keep new pages inside a group.
+
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.
 - Never enter passwords, API keys or tokens for the user, even with permission. Point them to the HQ field.
