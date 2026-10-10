@@ -2,7 +2,7 @@
 // due to raise Fund II. The edge function fund-signals scans, judges with fixed rules and checks for a later fund;
 // this tab shows every verdict with its reasons, and turns a target into pipeline people with one click.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
-import { whyItem, kindLegend } from './kinds.js';
+import { whyBlock } from './kinds.js';
 import { me } from './tasks.js';
 import { markBtns, markLine, bindMarks, MARK_VIEWS, inMarkView } from './marks.js';
 
@@ -118,9 +118,9 @@ function draw() {
   el.innerHTML = `<div class="fs">
     <div class="fsTop">
       <div class="pSeg" role="group">${[['live', 'Raising now'], ['fund1', 'Due for next fund']].map(([k, l]) => `<button type="button" data-list="${k}" class="${list === k ? 'on' : ''}">${l}<em>${grouped(k).filter(s => bucket(s) === 'target').length}</em></button>`).join('')}</div>
-      <div class="row fsBtns"><a class="btn sm primary" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a>
+      <div class="row fsBtns"><a class="btn sm ghost" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a>
         <button class="btn sm" id="fsCollect">${running.length ? `Collect results (${running.length} running)` : 'Refresh'}</button>
-        <button class="btn sm ghost" id="fsHow">How it works</button><button class="btn sm ghost" id="fsSet">Setup</button></div>
+        <button class="btn sm ghost" id="fsHow">How it works</button><a class="btn sm ghost" href="#/rules">How we qualify</a><button class="btn sm ghost" id="fsSet">Setup</button></div>
     </div>
     ${checksLine()}
     <p class="pHint">${list === 'live' ? 'Fund IIs and IIIs that filed a Form D: they started taking investor money in the last few weeks.' : 'Fund I and Fund II managers inside the window where most file their next fund (Fund I: 12–36 months after filing, median 24; Fund II: 15–39, median 28; from a study of 500 funds filed in 2019) who have not filed it yet, under any name.'} Manager size (SEC Form ADV, or Form D totals): under $150M across all its funds is the target, $150–500M lower priority, over $500M cut.
@@ -129,7 +129,7 @@ function draw() {
     <div class="fsFilt">${list === 'fund1' ? `<label>Fund status<select class="select sm" id="fsStage"><option value="">Any</option>${Object.entries(STAGE).map(([k, [l]]) => `<option value="${k}" ${stageF === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}
       <label>Strategy<select class="select sm" id="fsStrat"><option value="">Any</option>${Object.entries(STRAT).map(([k, l]) => `<option value="${k}" ${stratF === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       ${list === 'fund1' ? '<span class="muted s">Targets = the current fund has finished raising (or may have). Still-raising funds sit in Maybe: too early for a next-fund pitch.</span>' : ''}</div>
-    <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed'], ...MARK_VIEWS].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>${kindLegend()}
+    <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed'], ...MARK_VIEWS].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
     ${list === 'fund1' && view === 'target' && shown.some(s => !s.check_status) ? `<div class="fsBulk"><span>${shown.filter(s => !s.check_status).length} not yet checked for a next fund.</span><button class="btn sm" id="fsCheckAll">Queue them all (free, runs within the hour)</button></div>` : ''}
     <div class="fsList">${shown.length ? shown.map(rowHtml).join('') : `<div class="empty">${view === 'target' ? (all.length ? 'No targets in this list right now.' : 'Nothing scanned yet. Run a scan above; results arrive in a few minutes.') : 'Nothing here.'}</div>`}</div>
   </div>`;
@@ -169,7 +169,7 @@ function rowHtml(s) {
       ${(s.list === 'fund1' && STAGE[s.stage]) || (s.strategy && s.strategy !== 'other') ? `<div class="mkLine">${s.list === 'fund1' && STAGE[s.stage] ? `<span class="pFlag ${STAGE[s.stage][1]}" title="${STAGE[s.stage][2]}">${STAGE[s.stage][0]}</span>` : ''}${s.strategy && s.strategy !== 'other' ? `<span class="pFlag${s.strategy === 'real_estate' ? ' warn' : s.strategy === 'credit' ? ' good' : ''}">${STRAT[s.strategy]}</span>` : ''}</div>` : ''}
       ${markLine(s)}
       <div class="fsFacts">${facts.map(f => `<span>${f}</span>`).join('')}<span class="muted">Filed ${day(s.filing_date)}${s.form_type === 'D/A' ? ' (amendment)' : ''}${s.amended_at ? ` · numbers from the ${s.amendment_url ? `<a href="${esc(s.amendment_url)}" target="_blank" rel="noopener">latest filing ↗</a>` : 'latest filing'} (${day(s.amended_at)})` : ' · numbers from the first filing'}</span></div>
-      <ul class="fsWhy">${(s.reasons || []).map(r => whyItem(r, esc)).join('')}</ul>
+      ${whyBlock(s.reasons, esc)}
       ${chk ? `<div class="fsCheck">${chk}</div>` : ''}
       <details class="fsPrep"><summary>Call prep: what to find out</summary><ol>${prep(s).map(q => `<li>${esc(q)}</li>`).join('')}</ol></details>
       ${ppl.length ? `<div class="fsPeople">${ppl.map(p => `<a href="${liSearch(p.name, s)}" target="_blank" rel="noopener" title="Search LinkedIn">${esc(p.name)} ↗</a>`).join('')}${(s.executives || []).length > 4 ? `<span class="muted">+${s.executives.length - 4} more</span>` : ''}</div>` : ''}

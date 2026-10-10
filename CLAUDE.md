@@ -345,6 +345,9 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   HQ now relabels every reason client-side by text (`kindOf()` in kinds.js): **Need** (deadline, why we call), **Risk** (distress, harder
   for Peter's lenders), **Fit**, **Check** (maybe), **Cut**, Info. Each shows symbol + word (▲ ⚠ ✓ ? ✕), never colour alone. Legend above
   every signal list. If you add a reason in a rules.js, check `kindOf` labels it right (RISK / NEED regexes).
+  Cards show it compactly (`whyBlock`, Tengku: "too much going on"): one ▲ Need line + one ⚠ Risk line of headlines (text before the
+  first ': '), full reasons grouped by label behind "Why · N reasons". Neutral score box, one primary action, quiet secondaries.
+  No per-line chips and no legend bar on the cards; the legend lives on #/rules.
 - **How we qualify** page (`#/rules`, sidebar): every rule for BDC / Credit / UCC / Fund signals with points, plus the focus order.
   Hand-written from the rules files: change it in the same commit as any rule change. BDC "How it works" modal points fixed to match rules.js.
 - **Colour-blind safe** toggle under the theme switch (`html[data-cb="on"]`, localStorage `hq-cb`): good = blue, bad = orange,

@@ -3,7 +3,7 @@
 // number, not an estimate. Filled by scripts/bdc_signals.py on GitHub; judged on the server (classifyBdc in
 // supabase/functions/bdc-signals/rules.js). Filters kept in localStorage 'hq-bdc-filters'.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
-import { whyItem, kindLegend } from './kinds.js';
+import { whyBlock } from './kinds.js';
 import { markBtns, markLine, bindMarks, MARK_VIEWS, inMarkView } from './marks.js';
 
 let el = null, rows = [], runs = [], view = 'target', onCount = () => {};
@@ -79,7 +79,7 @@ function draw() {
   const last = runs[0], st = last?.stats || {};
   el.innerHTML = `<div class="fs">
     <div class="fsTop"><p class="pHint" style="padding:0;margin:0;max-width:700px">Private companies with <b>$10–150M of debt</b> from public lending funds (BDCs), where the loan matures within 18 months or the lender has marked it down. Size, maturity and the lender's own valuation come straight from the lenders' SEC filings, not estimates.</p>
-      <div class="row fsBtns"><a class="btn sm primary" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a><button class="btn sm ghost" id="bdHow">How it works</button></div></div>
+      <div class="row fsBtns"><a class="btn sm ghost" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a><button class="btn sm ghost" id="bdHow">How it works</button><a class="btn sm ghost" href="#/rules">How we qualify</a></div></div>
     <p class="pHint">Source: the SEC's BDC data sets (every BDC's loan list, monthly). Free.${last ? ` Last run <b>${new Date(last.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>${st.bdcs ? ` · ${st.bdcs} BDCs, ${Number(st.borrowers || 0).toLocaleString()} borrowers read` : ''}.` : ' Not run yet: on GitHub choose Run workflow, mode <b>bdc</b>.'}</p>
     <div class="ucFilters">
       <label class="ucF ucQ"><span>Search</span><input class="input" data-f="q" type="search" placeholder="Company, industry or lender" value="${esc(F.q)}"></label>
@@ -105,7 +105,7 @@ function drawList() {
   onCount(rows.filter(s => bucket(s) === 'target').length);
   pass.forEach(s => { counts[bucket(s)] = (counts[bucket(s)] || 0) + 1; if (s.starred_at) counts.starred++; if (s.flagged_at) counts.flagged++; });
   const shown = pass.filter(s => inMarkView(view, s) ?? bucket(s) === view).sort(sorter[F.sort] || sorter.score);
-  body.innerHTML = `<div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['added', 'In pipeline'], ['dismissed', 'Dismissed'], ...MARK_VIEWS].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : ''}">${l} <b>${counts[k] || 0}</b></button>`).join('')}</div>${kindLegend()}
+  body.innerHTML = `<div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['added', 'In pipeline'], ['dismissed', 'Dismissed'], ...MARK_VIEWS].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : ''}">${l} <b>${counts[k] || 0}</b></button>`).join('')}</div>
     ${active() ? `<p class="pHint" style="margin:0">${pass.length.toLocaleString()} of ${rows.length.toLocaleString()} companies match the filters.</p>` : ''}
     <div class="fsList">${shown.length ? shown.slice(0, 200).map(rowHtml).join('') : `<div class="empty">${rows.length ? (active() ? 'Nothing matches these filters.' : 'Nothing here.') : 'No companies yet. Run the scan on GitHub (mode bdc); it takes about 5 minutes.'}</div>`}</div>
     ${shown.length > 200 ? `<p class="pHint">Showing the top 200 of ${shown.length}. Narrow it with the filters.</p>` : ''}`;
@@ -129,7 +129,7 @@ function rowHtml(s) {
       <h4>${esc(s.company_name)} <span class="fsVeh">${s.lenders} BDC lender${s.lenders === 1 ? '' : 's'}${s.pik ? ' · PIK' : ''}${s.nonaccrual ? ' · non-accrual' : ''}</span></h4>
       ${markLine(s)}
       <div class="fsFacts">${facts.map(x => `<span>${x}</span>`).join('')}</div>
-      <ul class="fsWhy">${(s.reasons || []).map(r => whyItem(r, esc)).join('')}</ul>
+      ${whyBlock(s.reasons, esc)}
       <details class="ucLiens"><summary>Lenders (${holders.length})</summary><table><tbody>${holders.map(h => `<tr><td>${h.url ? `<a href="${esc(h.url)}" target="_blank" rel="noopener">${esc(bdcShort(h.bdc))} ↗</a>` : esc(bdcShort(h.bdc))}</td><td>${money(h.principal)}</td><td>${h.principal ? Math.round(100 * h.fair / h.principal) + '¢' : ''}</td><td class="muted">${h.maturity ? 'matures ' + esc(mon(h.maturity)) : ''}${h.period ? ` · as of ${esc(mon(h.period))}` : ''}</td></tr>`).join('')}</tbody></table>
         ${s.sample ? `<p class="s muted" style="margin:6px 0 0">As filed: ${esc(s.sample)}</p>` : ''}</details>
       <div class="fsPeople"><a href="${cfoSearch(s)}" target="_blank" rel="noopener">Find the CFO / CEO on LinkedIn ↗</a><a href="${webSearch(s)}" target="_blank" rel="noopener">Website ↗</a></div>

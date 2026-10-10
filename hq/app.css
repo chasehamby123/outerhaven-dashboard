@@ -1245,3 +1245,44 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .rulesPage ul.fsWhy li{font-size:var(--fs-s)}
 .rulesPage ol.focus{margin:0;padding-left:20px;display:grid;gap:6px;font-size:var(--fs)}
 .rulesPage .pts{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600}
+
+/* Signal cards, calm version (10 Oct 2026): neutral score, one Need line + one Risk line, full reasons behind "Why",
+   one primary action, quiet secondary actions. */
+.fsRow{grid-template-columns:48px minmax(0,1fr) 168px;gap:18px;padding:18px 20px;border-left-width:2px}
+.fsRow[data-tone=good]{border-left-color:transparent}
+.fsScore{padding:6px 0;background:none;border:1px solid var(--line)}
+.fsRow[data-tone=good] .fsScore{background:none}.fsRow[data-tone=good] .fsScore b{color:var(--ink)}
+.fsScore b{font-size:18px}
+.fsScore span{display:none}
+.fsMain h4{font-size:17px;margin-bottom:6px}
+.fsFacts{gap:2px 16px;color:var(--muted)}
+.fsFacts b{font-weight:600}
+.wy{margin-top:10px;display:grid;gap:4px}
+.wyLine{display:grid;grid-template-columns:16px 40px minmax(0,1fr);align-items:baseline;gap:6px;font-size:var(--fs-s);color:var(--ink)}
+.wyLine b{font-size:var(--fs-xs);font-weight:600}
+.wyLine>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wyLine i{font-style:normal;color:var(--faint)}
+.wySym{font-size:11px;text-align:center}
+.wyLine[data-kind=need] .wySym,.wyLine[data-kind=need] b{color:var(--need)}
+.wyLine[data-kind=risk] .wySym,.wyLine[data-kind=risk] b{color:var(--bad)}
+.wyLine[data-kind=check] .wySym,.wyLine[data-kind=check] b{color:var(--warn)}
+.wyLine[data-kind=cut] .wySym,.wyLine[data-kind=cut] b{color:var(--muted)}
+.wyAll{margin-top:4px}
+.wyAll summary{cursor:pointer;width:max-content;font-size:var(--fs-xs);font-weight:600;color:var(--muted)}
+.wyAll summary:hover{color:var(--ink)}
+.wyAll[open]{padding:10px 12px;border-radius:var(--r);background:var(--sunk)}
+.wyGrp{margin-top:8px}
+.wyGrp>b{font-size:var(--fs-xs);font-weight:600;color:var(--muted)}
+.wyGrp[data-kind=need]>b{color:var(--need)}.wyGrp[data-kind=risk]>b{color:var(--bad)}.wyGrp[data-kind=fit]>b{color:var(--good)}.wyGrp[data-kind=check]>b{color:var(--warn)}
+.wyGrp ul{margin:2px 0 0;padding-left:18px;display:grid;gap:2px;font-size:var(--fs-s);color:var(--ink-2)}
+.wyRules{display:inline-block;margin-top:10px;font-size:var(--fs-xs);font-weight:600;color:var(--ink)}
+.ucLiens summary,.fsPrep summary{font-size:var(--fs-xs);font-weight:600;color:var(--muted)}
+.fsPeople{margin-top:8px;font-size:var(--fs-xs)}
+.fsPeople a{border-bottom-color:var(--line-2)}
+.fsAct{gap:4px;min-width:0}
+.fsAct .mkBtns{justify-content:flex-end;gap:2px;margin-bottom:4px}
+.fsAct .mkBtn{flex:none;width:30px;height:26px;border-color:transparent;background:none;font-size:14px}
+.fsAct .mkBtn:hover{border-color:var(--line)}
+.fsAct .btn:not(.primary){height:28px;border-color:transparent;background:none;color:var(--muted);font-weight:500}
+.fsAct .btn:not(.primary):hover{background:var(--hover);color:var(--ink)}
+@media (max-width:760px){.fsRow{grid-template-columns:40px minmax(0,1fr)}.fsAct{grid-column:2;grid-template-columns:auto 1fr auto auto;align-items:center}.fsAct .mkBtns{margin:0}.wyLine>span:last-child{white-space:normal}}
