@@ -51,6 +51,11 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Scraper (v9: comment threads run one Apify run per post inside a 120 s budget, unfinished runs are aborted and stay pending; a thread costs ~$0.60-1.30 and the log now records real per-run cost; account pool: `APIFY_TOKEN` = slot 1 capped by the HQ budget, extras `APIFY_TOKEN_2..9` added write-only in HQ → Growth → Scraper → Apify accounts via RPC `set_apify_token`, each run goes to the account with most credit left, extras use up to their own plan limit; `monthly_budget` caps slot 1 only; HQ shows spend summed across the whole pool from live `status_only` reads, and the per-run cost in the log is the pool delta between consecutive runs because the run object's `usageTotalUsd` is ~$0.0001 and Apify's account usage trails a finished run by minutes): edge function `daily-ops-linkedin-auto` (Apify actors atomus/linkedin-posts-scraper-pro and
   comments-scraper-pro), pg_cron every 30 min, runs once a day after `scrape_hour` MYT. Log:
   `daily_ops_linkedin_auto_log`. The user turned it off on 28 Sept; only they turn it back on.
+  **v10 (11 Oct 2026):** the atomus actors give FREE Apify plans 10 results a month, then return one row `{type:"error",
+  error_kind:"free_tier_limit"}`. From 6 Oct every run went to a free pool account (most credit left), skipped that row and logged
+  "ok, 0 posts". Now paid plans go first (`pick` sorts by `paid`, from users/me `plan.id`), an all-error dataset throws `ActorRefused`
+  (account marked, next one tried, refusals logged as `refused_accounts`), and the cron accepts `{"force":"posts"}` with the cron key for
+  a catch-up run. Only `chasehamby` (APIFY_TOKEN, STARTER) can actually run these actors; the 8 free accounts are useless for them.
 - Google Sheet "OuterHaven LinkedIn Accounts KPI" (id `1RGhFmIzQDCulzW6EVlFpVl8mmWEn_QU7rbSnzq1I01g`): HQ reads it via
   gviz CSV; `sheets/outerhaven-kpi-autofill.gs` (Apps Script) fills scraped columns from RPC `sheet_post_stats`.
 
