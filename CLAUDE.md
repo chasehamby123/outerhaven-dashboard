@@ -334,6 +334,12 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   predictor, library. SQL twin: view `post_scores`. Directional until ~100 tagged posts; link meetings to posts so "converted" counts.
 - Migrations: `2026-10-09-sync-inbox-tasks.sql`, `-reply-record-scores.sql`, `-reply-routine.sql`, `-reply-personas.sql`, `-reply-outcomes.sql` (`-anthropic-key.sql` unused).
 
+## Daily 3 (Today, admin only; 10 Oct 2026, `hq/daily3.js`)
+- Card under the Today hero: (1) credit targets worked today = `people` rows with source BDC loan / SEC credit / UCC signal created since the
+  2 AM ops-day start, split by their task owner, vs `DAILY3.contact` (20), plus untouched BDC + credit targets and days of backlog; (2) reply
+  queue = `lead_intake` unreviewed, not not_qualified (goal 0) + cleared today (`reviewed_at`); (3) calls booked = `growth_meetings` today vs
+  `DAILY3.calls` (1). Quotas are constants at the top of daily3.js. Tengku's rule: volume first, no new scrapers/rules for 30 days.
+
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.
 - Never enter passwords, API keys or tokens for the user, even with permission. Point them to the HQ field.

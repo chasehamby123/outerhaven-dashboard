@@ -4,6 +4,7 @@ import { loadDms, dmCardHtml, bindDmCard, meetingModal } from './dms.js';
 import { leadHeat } from './pipeline.js';
 import { renderNeedsReply } from './inbox.js';
 import { taskModal, openTaskById, me, TEAM, syncTeamTasks } from './tasks.js';
+import { renderDaily3 } from './daily3.js';
 
 const TZ = 'Asia/Singapore';
 // Ops day rolls over at 2am GMT+8, matching the server's schedule builder.
@@ -109,6 +110,7 @@ function itemHtml(r) {
   </label></li>`;
 }
 
+let d3Html = ''; // last Daily 3 render, so redraws don't flash
 const justDone = new Map(); // task id → time ticked, so only that row animates
 function draw() {
   if (!root || !root.isConnected || root.dataset.page !== 'today') return; // user has moved to another page
@@ -154,6 +156,7 @@ function draw() {
       <div class="row"><button class="btn brass sm" id="tMtg">Meeting booked</button><button class="btn sm" id="tAdd">Add task</button></div>
     </div>
   </section>
+  ${state.role === 'admin' ? '<div id="tDaily3"></div>' : ''}
   ${teamCard('narrow')}
   ${unfinishedHtml()}
   <div id="tNeeds"></div>
@@ -169,6 +172,7 @@ function draw() {
   $$('[data-edittask]', root).forEach(b => b.onclick = e => { e.preventDefault(); e.stopPropagation(); openTaskById(b.dataset.edittask, load); });
   $('#tMtg', root)?.addEventListener('click', () => meetingModal());
   const needs = $('#tNeeds', root); if (needs) renderNeedsReply(needs, W);
+  const d3 = $('#tDaily3', root); if (d3) { if (d3Html) d3.innerHTML = d3Html; renderDaily3(d3, date).then(() => { d3Html = d3.innerHTML; }); }
   bindDmCard(root, draw);
   $$('[data-late]', root).forEach(b => b.onclick = () => settle(b.dataset.late, 'done'));
   $$('[data-skip]', root).forEach(b => b.onclick = () => settle(b.dataset.skip, 'skipped'));

@@ -1186,3 +1186,21 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 @media (max-width:1100px){.rcCols{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:760px){.rcKpis{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.rcKpi{min-height:96px}.rcGrid{gap:4px}.rcCell{aspect-ratio:1;padding:5px}.rcCell small{display:none}.rcCell b{font-size:12px}.rcList li{padding:9px 16px}.pbBar{width:70px}.pbRec{flex-wrap:wrap}}
 .rpHow,.rpHow+.card{margin-bottom:20px}.rpHow .body{font-size:var(--fs-s);color:var(--ink-2);line-height:1.55}
+
+/* Daily 3 (Today, admin): three volume numbers, hit before anything else */
+.d3Card{margin-bottom:24px}
+.d3List{list-style:none;margin:0;padding:0}
+.d3Row{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:14px;align-items:center;padding:14px 20px;border-top:1px solid var(--line)}
+.d3Row:first-child{border-top:0}
+.d3N{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--side);color:#fff;font:600 14px/1 var(--serif)}
+.d3Row.ok .d3N{background:var(--good, var(--brass))}
+.d3Top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.d3Top b{font-weight:600}
+.d3Val{font:600 20px/1 var(--serif)}
+.d3Val em{font:400 var(--fs-s) var(--sans);color:var(--muted);font-style:normal}
+.d3Bar{display:block;height:6px;margin:8px 0 6px;border-radius:3px;background:var(--line);overflow:hidden}
+.d3Bar i{display:block;height:100%;background:var(--brass)}
+.d3Row.ok .d3Bar i{background:var(--good, var(--brass))}
+.d3Body small{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:var(--fs-xs);color:var(--muted)}
+.d3Who{display:inline-flex;align-items:center;gap:4px;color:var(--ink)}
+@media (max-width:640px){.d3Row{grid-template-columns:28px minmax(0,1fr);padding:12px 16px}.d3Row .btn{grid-column:2;justify-self:start}}
