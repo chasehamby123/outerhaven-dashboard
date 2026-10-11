@@ -1,10 +1,13 @@
 // outreach: omnichannel sends for Credit / BDC / UCC targets (10 Oct 2026).
 // Admin (user JWT):
 //   action 'campaigns' → Prosp campaigns (POST https://prosp.ai/api/v1/campaigns/lists)
-//   action 'send' {items: [{kind, key, opener, owner?}]} → per company: best contact from signal_contacts → people + task
+//   action 'send' {items: [{kind, key, person, owner, variant?}]} → per company: best contact from signal_contacts → people + task
 //     (like "Add to pipeline") → Prosp POST /api/v1/leads (LinkedIn, campaign of the owner's account) and PlusVibe
-//     POST /api/v1/lead/add (email, only when Hunter says valid / score >= min_email_score). Copy lives in the campaigns;
-//     we send personalisation: first_name, company, opener, need, deadline.
+//     POST /api/v1/lead/add (email, only when Hunter says valid / score >= min_email_score). Copy lives in the campaigns.
+//     (11 Oct) Prosp gets its STANDARD fields (firstName, lastName, name, jobTitle, company, email, phoneNumber, websiteUrl: the
+//     template's {{First name}} reads firstName; custom first_name left it blank) + one custom field, deadline. No opener.
+//     Variant: a lead with a dated trigger goes to the account's dated campaign or, for test_split of them, its plain campaign
+//     (same message without the deadline line); a lead with no date goes plain, or email only if there is no plain campaign.
 // Webhook: ?hook=plusvibe&token=PLUSVIBE_WEBHOOK_TOKEN (Email Replies event) → lead_intake row + stop LinkedIn (Prosp delete
 //   from campaign). Prosp replies arrive via the existing prosp-reply webhook into lead_intake; the cron stops their email.
 // Cron (x-outerhaven-cron, every 20 min): replied on LinkedIn → PlusVibe lead COMPLETED; once a day Prosp analytics → outreach_daily.
@@ -53,20 +56,21 @@ export function cleanName(n: string) {
 }
 
 // {{deadline}}: the date that makes the message specific. "a loan maturing in March 2027" (BDC), "debt coming due by June 2027"
-// (public: debt due within 12 months of the last balance sheet). Fallback is true of every target: "debt that will need refinancing".
+// (public: debt due within 12 months of the last balance sheet). No date = null: "Noticed X has debt that will need refinancing"
+// is vague enough to read as a mail merge, so those leads get the plain message instead.
 const MON = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const monthYear = (d: Date) => `${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 export function deadlineOf(kind: string, sig: any, now = Date.now()) {
   if (kind === "bdc" && sig.earliest_maturity) { const d = new Date(sig.earliest_maturity); if (d.getTime() > now) return `a loan maturing in ${monthYear(d)}`; }
   if (kind === "credit" && Number(sig.debt_current) > 0 && sig.period_end) { const d = new Date(sig.period_end); d.setUTCFullYear(d.getUTCFullYear() + 1); if (d.getTime() > now) return `debt coming due by ${monthYear(d)}`; }
-  return "debt that will need refinancing";
+  return null;
 }
 
 // Send one company on both channels. Returns the enrollment row.
 async function sendOne(it: any, st: any, keys: { prosp: string; pv: string }, who: string) {
   const kind = String(it.kind), key = String(it.key);
   if (!TABLE[kind]) throw new Error("bad kind");
-  const already = (await sb.from("outreach_enrollments").select("id,status").eq("kind", kind).eq("key", key).maybeSingle()).data;
+  const already = (await sb.from("outreach_enrollments").select("id,status").eq("kind", kind).eq("key", key).neq("status", "stopped").limit(1)).data?.[0];
   if (already) return { kind, key, skipped: "already sent" };
   const c = (await sb.from("signal_contacts").select("*").eq("kind", kind).eq("key", key).maybeSingle()).data;
   const sig = (await sb.from(TABLE[kind]).select("*").eq(KEYCOL[kind], key).maybeSingle()).data;
@@ -77,8 +81,7 @@ async function sendOne(it: any, st: any, keys: { prosp: string; pv: string }, wh
   const email = okEmail(p, st.min_email_score ?? 90) ? p.email : null;
   if (!p.linkedin && !email) return { kind, key, skipped: "no LinkedIn or valid email" };
   const company = sig.company_name, short = cleanName(company), parts = String(p.name).trim().split(/\s+/), first = parts[0], last = parts.slice(1).join(" ");
-  const opener = String(it.opener || "").slice(0, 1500);
-  const need = String(it.need || "").slice(0, 300), deadline = deadlineOf(kind, sig);
+  const deadline = deadlineOf(kind, sig);
   // Which LinkedIn account sends it: the requested owner, else round-robin over accounts with a campaign.
   const accounts = (st.prosp || []).filter((a: any) => a.campaign_id && a.list_id);
   const acct = accounts.find((a: any) => a.owner === it.owner) || accounts[Number(it.slot || 0) % Math.max(accounts.length, 1)] || null;
@@ -98,29 +101,46 @@ async function sendOne(it: any, st: any, keys: { prosp: string; pv: string }, wh
     await sb.from(TABLE[kind]).update({ status: "added", person_id: personId, updated_at: now }).eq(KEYCOL[kind], key);
   }
 
-  const row: any = { kind, key, company_name: company, person_name: p.name, title: p.title || null, linkedin_url: p.linkedin || null, email, owner, person_id: personId, approved_by: who };
-  // LinkedIn via Prosp
-  if (p.linkedin && acct && keys.prosp) {
+  const variant = pickVariant(deadline, acct, st, it.variant);
+  const campaign = variant === "dated" ? acct?.campaign_id : variant === "plain" ? acct?.plain_campaign_id : null;
+  const row: any = { kind, key, company_name: company, person_name: p.name, title: p.title || null, linkedin_url: p.linkedin || null, email, owner, person_id: personId, approved_by: who, variant, deadline };
+  // LinkedIn via Prosp: standard fields so the row is complete and {{First name}} works; deadline only on the dated campaign.
+  if (p.linkedin && acct && keys.prosp && campaign) {
     try {
-      await post(`${PROSP}/leads`, { api_key: keys.prosp, linkedin_url: p.linkedin, list_id: acct.list_id, campaign_id: acct.campaign_id,
-        data: [{ property: "first_name", value: first }, { property: "company", value: short }, { property: "opener", value: opener }, { property: "need", value: need }, { property: "deadline", value: deadline }] });
-      row.prosp_status = "added"; row.prosp_campaign_id = acct.campaign_id;
+      const data = [["firstName", first], ["lastName", last], ["name", p.name], ["jobTitle", p.title || (p.role === "ceo" ? "CEO" : p.role === "cfo" ? "CFO" : "")],
+        ["company", short], ["email", email || ""], ["phoneNumber", c?.phone || ""], ["websiteUrl", c?.website || ""], ...(variant === "dated" ? [["deadline", deadline]] : [])]
+        .filter(([, v]) => v).map(([property, value]) => ({ property, value }));
+      await post(`${PROSP}/leads`, { api_key: keys.prosp, linkedin_url: p.linkedin, list_id: acct.list_id, campaign_id: campaign, data });
+      row.prosp_status = "added"; row.prosp_campaign_id = campaign;
     } catch (e) { row.prosp_status = "failed"; row.prosp_error = String((e as Error).message || e); }
-  } else row.prosp_status = !p.linkedin ? "skipped: no LinkedIn" : !keys.prosp ? "skipped: no Prosp key" : "skipped: no Prosp campaign for this account";
+  } else row.prosp_status = !p.linkedin ? "skipped: no LinkedIn" : !keys.prosp ? "skipped: no Prosp key" : !acct ? "skipped: no Prosp campaign for this account"
+    : "skipped: no date to cite and no plain campaign";
   // Email via PlusVibe. LinkedIn first: if the LinkedIn step went out, the email waits email_delay_days and the cron sends it
   // only if they haven't replied on LinkedIn. No LinkedIn = email now.
   const lead = { email, first_name: first, last_name: last, company_name: short, company_website: c?.website || undefined, linkedin_person_url: p.linkedin || undefined,
-    phone_number: c?.phone || undefined, custom_variables: { opener, need, deadline, title: p.title || "" } };
+    phone_number: c?.phone || undefined, custom_variables: { deadline: deadline || "", title: p.title || "" } };
   if (email && keys.pv && st.plusvibe_workspace_id && st.plusvibe_campaign_id) {
     if (row.prosp_status === "added") {
       row.plusvibe_status = "scheduled"; row.email_payload = lead;
       row.email_due_at = new Date(Date.now() + (st.email_delay_days ?? 3) * 864e5).toISOString();
     } else Object.assign(row, await addEmail(lead, st, keys.pv));
   } else row.plusvibe_status = !email ? "skipped: no valid email" : !keys.pv ? "skipped: no PlusVibe key" : "skipped: no PlusVibe campaign set";
-  row.status = row.prosp_status === "added" || row.plusvibe_status === "added" ? "sent" : "failed";
-  const ins = await sb.from("outreach_enrollments").insert(row);
+  if (row.prosp_status !== "added" && row.variant !== "email_only") row.variant = "email_only";
+  row.status = row.prosp_status === "added" || row.plusvibe_status === "added" || row.plusvibe_status === "scheduled" ? "sent" : "failed";
+  // A stopped enrollment (test sends, wrong person: status "stopped") is replaced, not duplicated.
+  const ins = await sb.from("outreach_enrollments").upsert({ ...row, status: row.status, replied_at: null, reply_channel: null, created_at: new Date().toISOString() }, { onConflict: "kind,key" });
   if (ins.error) throw new Error(ins.error.message);
   return row;
+}
+
+// Dated trigger → dated campaign, except test_split of them go plain (when the account has a plain campaign) so we learn whether
+// the date actually earns replies. No date → plain, else email only. HQ can force a variant (it.variant) after showing the preview.
+export function pickVariant(deadline: string | null, acct: any, st: any, forced?: string) {
+  const plain = !!acct?.plain_campaign_id, dated = !!acct?.campaign_id;
+  if (forced === "plain" && plain) return "plain";
+  if (forced === "dated" && dated && deadline) return "dated";
+  if (deadline && dated) return plain && Math.random() >= Number(st.test_split ?? 0.5) ? "plain" : "dated";
+  return plain ? "plain" : "email_only";
 }
 
 async function addEmail(lead: any, st: any, pvKey: string) {

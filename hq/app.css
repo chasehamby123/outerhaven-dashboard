@@ -1410,3 +1410,8 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .gFaq{display:grid;grid-template-columns:max-content 1fr;gap:10px 16px;margin:0;font-size:14px}
 .gFaq dd{margin:0;color:var(--ink-2)}
 @media (max-width:640px){.gFaq{grid-template-columns:1fr}.gFaq dd{margin-bottom:6px}}
+.obRow3{grid-template-columns:80px 1fr 1fr 1fr}
+@media (max-width:640px){.obRow3{grid-template-columns:1fr}}
+.obVar{font-size:12px;font-weight:600;white-space:nowrap}
+.obMsg summary{cursor:pointer;font-size:12px;color:var(--ink-2)}
+.obMsg pre{white-space:pre-wrap;font:inherit;font-size:12px;background:var(--sunk);border-radius:6px;padding:8px;margin:4px 0 0;max-width:340px}

@@ -409,6 +409,16 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   ("HYDROFARM HOLDINGS GROUP, INC." → "Hydrofarm"). `{{deadline}}` = `deadlineOf()`: "a loan maturing in March 2027" (BDC earliest_maturity), "debt coming due by June 2027" (credit debt_current, period_end + 1y), else "debt that will need refinancing". PlusVibe campaign "Private credit – Q4 (HQ)": 3 steps, step 1 A/B (Tengku vs Claude).
   Migration `supabase/2026-10-10-outreach-linkedin-first.sql`.
 - The batch window sends the exact person shown (`items[].person`); the Send button counts ticked rows.
+- **Prosp fields + personalisation (11 Oct 2026, v7; `supabase/2026-10-11-outreach-variants.sql`):** Prosp's message uses `{{First name}}` = its
+  STANDARD field `firstName` (seen in Prosp's own `api/contacts/get-contacts`: firstName, lastName, name, jobTitle, company, email, phoneNumber,
+  websiteUrl; anything else lands in `custom_columns`). We now send those + one custom field `deadline`. No opener, no need (Tengku: "no pitch"
+  makes people think of a pitch). Prosp fills headline/photo itself when the campaign's "Visit profile" step runs.
+  Personalisation = one true dated fact about THEIR company (`deadlineOf`, null when no future date; past maturities = probably extended, sorted
+  last). Variants: `dated` (account's campaign) / `plain` (`prosp[].plain_campaign_id`, same copy minus the deadline line) / `email_only`.
+  Dated leads split by `outreach_settings.test_split`; undated go plain or email only. `outreach_enrollments.variant` + `deadline`; HQ picks the
+  variant and previews each person's exact message (`li_template_dated` / `li_template_plain` = copies of the Prosp steps, edit in Outreach
+  setup; Prosp has no API to read campaign copy). Setup shows reply rate per variant (needs ~100 sends a side). Card "Copy message" =
+  `messageFor()` (same template). Status `stopped` = withdrawn send (re-sendable; the 3 test sends of 10 Oct are stopped).
 - Hunter: one key, 50 lookups/month. Don't build rotation across extra free accounts (Tengku floated it; it breaks Hunter's terms).
 
 ## Post formats, format tests, breakdowns (11 Oct 2026; `hq/formats.js`, `hq/formattest.js`, `supabase/2026-10-11-post-formats.sql`)

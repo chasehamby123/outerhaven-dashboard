@@ -3,6 +3,7 @@
 // number, not an estimate. Filled by scripts/bdc_signals.py on GitHub; judged on the server (classifyBdc in
 // supabase/functions/bdc-signals/rules.js). Filters kept in localStorage 'hq-bdc-filters'.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
+import { messageFor } from './outreach.js';
 import { whyBlock } from './kinds.js';
 import { loadContacts, contactHtml, bindContacts, bestPerson, contactsSetup } from './contacts.js';
 import { markBtns, markLine, bindMarks, MARK_VIEWS, inMarkView } from './marks.js';
@@ -140,21 +141,15 @@ function rowHtml(s) {
     <div class="fsAct">
       ${markBtns(s)}
       ${s.status !== 'added' ? `<button class="btn sm ${s.verdict === 'target' ? 'primary' : ''}" data-add="${s.id}">Add to pipeline</button>` : '<span class="pFlag good">In pipeline</span>'}
-      <button class="btn sm" data-copy="${s.id}">Copy opener</button>
+      <button class="btn sm" data-copy="${s.id}">Copy message</button>
       ${s.status === 'dismissed' ? `<button class="btn sm ghost" data-undo="${s.id}">Restore</button>` : s.status !== 'added' ? `<button class="btn sm ghost" data-dismiss="${s.id}">Dismiss</button>` : ''}
     </div></article>`;
 }
 
 // Peter's first message: leads with the refinancing window, never with the lender's mark (that's the lender's private view).
-export function opener(s, name = '') {
-  const who = firstName(name) || 'there', co = brand(s.company_name), mo = monthsTo(s.earliest_maturity);
-  const body = s.mark != null && s.mark < 85
-    ? `When a facility gets tight, the options are wider than most owners hear from their current lender: junior or structured capital alongside the senior debt, a recap, or a partial sale that resets the balance sheet. I work with family offices and private lenders who do exactly that at ${co}'s size.`
-    : mo != null && mo <= 18
-    ? `Companies with a facility coming due in the next year or so are getting much better terms when they run a proper process early instead of rolling with the incumbent: more lenders are competing for good lower-middle-market credits than at any point I've seen.`
-    : `More private lenders are competing for companies like ${co} than at any point I've seen, and terms (leverage, covenants, PIK flexibility) have moved a lot in borrowers' favour.`;
-  return `Hi ${who}, I've spent 35 years in private credit. ${body} Happy to share who's actively lending at ${co}'s size and what they're offering, no pitch. Worth 15 minutes?`;
-}
+// The first message = the Prosp template (hq/outreach.js messageFor): one dated fact about their company, a small ask.
+// No pitch paragraph, no "no pitch" (saying it makes people think of a pitch). Distress (marks, liens, going concern) is never named.
+export function opener(s, name = '') { return messageFor('bdc', s, name); }
 
 function bind(shown) {
   const find = id => shown.find(s => s.id === id) || rows.find(s => s.id === id);
@@ -164,7 +159,7 @@ function bind(shown) {
   $$('[data-view]', el).forEach(b => b.onclick = () => { view = b.dataset.view; drawList(); });
   $$('[data-copy]', el).forEach(b => b.onclick = async () => {
     const t = opener(find(b.dataset.copy));
-    try { await navigator.clipboard.writeText(t); toast('Opener copied. Put their name in before sending.'); } catch { modal({ title: 'Opener', submit: '', body: `<textarea class="input" rows="6" style="width:100%">${esc(t)}</textarea>` }); }
+    try { await navigator.clipboard.writeText(t); toast('Message copied. Put their name in before sending.'); } catch { modal({ title: 'Message', submit: '', body: `<textarea class="input" rows="6" style="width:100%">${esc(t)}</textarea>` }); }
   });
   $$('[data-dismiss],[data-undo]', el).forEach(b => b.onclick = async () => {
     const id = b.dataset.dismiss || b.dataset.undo, st = b.dataset.dismiss ? 'dismissed' : 'new';
@@ -182,17 +177,17 @@ function addModal(s) {
       <label class="field">Name<input class="input" name="name" required placeholder="Jane Smith" value="${esc(cp?.name || '')}"></label>
       <label class="field">Title<input class="input" name="title" value="${esc(cp ? ({ cfo: 'CFO', ceo: 'CEO' }[cp.role] || cp.title || 'CFO') : 'CFO')}"></label>
       <label class="field" style="grid-column:1/-1">LinkedIn URL (optional)<input class="input" name="li" value="${esc(cp?.linkedin || '')}"></label>
-      <label class="field" style="grid-column:1/-1">First step<input class="input" name="next" value="Connect and send the opener (refinancing ahead of maturity)"></label>
+      <label class="field" style="grid-column:1/-1">First step<input class="input" name="next" value="Connect and send the message (refinancing ahead of maturity)"></label>
       <label class="field">Owner<select class="select" name="owner">${opts(['Peter', 'Tengku', 'Chase', 'Anaz', 'Razeen'], 'Peter')}</select></label></div>`,
     async onSubmit(fd) {
       const now = new Date().toISOString(), name = String(fd.get('name')).trim(), li = String(fd.get('li') || '').trim() || null;
       const facts = `${s.company_name}: ${(s.reasons || []).filter(x => x.tone === 'good').map(x => x.text).join(' ')} Lenders: ${(s.holders || []).map(h => bdcShort(h.bdc)).join(', ')}.`;
       const r = await sb.from('people').insert({ name, primary_side: 'Sell Side', relationship_type: 'Sell-side Relationship', pipeline_stage: 'New Relationship', pipeline_active: true, waiting_on: 'us', waiting_on_since: now, company_name: s.company_name, headline: String(fd.get('title') || '').trim() || null, linkedin_url: li, has_linkedin: !!li, source: 'BDC loan signal', last_inbound_message: facts, created_by: state.user?.id }).select().single();
       if (fail(r, 'Add')) return false;
-      await sb.from('tasks').insert({ person_id: r.data.id, action: String(fd.get('next') || '').trim() || 'Connect and send the opener', owner_name: fd.get('owner'), due_date: now.slice(0, 10), created_by: state.user?.id });
+      await sb.from('tasks').insert({ person_id: r.data.id, action: String(fd.get('next') || '').trim() || 'Connect and send the message', owner_name: fd.get('owner'), due_date: now.slice(0, 10), created_by: state.user?.id });
       await sb.from('bdc_signals').update({ status: 'added', person_id: r.data.id, updated_at: now }).eq('id', s.id);
       s.status = 'added'; s.person_id = r.data.id;
-      try { await navigator.clipboard.writeText(opener(s, name)); toast(`${name} added. Opener copied with their name.`); } catch { toast(`${name} added to Pipeline → Sell side`); }
+      try { await navigator.clipboard.writeText(opener(s, name)); toast(`${name} added. Message copied with their name.`); } catch { toast(`${name} added to Pipeline → Sell side`); }
       drawList();
     },
   });
@@ -219,6 +214,6 @@ function howModal() {
       <p><a href="#/rules">Every rule for every list: How we qualify →</a></p>
       <h4>6. Limits</h4><ul><li>Borrower names are read from free text that every BDC formats differently; "As filed" under Lenders shows the original line.</li>
       <li>Holding-company names (Buyer, Midco, Parent) usually mean PE-owned: the decision maker is often the sponsor's deal team.</li></ul>
-      <p class="s muted">The opener never mentions the lender's mark: that's the lender's private view of the company.</p></div>`,
+      <p class="s muted">The message never mentions the lender's mark: that's the lender's private view of the company.</p></div>`,
   });
 }

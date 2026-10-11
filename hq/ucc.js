@@ -3,6 +3,7 @@
 // signal, sector, recency, registry (kept in localStorage 'hq-ucc-filters'). Filled daily by scripts/ucc_signals.py on GitHub; judged
 // on the server (classifyUcc in supabase/functions/ucc-signals/rules.js). Every verdict shows its reasons.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
+import { messageFor } from './outreach.js';
 import { whyBlock } from './kinds.js';
 import { loadContacts, contactHtml, bindContacts, bestPerson, contactsSetup } from './contacts.js';
 import { markBtns, markLine, bindMarks, MARK_VIEWS, inMarkView } from './marks.js';
@@ -137,22 +138,15 @@ function rowHtml(s) {
     <div class="fsAct">
       ${markBtns(s)}
       ${s.status !== 'added' ? `<button class="btn sm ${s.verdict === 'target' ? 'primary' : ''}" data-add="${s.id}">Add to pipeline</button>` : '<span class="pFlag good">In pipeline</span>'}
-      <button class="btn sm" data-copy="${s.id}">Copy opener</button>
+      <button class="btn sm" data-copy="${s.id}">Copy message</button>
       ${s.status === 'dismissed' ? `<button class="btn sm ghost" data-undo="${s.id}">Restore</button>` : s.status !== 'added' ? `<button class="btn sm ghost" data-dismiss="${s.id}">Dismiss</button>` : ''}
     </div></article>`;
 }
 
 // Peter's first message. Never mentions the liens (public, but naming them reads as surveillance); leads with the fix.
-export function opener(s, name = '') {
-  const who = firstName(name) || 'there', co = shortName(s.company_name), f = s.facts || {}, sec = sector(s).toLowerCase();
-  const peers = sec ? `${sec} companies` : 'companies';
-  const body = f.mca_18m || f.mca_12m || f.fintech_18m || f.factoring_24m
-    ? `A lot of ${peers} around ${co}'s size end up juggling short-term funding because the bank won't stretch. Private lenders will often replace all of it with one longer-term facility: lower cost, no daily debits, one relationship.`
-    : f.irs_24m || f.state_tax_24m || f.judgment_24m
-      ? `Private lenders are funding ${peers} like ${co} for working capital when the bank won't move fast enough: one facility that cleans up the balance sheet and leaves room to grow.`
-      : `If ${co}'s bank facility comes up for renewal in the next year, it's worth seeing what private lenders offer first: more flexible structures, and they're moving faster than banks right now.`;
-  return `Hi ${who}, I've spent 35 years in private credit. ${body} Happy to tell you who's actively lending to businesses like yours, no pitch. Worth 15 minutes?`;
-}
+// The first message = the Prosp template (hq/outreach.js messageFor): one dated fact about their company, a small ask.
+// No pitch paragraph, no "no pitch" (saying it makes people think of a pitch). Distress (marks, liens, going concern) is never named.
+export function opener(s, name = '') { return messageFor('ucc', s, name); }
 
 function bind(shown) {
   const find = id => shown.find(s => s.id === id) || rows.find(s => s.id === id);
@@ -162,7 +156,7 @@ function bind(shown) {
   $$('[data-view]', el).forEach(b => b.onclick = () => { view = b.dataset.view; drawList(); });
   $$('[data-copy]', el).forEach(b => b.onclick = async () => {
     const t = opener(find(b.dataset.copy));
-    try { await navigator.clipboard.writeText(t); toast('Opener copied. Put their name in before sending.'); } catch { modal({ title: 'Opener', submit: '', body: `<textarea class="input" rows="6" style="width:100%">${esc(t)}</textarea>` }); }
+    try { await navigator.clipboard.writeText(t); toast('Message copied. Put their name in before sending.'); } catch { modal({ title: 'Message', submit: '', body: `<textarea class="input" rows="6" style="width:100%">${esc(t)}</textarea>` }); }
   });
   $$('[data-dismiss],[data-undo]', el).forEach(b => b.onclick = async () => {
     const id = b.dataset.dismiss || b.dataset.undo, st = b.dataset.dismiss ? 'dismissed' : 'new';
@@ -180,17 +174,17 @@ function addModal(s) {
       <label class="field">Name<input class="input" name="name" required placeholder="Jane Smith" value="${esc(cp?.name || '')}"></label>
       <label class="field">Title<input class="input" name="title" value="${esc(cp ? ({ cfo: 'CFO', ceo: 'CEO' }[cp.role] || cp.title || 'CEO') : 'CEO')}"></label>
       <label class="field" style="grid-column:1/-1">LinkedIn URL (optional)<input class="input" name="li" value="${esc(cp?.linkedin || '')}"></label>
-      <label class="field" style="grid-column:1/-1">First step<input class="input" name="next" value="Connect and send the opener (Peter's private credit angle)"></label>
+      <label class="field" style="grid-column:1/-1">First step<input class="input" name="next" value="Connect and send the message (Peter's private credit angle)"></label>
       <label class="field">Owner<select class="select" name="owner">${opts(['Peter', 'Tengku', 'Chase', 'Anaz', 'Razeen'], 'Peter')}</select></label></div>`,
     async onSubmit(fd) {
       const now = new Date().toISOString(), name = String(fd.get('name')).trim(), li = String(fd.get('li') || '').trim() || null;
       const facts = `${s.company_name} (${[s.city, s.state].filter(Boolean).join(', ')}): ${(s.reasons || []).filter(x => x.tone === 'good').map(x => x.text).join(' ')}`;
       const r = await sb.from('people').insert({ name, primary_side: 'Sell Side', relationship_type: 'Sell-side Relationship', pipeline_stage: 'New Relationship', pipeline_active: true, waiting_on: 'us', waiting_on_since: now, company_name: s.company_name, headline: String(fd.get('title') || '').trim() || null, linkedin_url: li, has_linkedin: !!li, source: 'UCC signal', last_inbound_message: facts, created_by: state.user?.id }).select().single();
       if (fail(r, 'Add')) return false;
-      await sb.from('tasks').insert({ person_id: r.data.id, action: String(fd.get('next') || '').trim() || 'Connect and send the opener', owner_name: fd.get('owner'), due_date: now.slice(0, 10), created_by: state.user?.id });
+      await sb.from('tasks').insert({ person_id: r.data.id, action: String(fd.get('next') || '').trim() || 'Connect and send the message', owner_name: fd.get('owner'), due_date: now.slice(0, 10), created_by: state.user?.id });
       await sb.from('ucc_signals').update({ status: 'added', person_id: r.data.id, updated_at: now }).eq('id', s.id);
       s.status = 'added'; s.person_id = r.data.id;
-      try { await navigator.clipboard.writeText(opener(s, name)); toast(`${name} added. Opener copied with their name.`); } catch { toast(`${name} added to Pipeline → Sell side`); }
+      try { await navigator.clipboard.writeText(opener(s, name)); toast(`${name} added. Message copied with their name.`); } catch { toast(`${name} added to Pipeline → Sell side`); }
       drawList();
     },
   });
@@ -214,6 +208,6 @@ function howModal() {
       <p>Target = estimated revenue $30M+ and a strong signal (tax or judgment lien; cash advances only at $50M+), or $50M+ with a maturing facility. Public companies are cut (they're in Credit signals). $10–30M or weaker signals = Maybe. Lenders, public bodies, non-profits and anything under $10M are cut.</p>
       <h4>4. What it can't see</h4><ul><li>Companies organized in other states: a UCC is filed where the company is incorporated, so a Delaware LLC based in Connecticut is missed. No other state publishes UCC data free; the rest sell it (Texas full file about $1,150 one-time).</li>
       <li>Loan amounts: UCC filings don't say how much was borrowed.</li><li>Size is a 2020 estimate: check the website and LinkedIn headcount before calling.</li></ul>
-      <p class="s muted">The opener never mentions liens. They are public, but naming them in a first message reads as surveillance.</p></div>`,
+      <p class="s muted">The message never mentions liens. They are public, but naming them in a first message reads as surveillance.</p></div>`,
   });
 }

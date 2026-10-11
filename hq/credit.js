@@ -2,6 +2,7 @@
 // Filled daily by the GitHub edgartools job (scripts/credit_signals.py) from SEC data; judged on the server
 // (classifyCredit in supabase/functions/fund-signals/rules.js). Every verdict shows its reasons.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
+import { messageFor } from './outreach.js';
 import { whyBlock } from './kinds.js';
 import { loadContacts, contactHtml, bindContacts, bestPerson, contactsSetup } from './contacts.js';
 import { markBtns, markLine, bindMarks, MARK_VIEWS, inMarkView } from './marks.js';
@@ -79,22 +80,15 @@ function rowHtml(s) {
     <div class="fsAct">
       ${markBtns(s)}
       ${s.status !== 'added' ? `<button class="btn sm ${s.verdict === 'target' ? 'primary' : ''}" data-add="${s.id}">Add to pipeline</button>` : '<span class="pFlag good">In pipeline</span>'}
-      <button class="btn sm" data-copy="${s.id}">Copy opener</button>
+      <button class="btn sm" data-copy="${s.id}">Copy message</button>
       ${s.status === 'dismissed' ? `<button class="btn sm ghost" data-undo="${s.id}">Restore</button>` : s.status !== 'added' ? `<button class="btn sm ghost" data-dismiss="${s.id}">Dismiss</button>` : ''}
     </div></article>`;
 }
 
 // First message from Peter's side, using the numbers from their own filing. Personalise before sending.
-export function opener(s, name = '') {
-  const who = firstName(name) || 'there', f = s.flags || {}, co0 = s.company_name.replace(/,?\s+(inc|corp|corporation|co|ltd|llc|plc|holdings)\.?$/i, ''), co = co0 === co0.toUpperCase() ? co0.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase()) : co0;
-  // Lead with the date, never the distress: no "going concern" / "forbearance" in a first message (the CFO knows; naming it
-  // reads as an accusation). Sent from Peter's account, CFO to a credit peer.
-  const by = s.period_end ? new Date(Date.parse(s.period_end) + 365 * 864e5).toLocaleString('en-US', { month: 'long', year: 'numeric' }) : '';
-  const due = s.debt_current != null && s.debt_current >= 10e6 && (s.cash == null || s.debt_current > s.cash)
-    ? `${money(s.debt_current)} of ${co}'s debt comes due${by ? ` before ${by}` : ' in the next 12 months'}`
-    : f.forbearance || f.going_concern ? `${co} will likely be lining up its next facility in the coming months` : `${co} may be looking at its next facility`;
-  return `Hi ${who}, I've spent 35 years in private credit. Saw that ${due}. Banks have pulled back from deals your size, but private lenders haven't, and the terms are sharper than most CFOs expect. Happy to tell you who's actively writing for a company like yours, no pitch. Worth 15 minutes before the process starts?`;
-}
+// The first message = the Prosp template (hq/outreach.js messageFor): one dated fact about their company, a small ask.
+// No pitch paragraph, no "no pitch" (saying it makes people think of a pitch). Distress (marks, liens, going concern) is never named.
+export function opener(s, name = '') { return messageFor('credit', s, name); }
 
 function bind(shown) {
   const find = id => shown.find(s => s.id === id) || rows.find(s => s.id === id);
@@ -105,7 +99,7 @@ function bind(shown) {
   $('#crHow', el).onclick = howModal;
   $$('[data-copy]', el).forEach(b => b.onclick = async () => {
     const t = opener(find(b.dataset.copy));
-    try { await navigator.clipboard.writeText(t); toast('Opener copied. Put the CFO\'s name in before sending.'); } catch { modal({ title: 'Opener', submit: '', body: `<textarea class="input" rows="6" style="width:100%">${esc(t)}</textarea>` }); }
+    try { await navigator.clipboard.writeText(t); toast('Message copied. Put the CFO\'s name in before sending.'); } catch { modal({ title: 'Message', submit: '', body: `<textarea class="input" rows="6" style="width:100%">${esc(t)}</textarea>` }); }
   });
   $$('[data-dismiss],[data-undo]', el).forEach(b => b.onclick = async () => {
     const id = b.dataset.dismiss || b.dataset.undo, st = b.dataset.dismiss ? 'dismissed' : 'new';
@@ -123,7 +117,7 @@ function addModal(s) {
     body: `<div class="form pForm"><p class="s muted" style="grid-column:1/-1;margin:0"><b>${esc(s.company_name)}</b>. Find the CFO first: <a href="${cfoSearch(s)}" target="_blank" rel="noopener">LinkedIn search ↗</a></p>
       <label class="field">CFO name<input class="input" name="name" required placeholder="Jane Smith" value="${esc(cp?.name || '')}"></label>
       <label class="field">LinkedIn URL (optional)<input class="input" name="li" value="${esc(cp?.linkedin || '')}"></label>
-      <label class="field" style="grid-column:1/-1">First step<input class="input" name="next" value="Connect with the CFO and send the opener (Peter's private credit angle)"></label>
+      <label class="field" style="grid-column:1/-1">First step<input class="input" name="next" value="Connect with the CFO and send the message (Peter's private credit angle)"></label>
       <label class="field">Owner<select class="select" name="owner">${opts(['Peter', 'Tengku', 'Chase', 'Anaz', 'Razeen'], 'Peter')}</select></label></div>`,
     async onSubmit(fd) {
       const now = new Date().toISOString(), name = String(fd.get('name')).trim(), li = String(fd.get('li') || '').trim() || null;
@@ -133,7 +127,7 @@ function addModal(s) {
       await sb.from('tasks').insert({ person_id: r.data.id, action: String(fd.get('next') || '').trim() || 'Connect with the CFO', owner_name: fd.get('owner'), due_date: now.slice(0, 10), created_by: state.user?.id });
       await sb.from('credit_signals').update({ status: 'added', person_id: r.data.id, updated_at: now }).eq('id', s.id);
       s.status = 'added'; s.person_id = r.data.id;
-      try { await navigator.clipboard.writeText(opener(s, name)); toast(`${name} added. Opener copied with their name.`); } catch { toast(`${name} added to Pipeline → Sell side`); }
+      try { await navigator.clipboard.writeText(opener(s, name)); toast(`${name} added. Message copied with their name.`); } catch { toast(`${name} added to Pipeline → Sell side`); }
       draw();
     },
   });
