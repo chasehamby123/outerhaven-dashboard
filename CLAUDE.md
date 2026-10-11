@@ -396,7 +396,7 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   enrolled. A person unticks bad rows and clicks Send (the one human gate Tengku agreed to). Edge function `outreach` action `send`:
   people + task (counts in Daily 3), Prosp `POST /api/v1/leads` (api_key in body, list_id + campaign_id per account in
   `outreach_settings.prosp`), PlusVibe `POST https://api.plusvibe.ai/api/v1/lead/add` (x-api-key, workspace_id, campaign_id,
-  custom_variables). Personalisation sent: first_name, company, opener (the tab's opener()), need (first Need headline). Copy lives in the
+  custom_variables). What we send changed on 11 Oct (see "Prosp fields + personalisation" below). Copy lives in the
   Prosp / PlusVibe campaigns. Results in `outreach_enrollments` (one per company).
 - Replies: PlusVibe webhook `?hook=plusvibe&token=` (RPC `plusvibe_webhook_url()`) → `lead_intake` (source 'plusvibe') + Prosp
   `/leads/campaign/delete`. Prosp replies already land in lead_intake (prosp-reply); pg_cron `outreach-cron` every 20 min matches them by
@@ -406,7 +406,7 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - **LinkedIn first** (Tengku, 10 Oct): with a LinkedIn profile, Prosp gets them on send day and the email is stored (`email_payload`,
   `plusvibe_status='scheduled'`, `email_due_at` = + `outreach_settings.email_delay_days`, default 3); the cron sends it to PlusVibe only if
   no LinkedIn reply came in. No LinkedIn = email right away. `{{company}}` (Prosp) / `{{company_name}}` (PlusVibe) get `cleanName()`
-  ("HYDROFARM HOLDINGS GROUP, INC." → "Hydrofarm"). `{{deadline}}` = `deadlineOf()`: "a loan maturing in March 2027" (BDC earliest_maturity), "debt coming due by June 2027" (credit debt_current, period_end + 1y), else "debt that will need refinancing". PlusVibe campaign "Private credit – Q4 (HQ)": 3 steps, step 1 A/B (Tengku vs Claude).
+  ("HYDROFARM HOLDINGS GROUP, INC." → "Hydrofarm"). `{{deadline}}` = `deadlineOf()`: "a loan maturing in March 2027" (BDC earliest_maturity), "debt coming due by June 2027" (credit debt_current, period_end + 1y), else null since 11 Oct (no date = plain message). PlusVibe campaign "Private credit – Q4 (HQ)": 3 steps, step 1 A/B (Tengku vs Claude).
   Migration `supabase/2026-10-10-outreach-linkedin-first.sql`.
 - The batch window sends the exact person shown (`items[].person`); the Send button counts ticked rows.
 - **Prosp fields + personalisation (11 Oct 2026, v7; `supabase/2026-10-11-outreach-variants.sql`):** Prosp's message uses `{{First name}}` = its
@@ -419,6 +419,8 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   variant and previews each person's exact message (`li_template_dated` / `li_template_plain` = copies of the Prosp steps, edit in Outreach
   setup; Prosp has no API to read campaign copy). Setup shows reply rate per variant (needs ~100 sends a side). Card "Copy message" =
   `messageFor()` (same template). Status `stopped` = withdrawn send (re-sendable; the 3 test sends of 10 Oct are stopped).
+- Open items (11 Oct, user to do in Prosp): Peter's sender shows Disconnected in "private credit signals"; delete the 3 test rows in list
+  "HQ – private credit"; optionally duplicate the campaign minus the "Noticed…" line as the plain campaign and pick it in Outreach setup.
 - Hunter: one key, 50 lookups/month. Don't build rotation across extra free accounts (Tengku floated it; it breaks Hunter's terms).
 
 ## Post formats, format tests, breakdowns (11 Oct 2026; `hq/formats.js`, `hq/formattest.js`, `supabase/2026-10-11-post-formats.sql`)
