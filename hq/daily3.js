@@ -21,7 +21,7 @@ export async function renderDaily3(el, date) {
     head(sb.from('lead_intake').select('id', { count: 'exact', head: true }).is('person_id', null).is('reviewed_at', null).neq('decision', 'not_qualified')),
     head(sb.from('lead_intake').select('id', { count: 'exact', head: true }).gte('reviewed_at', since)),
     head(sb.from('growth_meetings').select('id', { count: 'exact', head: true }).gte('created_at', since)),
-    head(sb.from('bdc_signals').select('id', { count: 'exact', head: true }).eq('verdict', 'target').eq('status', 'new')),
+    head(sb.from('bdc_signals').select('id', { count: 'exact', head: true }).eq('verdict', 'target').eq('lane', 'refi').eq('status', 'new')),
     head(sb.from('credit_signals').select('id', { count: 'exact', head: true }).eq('verdict', 'target').eq('status', 'new')),
   ]);
   let owners = {};

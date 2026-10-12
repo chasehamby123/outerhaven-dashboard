@@ -212,10 +212,22 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Edge function `bdc-signals` (verify_jwt=false; ingest `x-fund-ingest`, kinds `bdc` / `bdc_done`; admin action `rejudge`) → `bdc_signals`
   (one row per company_key; status/person/notes/marks kept) + `bdc_signal_runs`. Rules: `classifyBdc()` in `supabase/functions/bdc-signals/rules.js`
   (`BDC_RULES_VERSION`; deploy index.ts + rules.js together). Size (Tengku): debt held by BDCs < $10M cut, $10–75M core, $75–150M upper end,
-  > $150M cut (it's a floor: lenders also hold pieces off-BDC). Triggers: matures ≤ 18 months, marked < 90¢, marked down 5+ in a quarter,
-  non-accrual, past maturity AND marked down (past maturity at par = probably extended = a check). Lender tiers by BDC name (big platform −10,
-  lower-middle-market only +8, venture = maybe, syndicated-only / controlled / public = cut). Opener never mentions the mark.
+  > $150M cut (it's a floor: lenders also hold pieces off-BDC). Triggers and lanes: see rules v4 below. Lender tiers by BDC name (big
+  platform −10, lower-middle-market only +5, venture = maybe, syndicated-only / controlled / public = cut). Opener never mentions the mark.
   Migration `supabase/2026-10-08-bdc-signals.sql` (also adds `bdc` to `signal_target_counts()`).
+- **Rules v4: two lanes + ownership (12 Oct 2026; Tengku: Global Integrated Flooring was No. 1 at 81, a $13M loan at 73¢ maturing in
+  11 weeks, PE-owned by RFE Investment Partners).** `classifyBdc` returns `lane`, stored in `bdc_signals.lane`:
+  `refi` = performing loan with a deadline, the company hires us (default HQ view; the ONLY lane Daily 3, Send today's batch and the
+  contacts cron use). Distress no longer scores here; matures 4–12 mo +25, 12–18 +20, 18–24 +10, under 4 months = too late (Maybe),
+  marked 85–95¢ or down 3+ this quarter +8, PIK only counts below 95¢ (a PIK option at par is written in at closing).
+  `loan_sale` = marked < 85¢, non-accrual, or past due and marked down: the lender decides, Peter calls the BDC about selling the loan;
+  needs Peter's $20M minimum; < 50¢ or any syndicated-loan holder = Maybe. Ownership: `signal-contacts` lookup runs one Brave query
+  per BDC company (`ownerFrom()` in parse.js: "portfolio company of X", "acquired by X"…) → `bdc_signals.owner/owner_url/owner_checked_at`,
+  then asks `bdc-signals` (ingest kind `rejudge` {keys}) to re-judge; owner found = refi Maybe. The contacts cron re-checks refi targets
+  with no `owner_checked_at`; Send today's batch only takes owner-checked BDC rows. Contact search retries with `searchName()` (distinctive
+  words only) because filings use legal names ("…Systems") that differ from trading names ("…Solutions"). HQ: Lane select in the BDC tab.
+  Tests: `node scripts/tests/test_bdc_rules.mjs` (add every company that ranks where it shouldn't), ownership cases in test_contacts_parse.mjs.
+  Migration `supabase/2026-10-12-bdc-lanes-owner.sql` (`signal_target_counts().bdc` = refi only, `bdc_sale` = loan-sale targets).
 - Known gaps: ~55% of borrowers have no maturity in the data (some BDCs put it only in custom tags); names from single-lender rows can keep a
   stray word; BDC debt understates the full facility for big-platform deals.
 - **UCC rules v4 (same day):** demoted. Size floor $30M est. revenue for Target; merchant cash advances count toward Target only at $50M+

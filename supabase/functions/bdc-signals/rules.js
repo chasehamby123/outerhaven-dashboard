@@ -5,8 +5,13 @@
 // v2: weights rescaled after the first live run (half the targets scored 100, so the score didn't rank anything).
 // v3: a maturity that passed AFTER the lenders' last report is unknown (extended, refinanced or defaulted), not 'still outstanding';
 // stressed loans show the refinancing gap (debt minus the lenders' own value), which a plain refinancing can't close.
-export const BDC_RULES_VERSION = 3;
-export const SIZE = { min: 10e6, core: 75e6, max: 150e6 };
+// v4 (12 Oct 2026, Tengku: Global Integrated Flooring was No. 1 and shouldn't have been): two lanes, scored separately.
+//   'refi' = the company refinances a performing loan and hires us (outreach to the company). Distress is no longer a plus here.
+//   'loan_sale' = marked under 85¢, non-accrual, or past due and marked down: the lender decides, so Peter pitches the BDC to sell
+//   the loan. Needs Peter's $20M minimum (loan buyers want size). Too late (< 4 months to maturity) = the lender is already negotiating.
+//   Owner found by search (s.owner, signal-contacts) = not founder-owned: the owner runs the refinancing, so refi drops to maybe.
+export const BDC_RULES_VERSION = 4;
+export const SIZE = { min: 10e6, core: 75e6, max: 150e6, sale: 20e6 };
 
 // Lender families by BDC name. Big platforms = upper middle market (sponsor deals, facility far bigger than the BDC piece);
 // syndicated = broadly syndicated loan buyers (large public loans); lower middle market = owner-run and small-sponsor companies;
@@ -27,7 +32,7 @@ export const ebitdaRange = f => f ? [f / 5.5, f / 4] : null;
 export function classifyBdc(s, today = new Date()) {
   const reasons = [], f = Number(s.facility) || 0, mark = s.mark == null ? null : Number(s.mark), prev = s.prev_mark == null ? null : Number(s.prev_mark);
   const holders = Array.isArray(s.holders) ? s.holders : [], tiers = holders.map(h => tierOf(h.bdc));
-  const out = (verdict, score) => ({ verdict, score: Math.max(0, Math.min(100, Math.round(score))), reasons });
+  const out = (verdict, score, lane = null) => ({ verdict, score: Math.max(0, Math.min(100, Math.round(score))), reasons, lane });
   if (s.on_latest === false) { reasons.push({ tone: 'cut', text: 'Not in the BDCs\' latest filings any more (repaid, refinanced or sold).' }); return out('cut', 0); }
   if (s.public_ticker) { reasons.push({ tone: 'cut', text: `Public company (${s.public_ticker}): see Credit signals.` }); return out('cut', 0); }
   if (s.controlled) { reasons.push({ tone: 'cut', text: 'Controlled by its BDC lender (the lender owns it): it won\'t hire an adviser to refinance its own owner.' }); return out('cut', 0); }
@@ -36,52 +41,69 @@ export function classifyBdc(s, today = new Date()) {
   if (f < SIZE.min) { reasons.push({ tone: 'cut', text: `BDCs hold ${m(f)} of its debt: under the $10M floor.` }); return out('cut', 0); }
   if (f > SIZE.max) { reasons.push({ tone: 'cut', text: `BDCs alone hold ${m(f)}: large enough that big banks and placement agents cover it.` }); return out('cut', 0); }
 
+  const mat = s.earliest_maturity || s.maturity, days = mat ? Math.round((new Date(mat + 'T12:00:00Z') - today) / 864e5) : null;
+  const mo = days == null ? null : Math.round(days / 30.4), after = s.period && mat && mat > String(s.period).slice(0, 10);
+  const drop = mark != null && prev != null ? Math.round(prev - mark) : null, d = drop >= 3 ? ` (down ${drop} points this quarter)` : '';
+  const names = [...new Set(holders.map(h => short(h.bdc)))].slice(0, 4).join(', ');
+  const sale = !!s.nonaccrual || (mark != null && mark < 85) || (days != null && days < 0 && !after && mark != null && mark < 95);
+
+  // Loan sale lane: the lender, not the company, decides what happens. Peter calls the BDC's portfolio manager.
+  if (sale) {
+    let score = 0, ok = true;
+    reasons.push({ tone: 'info', text: `Loan sale lane: lenders hold it at ${mark == null ? '?' : Math.round(mark) + '¢'}${d}. The lender decides what happens next, not the company. Peter calls ${names || 'the lender'} about selling the loan; don't pitch the company.` });
+    if (f < SIZE.sale) { ok = false; reasons.push({ tone: 'maybe', text: `${m(f)} of debt: under Peter's $20M minimum, and most loan buyers want $25M+.` }); }
+    else { score += f <= SIZE.core ? 20 : 12; reasons.push({ tone: 'good', text: `${m(f)} of debt held by BDCs (${eb}): big enough for loan buyers.` }); }
+    if (mark != null && mark < 50) { ok = false; reasons.push({ tone: 'maybe', text: `Marked at ${Math.round(mark)}¢: deep distress, likely already restructuring with advisers.` }); }
+    else if (mark != null && mark < 80) { score += 25; reasons.push({ tone: 'good', text: `Marked at ${Math.round(mark)}¢: stressed. Lenders often sell at this level rather than work it out.` }); }
+    else if (mark != null) { score += 15; reasons.push({ tone: 'good', text: `Marked at ${Math.round(mark)}¢: the lender expects trouble.` }); }
+    if (drop >= 5) { score += 8; reasons.push({ tone: 'good', text: `Marked down ${drop} points in one quarter: getting worse.` }); }
+    if (s.nonaccrual) { score += 10; reasons.push({ tone: 'good', text: 'On non-accrual at a lender (interest not being paid).' }); }
+    if (days != null && days >= 0 && days <= 365) { score += 10; reasons.push({ tone: 'good', text: `Matures ${mon(mat)} (${mo} months): the lender has to decide soon.` }); }
+    if (s.lenders >= 2) { score += 5; reasons.push({ tone: 'info', text: `${s.lenders} BDC lenders: more than one seller to call.` }); }
+    if (tiers.includes('syndicated')) { ok = false; reasons.push({ tone: 'maybe', text: `A syndicated-loan buyer holds it too (${names}): a broadly syndicated loan that trades on bank desks, not through Peter.` }); }
+    else if (tiers.includes('big')) { score -= 10; reasons.push({ tone: 'maybe', text: `Upper-middle-market lender in the deal (${names}): big platforms rarely sell through outside advisers.` }); }
+    if (s.owner) reasons.push({ tone: 'info', text: `Owned by ${s.owner}: the owner negotiates with the lenders.` });
+    return out(ok && score >= 35 ? 'target' : 'maybe', ok ? score : Math.min(score, 34), 'loan_sale');
+  }
+
+  // Refinancing lane: a performing loan with a deadline; the company hires an adviser to run the refinancing.
   let score = 0, trigger = false, maybe = false;
   if (f <= SIZE.core) { score += 15; reasons.push({ tone: 'good', text: `${m(f)} of debt held by BDCs (${eb}): in Peter's range.` }); }
   else { score += 3; reasons.push({ tone: 'maybe', text: `${m(f)} of debt held by BDCs (${eb}): upper end of Peter's range.` }); }
-
-  // Maturity: the hard deadline. Lenders want a refinancing 12-18 months out; past maturity and still held = extended or in default.
-  const mat = s.earliest_maturity || s.maturity, days = mat ? Math.round((new Date(mat + 'T12:00:00Z') - today) / 864e5) : null;
   if (days != null) {
-    const mo = Math.round(days / 30.4);
-    // Past maturity but still marked near par = usually extended with the old date still in the filing: worth a check, not a trigger.
-    const after = s.period && mat > String(s.period).slice(0, 10);
-    if (days < 0 && after) { score += 15; trigger = true; reasons.push({ tone: 'good', text: `Matured ${mon(mat)}, after the lenders' last report (${mon(String(s.period).slice(0, 10))}): it was extended, refinanced or defaulted since. Find out which before calling; the next filing will show it.` }); }
-    else if (days < 0 && (mark == null || mark >= 95)) { score += 5; reasons.push({ tone: 'maybe', text: `Filed maturity ${mon(mat)} has passed but lenders still mark it near par: probably extended. Check the latest terms.` }); }
-    else if (days < 0) { score += 22; trigger = true; reasons.push({ tone: 'good', text: `Past its ${mon(mat)} maturity, still outstanding and marked down: extended under pressure or in default. A refinancing is overdue.` }); }
+    if (days < 0 && after) { score += 10; trigger = true; reasons.push({ tone: 'good', text: `Matured ${mon(mat)}, after the lenders' last report (${mon(String(s.period).slice(0, 10))}): it was extended, refinanced or defaulted since. Find out which before calling; the next filing will show it.` }); }
+    else if (days < 0) { score += 5; reasons.push({ tone: 'maybe', text: `Filed maturity ${mon(mat)} has passed but lenders still mark it near par: probably extended. Check the latest terms.` }); }
+    else if (days < 122) { score += 5; reasons.push({ tone: 'maybe', text: `Matures ${mon(mat)} (${mo} months): too late to run a process, the lender is already negotiating an extension.` }); }
     else if (days <= 365) { score += 25; trigger = true; reasons.push({ tone: 'good', text: `Matures ${mon(mat)} (${mo} months): has to refinance now.` }); }
-    else if (days <= 548) { score += 18; trigger = true; reasons.push({ tone: 'good', text: `Matures ${mon(mat)} (${mo} months): inside the 18-month refinancing window.` }); }
-    else if (days <= 730) { score += 7; reasons.push({ tone: 'good', text: `Matures ${mon(mat)} (${mo} months): refinancing talks start in the next 6 months.` }); }
+    else if (days <= 548) { score += 20; trigger = true; reasons.push({ tone: 'good', text: `Matures ${mon(mat)} (${mo} months): inside the 18-month refinancing window.` }); }
+    else if (days <= 730) { score += 10; trigger = true; reasons.push({ tone: 'good', text: `Matures ${mon(mat)} (${mo} months): refinancing talks start in the next 6 months.` }); }
     else reasons.push({ tone: 'info', text: `Matures ${mon(mat)}: no deadline soon.` });
   } else reasons.push({ tone: 'info', text: 'Maturity not stated in the filing.' });
 
-  // The lender's own mark (fair value as % of principal): below 90 = the lender expects trouble.
+  // 85-95¢ = the lender is getting cautious but the loan is still refinanceable: a reason to move before it gets worse.
   if (mark != null) {
-    const drop = prev != null ? Math.round(prev - mark) : null, d = drop >= 3 ? ` (down ${drop} points this quarter)` : '';
-    if (mark < 50) { score += 8; maybe = true; reasons.push({ tone: 'maybe', text: `Lenders mark it at ${Math.round(mark)}¢ on the dollar${d}: deep distress, likely already restructuring with advisers.` }); }
-    else if (mark < 80) { score += 25; trigger = true; reasons.push({ tone: 'good', text: `Lenders mark it at ${Math.round(mark)}¢ on the dollar${d}: stressed. Needs rescue or replacement capital.` }); }
-    else if (mark < 90) { score += 15; trigger = true; reasons.push({ tone: 'good', text: `Lenders mark it at ${Math.round(mark)}¢ on the dollar${d}: the lender expects trouble.` }); }
-    else if (mark < 95) { score += 4; reasons.push({ tone: 'good', text: `Marked at ${Math.round(mark)}¢${d}: slightly below par.` }); }
+    if (mark < 95) { score += 8; reasons.push({ tone: 'good', text: `Marked at ${Math.round(mark)}¢${d}: the lender is getting cautious, a reason to refinance before it gets worse.` }); }
     else reasons.push({ tone: 'info', text: `Marked at ${Math.round(mark)}¢${d}: performing.` });
-    if (drop >= 5 && mark >= 50) { score += 8; trigger = true; reasons.push({ tone: 'good', text: `Marked down ${drop} points in one quarter: getting worse.` }); }
-    // A new lender lends against value, not against the old loan: the gap has to come from equity, junior capital or a lender write-down.
-    if (mark < 90 && f) reasons.push({ tone: 'info', text: `Refinancing gap ~${m(f * (1 - mark / 100))}: lenders value the debt below what's owed, so a straight refinancing won't cover it. The fix is junior or structured capital, a recap, or a sale.` });
+    if (drop >= 3) { score += 8; trigger = true; reasons.push({ tone: 'good', text: `Marked down ${drop} points in one quarter: the lender has started to worry.` }); }
   }
-  if (s.nonaccrual) { score += 10; trigger = true; reasons.push({ tone: 'good', text: 'On non-accrual at a lender (interest not being paid).' }); }
-  if (s.pik) { score += 5; reasons.push({ tone: 'good', text: 'Paying part of its interest in kind (added to the loan): cash is tight.' }); }
-  if (s.spread != null && Number(s.spread) >= 7) { score += 3; reasons.push({ tone: 'good', text: `Priced at ~S+${(+s.spread).toFixed(1)}%: risky credit, expensive to carry.` }); }
+  // PIK on a loan still marked near par is usually a PIK option written in at closing, not stress.
+  if (s.pik && mark != null && mark < 95) { score += 3; reasons.push({ tone: 'good', text: 'Paying part of its interest in kind (added to the loan): cash is tight.' }); }
+  else if (s.pik) reasons.push({ tone: 'info', text: 'Has a PIK option, but the loan is marked near par: likely written in at closing, not stress.' });
 
-  // Who lends: decides who runs the next deal and whether an adviser gets hired.
-  const names = [...new Set(holders.map(h => short(h.bdc)))].slice(0, 4).join(', ');
   if (tiers.includes('venture')) { score -= 10; maybe = true; reasons.push({ tone: 'maybe', text: `Venture debt (${names}): VC-backed company, a different set of lenders.` }); }
   else if (tiers.includes('big')) { score -= 10; reasons.push({ tone: 'maybe', text: `Upper-middle-market lender in the deal (${names}): the full facility is likely bigger than BDCs show, and a PE sponsor usually runs the refinancing.` }); }
-  else if (tiers.length && tiers.every(t => t === 'lmm' || t === 'other')) { score += 8; reasons.push({ tone: 'good', text: `Lower-middle-market lenders only (${names}): owner-run or small-sponsor company, the kind that hires an adviser.` }); }
+  else if (tiers.length && tiers.every(t => t === 'lmm' || t === 'other')) { score += 5; reasons.push({ tone: 'good', text: `Lower-middle-market lenders only (${names}): smaller companies, but these lenders back small PE sponsors too. Check the owner.` }); }
   if (s.lenders >= 3) reasons.push({ tone: 'info', text: `${s.lenders} BDC lenders: a club deal.` });
   if (s.affiliated) { maybe = true; reasons.push({ tone: 'maybe', text: 'A lender also owns 5–25% of it: ask whether the lender-owner would welcome outside capital.' }); }
   else if (s.equity_held) reasons.push({ tone: 'info', text: 'A lender also holds equity (co-investor).' });
   if (s.country) { score -= 10; maybe = true; reasons.push({ tone: 'maybe', text: s.country === 'Outside the US' ? 'Non-US company (foreign legal form in the name).' : `Based in ${s.country}.` }); }
-  if (HOLDCO.test(s.company_name || '')) reasons.push({ tone: 'info', text: 'Holding-company name (Buyer / Midco / Parent): likely PE-owned. Call the sponsor\'s deal team or the CFO.' });
 
-  if (!trigger) { reasons.push({ tone: 'maybe', text: 'No trigger: nothing forces a refinancing in the next 18 months and lenders mark it near par.' }); return out('maybe', Math.min(score, 34)); }
-  return out(maybe || score < 35 ? 'maybe' : 'target', score);
+  // Ownership: a PE or corporate owner runs the refinancing with its own bankers and won't pay us a retainer.
+  if (s.owner) { maybe = true; reasons.push({ tone: 'maybe', text: `Owned by ${s.owner} (found in search; check it's still current): the owner runs the refinancing, not management. Pitch the owner's deal partner or skip.` }); }
+  else if (HOLDCO.test(s.company_name || '')) { score -= 10; reasons.push({ tone: 'maybe', text: 'Holding-company name (Buyer / Midco / Parent): likely PE-owned. Confirm the owner before calling.' }); }
+  else if (s.owner_checked_at) { score += 5; reasons.push({ tone: 'good', text: 'No PE or corporate owner found in search: possibly founder-owned.' }); }
+  else reasons.push({ tone: 'info', text: 'Owner not checked yet (Find contacts checks it).' });
+
+  if (!trigger) { reasons.push({ tone: 'maybe', text: 'No trigger: nothing forces a refinancing in the next 4–24 months.' }); return out('maybe', Math.min(score, 34), 'refi'); }
+  return out(maybe || score < 35 ? 'maybe' : 'target', maybe ? Math.min(score, 34) : score, 'refi');
 }

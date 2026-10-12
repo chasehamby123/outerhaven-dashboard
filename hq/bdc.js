@@ -31,7 +31,7 @@ async function load() {
   rows = c.data || []; runs = r.data || [];
   await loadContacts('bdc', true).catch(() => null);
 }
-export function bdcTargetCount() { return rows ? rows.filter(s => bucket(s) === 'target').length : 0; }
+export function bdcTargetCount() { return rows ? rows.filter(s => bucket(s) === 'target' && (s.lane || 'refi') === 'refi').length : 0; }
 
 export async function renderBdc(target, countCb) {
   el = target; onCount = countCb || onCount;
@@ -50,11 +50,14 @@ const SIGNALS = {
 const SIZES = { '': 'Any size', '10-25': '$10–25M', '25-50': '$25–50M', '50-75': '$50–75M', '75-150': '$75–150M' };
 const LENDERS = { '': 'Any lender', lmm: 'Lower middle market only', big: 'Includes a big platform' };
 const SORTS = { score: 'Score', mat: 'Soonest maturity', mark: 'Lowest mark', size: 'Largest' };
-const NOF = { q: '', ind: '', size: '', sig: '', lend: '', sort: 'score' };
+const LANES = { refi: 'Company refinancing (outreach)', loan_sale: 'Loan sale (Peter calls the lender)', all: 'Both lanes' };
+const NOF = { q: '', ind: '', size: '', sig: '', lend: '', lane: 'refi', sort: 'score' };
 let F = { ...NOF };
 try { F = { ...NOF, ...JSON.parse(localStorage.getItem('hq-bdc-filters') || '{}') }; } catch { /* private window */ }
 const saveF = () => { try { localStorage.setItem('hq-bdc-filters', JSON.stringify(F)); } catch { /* ignore */ } };
-const active = () => Object.keys(NOF).filter(k => k !== 'sort' && F[k]).length;
+const active = () => Object.keys(NOF).filter(k => k !== 'sort' && k !== 'lane' && F[k]).length;
+// Rows judged before rules v4 have no lane: treat as refi.
+const laneOf = s => s.lane || 'refi';
 const isBig = s => (s.reasons || []).some(r => /Upper-middle-market lender/.test(r.text));
 const isLmm = s => (s.reasons || []).some(r => /Lower-middle-market lenders only/.test(r.text));
 
@@ -65,6 +68,7 @@ function passes(s) {
   if (F.sig && !SIGNALS[F.sig]?.[1](s)) return false;
   if (F.lend === 'lmm' && !isLmm(s)) return false;
   if (F.lend === 'big' && !isBig(s)) return false;
+  if (F.lane !== 'all' && laneOf(s) !== F.lane) return false;
   return true;
 }
 const sorter = {
@@ -86,6 +90,7 @@ function draw() {
     <p class="pHint">Source: the SEC's BDC data sets (every BDC's loan list, monthly). Free.${last ? ` Last run <b>${new Date(last.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>${st.bdcs ? ` · ${st.bdcs} BDCs, ${Number(st.borrowers || 0).toLocaleString()} borrowers read` : ''}.` : ' Not run yet: on GitHub choose Run workflow, mode <b>bdc</b>.'}</p>
     <div class="ucFilters">
       <label class="ucF ucQ"><span>Search</span><input class="input" data-f="q" type="search" placeholder="Company, industry or lender" value="${esc(F.q)}"></label>
+      ${selectHtml('lane', 'Lane', Object.entries(LANES))}
       ${selectHtml('size', 'Debt', Object.entries(SIZES))}
       ${selectHtml('sig', 'Signal', [['', 'Any signal'], ...Object.entries(SIGNALS).map(([k, v]) => [k, v[0]])])}
       ${selectHtml('lend', 'Lenders', Object.entries(LENDERS))}
@@ -97,7 +102,7 @@ function draw() {
   </div>`;
   $('#bdHow', el).onclick = howModal;
   $$('[data-f]', el).forEach(i => { i.oninput = i.onchange = () => { F[i.dataset.f] = i.value; saveF(); $('#bdReset', el).hidden = !active(); drawList(); }; });
-  $('#bdReset', el).onclick = () => { F = { ...NOF, sort: F.sort }; saveF(); draw(); };
+  $('#bdReset', el).onclick = () => { F = { ...NOF, sort: F.sort, lane: F.lane }; saveF(); draw(); };
   drawList();
 }
 
@@ -105,7 +110,7 @@ function drawList() {
   const body = $('#bdBody', el); if (!body) return;
   const counts = { target: 0, maybe: 0, added: 0, dismissed: 0, starred: 0, flagged: 0 };
   const pass = rows.filter(passes);
-  onCount(rows.filter(s => bucket(s) === 'target').length);
+  onCount(rows.filter(s => bucket(s) === 'target' && laneOf(s) === 'refi').length);
   pass.forEach(s => { counts[bucket(s)] = (counts[bucket(s)] || 0) + 1; if (s.starred_at) counts.starred++; if (s.flagged_at) counts.flagged++; });
   const shown = pass.filter(s => inMarkView(view, s) ?? bucket(s) === view).sort(sorter[F.sort] || sorter.score);
   body.innerHTML = `<div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['added', 'In pipeline'], ['dismissed', 'Dismissed'], ...MARK_VIEWS].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : ''}">${l} <b>${counts[k] || 0}</b></button>`).join('')}</div>
@@ -204,13 +209,13 @@ function howModal() {
       <li><b>Maturity</b>, spread, PIK (interest added to the loan instead of paid), non-accrual (interest not being paid).</li>
       <li><b>EBITDA</b> is implied: debt ÷ 4–5.5× (normal senior leverage at this size).</li></ul>
       <h4>3. Size (Tengku, 8 Oct)</h4><p>Under $10M of debt is cut (not worth Peter's time). $10–75M is the core (~$2–17M EBITDA). $75–150M is the upper end. Over $150M is cut: the big banks and placement agents cover it.</p>
-      <h4>4. Triggers (any one makes it a Target, if nothing below rules it out)</h4><ul>
-      <li>Need: <b>+25</b> matures within 12 months, <b>+18</b> within 18, <b>+7</b> in 18–24 months; <b>+15</b> matured after the lenders' last report.</li>
-      <li>Risk: <b>+22</b> past maturity and marked down; <b>+25</b> marked under 80¢, <b>+15</b> under 90¢; <b>+8</b> marked down 5+ points in a quarter; <b>+10</b> non-accrual; <b>+5</b> PIK; <b>+3</b> priced at S+7% or more. Risk raises the score (they need help) but makes the loan harder for Peter's lenders.</li></ul>
-      <h4>5. Who lends</h4><ul>
-      <li><b>+8</b> lower-middle-market lenders only (Main Street, Monroe, Fidus, Stellus, Saratoga…): owner-run or small-sponsor companies, the kind that hire an adviser.</li>
-      <li><b>−10</b> a big platform in the deal (Ares, Blackstone, Golub, Blue Owl, HPS…): the full facility is bigger than shown, and the PE sponsor usually runs the refinancing.</li>
-      <li>Cut: controlled by its lender, held only by syndicated-loan buyers, public companies (see Credit signals). Maybe: venture debt, a lender that also owns 5–25%, non-US, or marked under 50¢ (likely already restructuring).</li></ul>
+      <h4>4. Two lanes (rules v4, 12 Oct)</h4><ul>
+      <li><b>Company refinancing</b> (default view; the only lane outreach sends): a performing loan with a deadline, so the company hires us to run the refinancing. Need: <b>+25</b> matures in 4–12 months, <b>+20</b> 12–18, <b>+10</b> 18–24; under 4 months = too late (the lender is already negotiating). <b>+8</b> marked 85–95¢ or down 3+ points this quarter (move before it gets worse).</li>
+      <li><b>Loan sale</b>: marked under 85¢, non-accrual, or past due and marked down. The lender decides, not the company, so Peter calls the BDC about selling the loan. Needs Peter's <b>$20M</b> minimum; under 50¢ (already restructuring) or held by a syndicated-loan buyer (trades on bank desks) = Maybe.</li></ul>
+      <h4>5. Who owns it and who lends</h4><ul>
+      <li><b>Owner</b>: Find contacts also searches for a PE or corporate owner ("portfolio company of…", "acquired by…"). Owner found = Maybe in the refinancing lane: the owner runs it with its own bankers and won't pay us a retainer. No owner found <b>+5</b>; Buyer / Midco / Parent names <b>−10</b> until checked.</li>
+      <li><b>+5</b> lower-middle-market lenders only (Main Street, Monroe, Fidus…): smaller companies, but they back small PE sponsors too, so the owner check still decides. <b>−10</b> a big platform in the deal.</li>
+      <li>Cut: controlled by its lender, held only by syndicated-loan buyers, public companies. Maybe: venture debt, a lender that also owns 5–25%, non-US. A PIK option on a loan marked near par is written in at closing, not stress.</li></ul>
       <p><a href="#/rules">Every rule for every list: How we qualify →</a></p>
       <h4>6. Limits</h4><ul><li>Borrower names are read from free text that every BDC formats differently; "As filed" under Lenders shows the original line.</li>
       <li>Holding-company names (Buyer, Midco, Parent) usually mean PE-owned: the decision maker is often the sponsor's deal team.</li></ul>

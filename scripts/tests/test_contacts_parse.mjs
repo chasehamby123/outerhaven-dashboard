@@ -61,3 +61,14 @@ assert.equal(profileFrom(R('Jane Roe - Hydrofarm | LinkedIn'), 'HYDROFARM HOLDIN
 assert.equal(sameCompany('Venbrook Companies', 'Venbrook Buyer, LLC'), true);
 assert.equal(sameCompany('Venbrook Insurance ...', 'Venbrook Buyer, LLC'), false); // extra word = can't tell, skip
 console.log('contacts parse: all tests passed');
+
+// Ownership (12 Oct 2026)
+import { ownerFrom } from '../../supabase/functions/signal-contacts/parse.js';
+const gifs = 'Global Integrated Flooring Systems Inc.';
+assert.deepEqual(ownerFrom([{ url: 'https://cfn.news/x', title: 'Haworth Flooring Division, Hi-Tech Data Floors & Camino Systems Unite', description: 'Global Integrated Flooring Solutions is a portfolio company of RFE Investment Partners and Cornerstone Capital Partners.' }], gifs),
+  { owner: 'RFE Investment Partners', url: 'https://cfn.news/x' });
+assert.equal(ownerFrom([{ title: 'Acme Widgets acquired by Big Corp', description: 'unrelated' }], gifs), null);                  // another company
+assert.equal(ownerFrom([{ title: 'Integrated Flooring news', description: 'Global Integrated Flooring acquired by Global Integrated Flooring Systems' }], gifs), null);  // itself
+assert.equal(ownerFrom([{ title: 'Marquis Software', description: 'Marquis Software Solutions, a Pamlico Capital portfolio company, today announced' }], 'Marquis Software Solutions Inc').owner, 'Pamlico Capital');
+assert.equal(ownerFrom([{ title: 'About us', description: 'Integrated Flooring has been family-owned since 1985.' }], gifs), null);
+console.log('ownership: ok');

@@ -16,6 +16,9 @@ export const roleOf = t => (ROLE.find(([, re]) => re.test(t || '')) || ['other']
 const FILLER = new Set('inc incorporated llc l.l.c ltd lp llp plc co corp corporation company companies group holdings holding the and of us usa america americas international global services solutions systems technologies technology industries enterprises brands products buyer midco bidco topco holdco parent intermediate acquisition borrower'.split(' '));
 const words = s => String(s || '').toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9&]+/g, ' ').trim().split(' ').filter(Boolean);
 const distinct = s => words(s).filter(w => !FILLER.has(w) && w !== '&');
+// Looser search name: the distinctive words only. Filings use legal names ("Global Integrated Flooring Systems") that differ from the
+// trading name ("Global Integrated Flooring Solutions") only in filler words, so an exact-name search finds nothing.
+export const searchName = n => distinct(brand(n)).join(' ');
 
 // Does the employer named on a LinkedIn profile mean this company? Every distinctive word of the brand must be in it, and it
 // must not add distinctive words the company's own name doesn't have ("Colonnade Advisors" is not "Colonnade Parent",
@@ -91,4 +94,29 @@ export function mergePeople(old, found) {
   }
   const rank = p => (p.status === 'wrong' ? 9 : 0) + (p.status === 'confirmed' ? -2 : 0) + (p.role === 'cfo' ? 0 : p.role === 'ceo' ? 1 : 2) + (p.source === 'sec' ? -0.5 : 0);
   return out.sort((a, b) => rank(a) - rank(b)).slice(0, 6);
+}
+
+// Who owns a private company, from web search results (12 Oct 2026, after Global Integrated Flooring ranked No. 1 as if founder-run
+// while it was an RFE Investment Partners portfolio company). Returns { owner, url } or null. A result only counts if it names this
+// company (its distinctive words), and the owner must not be the company itself ("XYZ, acquired by Acme" when we are Acme).
+const ORG = "[A-Z][A-Za-z0-9&.'’-]*(?:\\s+(?:&\\s+)?[A-Z][A-Za-z0-9&.'’-]*){0,5}";
+const OWNER_RES = [
+  new RegExp(`portfolio compan(?:y|ies) of (${ORG})`),
+  new RegExp(`\\b(?:an?|the) (${ORG}) portfolio company`),
+  new RegExp(`\\b(?:acquired by|backed by|recapitali[sz]ed by|(?:majority |minority |growth |strategic )?investment (?:from|by)|sold to) (${ORG})`),
+];
+export function ownerFrom(results, company) {
+  const need = distinct(brand(company));
+  if (!need.length) return null;
+  for (const r of results || []) {
+    const text = `${r?.title || ''}. ${r?.description || ''}`.replace(/<[^>]+>/g, '').replace(/&#x27;|&#39;/g, "'").replace(/&amp;/g, '&');
+    const have = new Set(words(text));
+    if (!need.every(w => have.has(w))) continue;
+    for (const re of OWNER_RES) {
+      const hit = text.match(re);
+      const owner = hit?.[1]?.replace(/\s+(and|in|on|to|for|since|which|LLC|L\.?P\.?)$/i, '').trim();
+      if (owner && owner.length >= 3 && !sameCompany(owner, company) && !distinct(owner).every(w => need.includes(w))) return { owner, url: String(r.url || '') };
+    }
+  }
+  return null;
 }

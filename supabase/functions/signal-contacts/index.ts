@@ -7,7 +7,7 @@
 //   'mark' {kind, key, name, status: 'confirmed'|'wrong'|null}.
 // Keys (pasted in HQ, write-only): BRAVE_SEARCH_KEY (LinkedIn + website), HUNTER_API_KEY (work email). Missing key = that step is skipped.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { brand, profileFrom, websiteFrom, mergePeople } from "./parse.js";
+import { brand, searchName, profileFrom, websiteFrom, mergePeople, ownerFrom } from "./parse.js";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!, SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
@@ -52,6 +52,13 @@ async function brave(q: string, key: string) {
   return [];
 }
 
+// Re-judge BDC rows after their owner changed (rules live in the bdc-signals function).
+async function rejudgeBdc(keys: string[]) {
+  const k = await secret("FUND_INGEST_SECRET");
+  if (!k) return;
+  await fetch(`${SUPABASE_URL}/functions/v1/bdc-signals`, { method: "POST", headers: { "content-type": "application/json", "x-fund-ingest": k }, body: JSON.stringify({ kind: "rejudge", keys }) }).catch(() => null);
+}
+
 // Find contacts for one company: LinkedIn profiles of the CFO / CEO and the company website.
 async function lookup(kind: string, key: string, name?: string) {
   const bk = await secret("BRAVE_SEARCH_KEY");
@@ -69,10 +76,21 @@ async function lookup(kind: string, key: string, name?: string) {
     const hit = (await brave(`"${p.name}" "${b}" site:linkedin.com/in`, bk)).map(r => profileFrom(r, company, true)).find(x => x && x.name.split(" ").pop()!.toLowerCase() === String(p.name).split(" ").pop()!.toLowerCase());
     if (hit) found.push({ ...p, linkedin: hit.linkedin });
   }
+  const alt = searchName(company), loose = alt && alt !== b.toLowerCase();
   if (!named.length) {
-    const res = await brave(`"${b}" (CFO OR "Chief Financial Officer" OR "VP Finance" OR CEO OR President) site:linkedin.com/in`, bk);
+    const roles = `(CFO OR "Chief Financial Officer" OR "VP Finance" OR CEO OR President) site:linkedin.com/in`;
+    let res = await brave(`"${b}" ${roles}`, bk);
+    // Legal name found nothing: retry with the distinctive words only (trading names differ in filler words).
+    if (!res.some(r => profileFrom(r, company)) && loose) res = await brave(`"${alt}" ${roles}`, bk);
     const seen = new Set<string>();
     for (const r of res) { const p = profileFrom(r, company); if (p && !seen.has(p.name)) { seen.add(p.name); found.push({ ...p, source: "search", source_url: p.linkedin }); } }
+  }
+  // BDC borrowers: who owns it. A PE or corporate owner runs the refinancing, so the rules drop it to Maybe (bdc-signals rules v4).
+  if (kind === "bdc") {
+    const own = ownerFrom(await brave(`"${loose ? alt : b}" ("portfolio company" OR "acquired by" OR "backed by" OR "investment from")`, bk), company);
+    const up = await sb.from("bdc_signals").update({ owner: own?.owner || null, owner_url: own?.url || null, owner_checked_at: new Date().toISOString() }).eq("company_key", key);
+    if (up.error) throw new Error(up.error.message);
+    await rejudgeBdc([key]);
   }
   let site = row?.domain ? null : websiteFrom(await brave(`"${b}" official website`, bk), company);
   const note = found.length ? null : named.length ? "SEC officers found, no LinkedIn match." : "No CFO / CEO profile found in search.";
@@ -106,15 +124,23 @@ async function cron() {
   // Order: BDC and credit targets alternately (best first in each, so both outreach lanes fill), then UCC; nothing already looked up.
   const lists: Record<string, [string, string, string][]> = {};
   for (const kind of ["bdc", "credit", "ucc"]) {
-    const rows = (await sb.from(TABLE[kind]).select(`${KEYCOL[kind]},company_name,score`).eq("verdict", "target").in("status", ["new", "added"]).order("score", { ascending: false }).limit(1000)).data || [];
-    lists[kind] = (rows as any[]).map(r => [kind, String(r[KEYCOL[kind]]), r.company_name] as [string, string, string]).filter(([k, key]) => !done.has(`${k}:${key}`));
+    let q = sb.from(TABLE[kind]).select(`${KEYCOL[kind]},company_name,score${kind === "bdc" ? ",owner_checked_at" : ""}`).eq("verdict", "target").in("status", ["new", "added"]);
+    if (kind === "bdc") q = q.eq("lane", "refi");   // loan-sale targets are pitched to the lender, not the company
+    const rows = (await q.order("score", { ascending: false }).limit(1000)).data || [];
+    // BDC: anyone not owner-checked yet goes again (owner check added 12 Oct 2026), even if contacts were found before.
+    lists[kind] = (rows as any[]).filter(r => kind === "bdc" ? !r.owner_checked_at : !done.has(`${kind}:${r[KEYCOL[kind]]}`))
+      .map(r => [kind, String(r[KEYCOL[kind]]), r.company_name] as [string, string, string]);
   }
   const todo: [string, string, string][] = [];
   for (let i = 0; i < Math.max(lists.bdc.length, lists.credit.length); i++) { if (lists.bdc[i]) todo.push(lists.bdc[i]); if (lists.credit[i]) todo.push(lists.credit[i]); }
   todo.push(...lists.ucc);
   let n = 0;
   for (const [kind, key, name] of todo.slice(0, Math.min(PER_RUN, DAILY_CAP - today))) {
-    try { await lookup(kind, key, name); n++; } catch (e) { if (String(e).includes("rate limit")) break; await save(kind, key, { company_name: name, looked_up_at: new Date().toISOString(), lookup_note: String((e as Error).message || e) }); }
+    try { await lookup(kind, key, name); n++; } catch (e) {
+      if (String(e).includes("rate limit")) break;
+      await save(kind, key, { company_name: name, looked_up_at: new Date().toISOString(), lookup_note: String((e as Error).message || e) });
+      if (kind === "bdc") await sb.from("bdc_signals").update({ owner_checked_at: new Date().toISOString() }).eq("company_key", key);   // don't retry it every run
+    }
   }
   return { looked_up: n, left: Math.max(0, todo.length - n) };
 }
