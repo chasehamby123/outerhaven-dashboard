@@ -90,4 +90,7 @@ assert.equal(ownerFrom([{ title: 'QED Investors Exits QED Technologies stake', d
 assert.equal(ownerFrom([{ title: 'Platinum Equity Portfolio Company HC Companies acquires Pro Cal', description: 'HC Companies, a portfolio company of Platinum Equity Portfolio Company HC Companies' }], 'The HC Companies, Inc.')?.owner, 'Platinum Equity');
 assert.equal(ownerFrom([{ title: 'Muenster Milling', description: 'PrevPreviousKainos Capital acquires Muenster Milling Company' }], 'MUENSTER MILLING COMPANY, LLC')?.owner, 'Kainos Capital');
 assert.equal(ownerFrom([{ title: 'x', description: 'QED was acquired by ComplyAdvantage.Read more about regtech' }], 'QED Technologies International, Inc.')?.owner, 'ComplyAdvantage');  // name cleaned (the fact itself can still be wrong)
+// Claridge (12 Oct 2026 spot check): pages shorten the name and say "invests in"; WhiteHorse is the lender.
+assert.equal(ownerFrom([{ title: 'Skylark Private Equity Partners and WhiteHorse Capital invests in Claridge Products', description: '' }], 'Claridge Products and Equipment, LLC', ['WHITEHORSE FINANCE, INC.'])?.owner, 'Skylark Private Equity Partners');
+assert.equal(ownerFrom([{ title: 'Claridge Products Acquired by Skylark Private Equity', description: '' }], 'Claridge Products and Equipment, LLC')?.owner, 'Skylark Private Equity');
 console.log('ownership: ok');

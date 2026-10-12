@@ -245,6 +245,11 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   and Send today's batch skips `rules_version` 0. Hand-verified owners (TAUC = ICV Partners) are set in SQL with the source URL.
   BDC name parser: ", Company <Name>" is Varagon's label, not a suffix ("Leisure, Company" was really Taymax Group, L.P.); the stored
   row keeps the bad name until the next bdc run.
+  Second pass (same day, after spot checks found Ej2 = Flashpoint/Audax, 2KDirect = iPromote/Cohere, Claridge = Skylark all marked "no owner"):
+  pages shorten names, so a page counts if it has the first distinctive word + half the rest (`named()`); the owner query is unquoted
+  distinctive words (the quoted phrase "claridge equipment" never appears); "X and Y invest(s) in" splits into X and Y (Y was the lender).
+  Hand-verified in SQL: Ej2 → Audax, 2KDirect → Cohere Capital, Nephron → none (family-owned; Kayne Anderson was a lender, a false positive).
+  Spot checks: ~3 in 10 "no owner found" were PE-backed before this pass. Known gap: credit investors read as owners ("investment from Kayne").
 - Known gaps: ~55% of borrowers have no maturity in the data (some BDCs put it only in custom tags); names from single-lender rows can keep a
   stray word; BDC debt understates the full facility for big-platform deals.
 - **UCC rules v4 (same day):** demoted. Size floor $30M est. revenue for Target; merchant cash advances count toward Target only at $50M+

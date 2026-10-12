@@ -107,8 +107,8 @@ const OWNER_RES = [
   new RegExp(`\\b${ci('(?:acquired by|backed by|recapitali(?:s|z)ed by|(?:majority |minority |growth |strategic )?investment (?:from|by)|sold to)')} (${ORG})`),
   // Owner first: "ICV Partners makes majority investment in Total Access Urgent Care", "Pamlico Capital acquires Marquis".
   // Headlines are Title Case, so the verbs match any case (ci); the owner's name still has to be capitalised.
-  new RegExp(`(${ORG}) ${ci('(?:makes|made|announces|announced|completes|completed|closes)(?: an?| its)? (?:majority |minority |growth |strategic |significant )?(?:investment|recapitali(?:s|z)ation) in')}`),
-  new RegExp(`(${ORG}) ${ci('(?:acquires|acquired|has acquired|completes (?:the )?acquisition of)')}`),
+  new RegExp(`(${ORG}(?:\\s+and\\s+${ORG})?) ${ci('(?:makes|made|announces|announced|completes|completed|closes|invests|invested)(?: an?| its| in)? (?:majority |minority |growth |strategic |significant )?(?:investment|recapitali(?:s|z)ation) in')}`),
+  new RegExp(`(${ORG}(?:\\s+and\\s+${ORG})?) ${ci('(?:acquires|acquired|has acquired|completes (?:the )?acquisition of|invests in|invested in)')}`),
 ];
 // Never an owner: data sites and law firms ("portfolio company of Willkie client Capstreet Group" is Willkie's client, not Willkie).
 const NOT_OWNER = /\b(crunchbase|pitchbook|linkedin|zoominfo|bloomberg|wikipedia|mergr|owler|cbinsights|privco|profile|funding|news|llp|law|attorneys?)\b/i;
@@ -116,23 +116,28 @@ const NOT_OWNER = /\b(crunchbase|pitchbook|linkedin|zoominfo|bloomberg|wikipedia
 export function ownerFrom(results, company, lenders = []) {
   const need = distinct(brand(company));
   if (!need.length) return null;
+  // Pages shorten names ("Claridge Products" for Claridge Products and Equipment): the first distinctive word plus half the rest.
+  const named = ws => ws.has(need[0]) && need.filter(w => ws.has(w)).length >= Math.ceil(need.length / 2);
   for (const r of results || []) {
     // Page furniture glued onto words ("PrevPreviousKainos Capital", "ComplyAdvantage.Read more") becomes a sentence break.
     const text = `${r?.title || ''}. ${r?.description || ''}`.replace(/<[^>]+>/g, '').replace(/&#x27;|&#39;/g, "'").replace(/&amp;/g, '&')
       .replace(/\b(?:Prev(?:ious)?|Next)+(?=[A-Z])/g, '. ').replace(/([a-z])\.(?=[A-Z])/g, '$1. ');
     const have = new Set(words(text));
-    if (!need.every(w => have.has(w))) continue;
+    if (!named(have)) continue;
     for (const re of OWNER_RES) for (const hit of text.matchAll(new RegExp(re.source, 'g'))) {
       if (/^\s+clients?\b/i.test(text.slice(hit.index + hit[0].length))) continue;   // "Willkie client Capstreet": an adviser
       // The company must be named in the same sentence as the ownership phrase (a page about "leisure" isn't about Leisure Co).
       const from = text.lastIndexOf('. ', hit.index) + 1, to = text.indexOf('. ', hit.index + hit[0].length);
       const sentence = new Set(words(text.slice(from, to < 0 ? undefined : to)));
-      if (!need.every(w => sentence.has(w))) continue;
-      const owner = hit[1].split(/\.\s|\s+(?:Portfolio|Exits?|Announces|Acquires)\b/)[0].replace(/[.,;:]+$/, '').replace(/\s+(and|in|on|to|for|since|which|LLC|L\.?P\.?)$/i, '').trim();
-      const first = distinct(owner)[0];
-      // Sharing a distinctive word = a namesake or the company itself ("QED Investors" is not QED Technologies' owner).
-      if (owner.length >= 3 && !NOT_OWNER.test(owner) && !sameCompany(owner, company) && !distinct(owner).some(w => need.includes(w))
-        && !lenders.some(l => distinct(l)[0] === first)) return { owner, url: String(r.url || '') };
+      if (!named(sentence)) continue;
+      // "Skylark Private Equity and WhiteHorse Capital invest in…": each name on its own (WhiteHorse is the lender).
+      for (const part of hit[1].split(/\.\s|\s+(?:Portfolio|Exits?|Announces|Acquires)\b/)[0].split(/\s+and\s+/)) {
+        const owner = part.replace(/[.,;:]+$/, '').replace(/\s+(in|on|to|for|since|which|LLC|L\.?P\.?)$/i, '').trim();
+        const first = distinct(owner)[0];
+        // Sharing a distinctive word = a namesake or the company itself ("QED Investors" is not QED Technologies' owner).
+        if (owner.length >= 3 && !NOT_OWNER.test(owner) && !sameCompany(owner, company) && !distinct(owner).some(w => need.includes(w))
+          && !lenders.some(l => distinct(l)[0] === first)) return { owner, url: String(r.url || '') };
+      }
     }
   }
   return null;

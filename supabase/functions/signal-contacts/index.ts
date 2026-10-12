@@ -72,7 +72,8 @@ async function retryStale() {
 async function checkOwner(key: string, company: string, bk: string) {
   const b = brand(company), alt = searchName(company), name = alt && alt !== b.toLowerCase() ? alt : b;
   const lenders = (((await sb.from("bdc_signals").select("holders").eq("company_key", key).maybeSingle()).data?.holders || []) as any[]).map(h => String(h.bdc || ''));
-  const own = ownerFrom(await brave(`"${name}" ("portfolio company" OR "acquired by" OR "backed by" OR "investment from" OR "majority investment")`, bk), company, lenders);
+  // Unquoted distinctive words: a quoted phrase like "claridge equipment" never appears on a page (names are shortened).
+  const own = ownerFrom(await brave(`${name === b ? `"${b}"` : name} ("portfolio company" OR "acquired by" OR "backed by" OR "investment from" OR "majority investment" OR "invests in")`, bk), company, lenders);
   // rules_version 0 = stale until bdc-signals re-judges it (a failed re-judge stays visible instead of leaving an old verdict).
   const up = await sb.from("bdc_signals").update({ owner: own?.owner || null, owner_url: own?.url || null, owner_checked_at: new Date().toISOString(), rules_version: 0 }).eq("company_key", key);
   if (up.error) throw new Error(up.error.message);
