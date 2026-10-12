@@ -228,6 +228,10 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   words only) because filings use legal names ("…Systems") that differ from trading names ("…Solutions"). HQ: Lane select in the BDC tab.
   Tests: `node scripts/tests/test_bdc_rules.mjs` (add every company that ranks where it shouldn't), ownership cases in test_contacts_parse.mjs.
   Migration `supabase/2026-10-12-bdc-lanes-owner.sql` (`signal_target_counts().bdc` = refi only, `bdc_sale` = loan-sale targets).
+- **Rules v5 (same day; Datalink: $22.7M at 72¢ maturing in 42 days, both lenders BC Partners):** under 4 months to maturity = Maybe in the
+  loan-sale lane too (a sale takes 4–8 weeks); lenders count by manager (`familyOf()`, alias list in rules.js), not by BDC; venture debt and
+  non-US = loan-sale Maybe. Score = points ÷ `MAX[lane]` × 100 (refi 69, loan sale 78); verdicts use the points, so rescaling changes no
+  verdict or order. Update `MAX` whenever a rule's points change (test: best possible row scores 100).
 - Known gaps: ~55% of borrowers have no maturity in the data (some BDCs put it only in custom tags); names from single-lender rows can keep a
   stray word; BDC debt understates the full facility for big-platform deals.
 - **UCC rules v4 (same day):** demoted. Size floor $30M est. revenue for Target; merchant cash advances count toward Target only at $50M+

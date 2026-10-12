@@ -12,7 +12,7 @@ const gifs = { company_name: 'Global Integrated Flooring Systems Inc.', facility
   pik: true, spread: 9, lenders: 1, holders: lmm, period: '2026-06-30' };
 let c = classifyBdc(gifs, today);
 assert.equal(c.lane, 'loan_sale'); assert.equal(c.verdict, 'maybe');
-assert.equal(classifyBdc({ ...gifs, facility: 30e6 }, today).verdict, 'target');            // same loan at $30M: Peter's call to the lender
+assert.equal(classifyBdc({ ...gifs, facility: 30e6, earliest_maturity: '2027-06-30' }, today).verdict, 'target');   // $30M, 8 months out: Peter's call to the lender
 
 // Performing loan, 10 months out, lower-middle-market lender, no owner found: the refinancing target we want.
 const clean = { company_name: 'Acme Widgets LLC', facility: 25e6, mark: 96, prev_mark: 97, earliest_maturity: '2027-08-15', lenders: 1, holders: [{ bdc: 'FIDUS INVESTMENT CORP' }],
@@ -27,4 +27,21 @@ assert.equal(classifyBdc({ ...clean, nonaccrual: true }, today).lane, 'loan_sale
 assert.ok(classifyBdc({ ...clean, pik: true }, today).reasons.some(r => /PIK option/.test(r.text)));
 // Ivanti (12 Oct 2026): $63M at 50¢ but a syndicated-loan buyer holds it too: trades on bank desks, not Peter's.
 assert.equal(classifyBdc({ ...gifs, company_name: 'Ivanti Software, Inc.', facility: 63e6, mark: 55, holders: [{ bdc: 'PALMER SQUARE CAPITAL BDC INC.' }, { bdc: 'BCP INVESTMENT CORP' }], lenders: 2 }, today).verdict, 'maybe');
+// Datalink (12 Oct 2026): $22.7M at 72¢ maturing in 42 days, both lenders run by BC Partners. Too late to sell; one seller.
+const datalink = { company_name: 'Datalink, LLC', facility: 22.7e6, mark: 72.2, earliest_maturity: '2026-11-23', pik: true, lenders: 2, period: '2026-06-30',
+  holders: [{ bdc: 'BCP INVESTMENT CORP' }, { bdc: 'BC PARTNERS LENDING CORP' }] };
+c = classifyBdc(datalink, today);
+assert.equal(c.lane, 'loan_sale'); assert.equal(c.verdict, 'maybe');
+assert.ok(c.reasons.some(r => /one seller/.test(r.text)));
+assert.equal(classifyBdc({ ...datalink, earliest_maturity: '2027-06-30' }, today).verdict, 'target');   // 8 months out: sellable
+// Marley Spoon / Nomad Health (12 Oct 2026): venture debt and non-US companies don't trade through Peter.
+assert.equal(classifyBdc({ ...bestSaleBase(), holders: [{ bdc: 'RUNWAY GROWTH FINANCE CORP.' }] }, today).verdict, 'maybe');
+assert.equal(classifyBdc({ ...bestSaleBase(), country: 'Outside the US' }, today).verdict, 'maybe');
+function bestSaleBase() { return { company_name: 'X Co', facility: 30e6, mark: 70, earliest_maturity: '2027-06-30', lenders: 1, holders: [{ bdc: 'FIDUS INVESTMENT CORP' }], period: '2026-06-30' }; }
+assert.equal(classifyBdc(bestSaleBase(), today).verdict, 'target');
+// Scores are out of 100: the best possible row in each lane scores 100, and rescaling never flips a verdict.
+const best = { company_name: 'Best Co', facility: 25e6, mark: 90, prev_mark: 95, earliest_maturity: '2027-06-30', pik: true, lenders: 1, holders: [{ bdc: 'FIDUS INVESTMENT CORP' }], period: '2026-06-30', owner_checked_at: '2026-10-12' };
+assert.equal(classifyBdc(best, today).score, 100);
+const bestSale = { company_name: 'Sale Co', facility: 30e6, mark: 70, prev_mark: 80, nonaccrual: true, earliest_maturity: '2027-06-30', lenders: 2, holders: [{ bdc: 'FIDUS INVESTMENT CORP' }, { bdc: 'MONROE CAPITAL CORP' }], period: '2026-06-30' };
+assert.equal(classifyBdc(bestSale, today).score, 100);
 console.log('bdc rules ok');
