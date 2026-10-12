@@ -232,6 +232,19 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   loan-sale lane too (a sale takes 4–8 weeks); lenders count by manager (`familyOf()`, alias list in rules.js), not by BDC; venture debt and
   non-US = loan-sale Maybe. Score = points ÷ `MAX[lane]` × 100 (refi 69, loan sale 78); verdicts use the points, so rescaling changes no
   verdict or order. Update `MAX` whenever a rule's points change (test: best possible row scores 100).
+- **Rules v6 + owner checks (same day; TAUC Management = Total Access Urgent Care, ICV Partners-owned since Feb 2021, the filing uses the
+  acronym so search found nothing):** no owner found scores 0 and shows a Check line (refi max 64). `ownerFrom` also reads owner-first
+  headlines ("ICV Partners Makes Majority Investment in…", "X acquires…"; verbs case-insensitive via `ci()`). `signal-contacts` cron action
+  `owners` {limit ≤ 40} = owner checks only for unchecked refi targets, 1 Brave query each, outside the contacts DAILY_CAP.
+  Owner parser guards (all from the first live run, each a test in test_contacts_parse.mjs): the company must be named in the SAME
+  sentence as the ownership phrase; an owner sharing a distinctive word with the company is a namesake ("QED Investors"); the company's
+  own BDC lenders are never its owner ("backed by Chicago Atlantic"); "X client Y" = an adviser; data sites / law firms (Crunchbase,
+  Mergr, LLP…) never; glued page junk ("PrevPrevious", ".Read") is a sentence break. First full run: 114 refi targets checked, 56 owners
+  found, 58 left; spot-check ~90% right. A changed owner sets `rules_version` 0 (stale) until bdc-signals re-judges it; `retryStale()`
+  re-judges stale rows at the end of every owners / cron run (fire-and-forget re-judges failed on cold starts: 26 of 114 the first time),
+  and Send today's batch skips `rules_version` 0. Hand-verified owners (TAUC = ICV Partners) are set in SQL with the source URL.
+  BDC name parser: ", Company <Name>" is Varagon's label, not a suffix ("Leisure, Company" was really Taymax Group, L.P.); the stored
+  row keeps the bad name until the next bdc run.
 - Known gaps: ~55% of borrowers have no maturity in the data (some BDCs put it only in custom tags); names from single-lender rows can keep a
   stray word; BDC debt understates the full facility for big-platform deals.
 - **UCC rules v4 (same day):** demoted. Size floor $30M est. revenue for Target; merchant cash advances count toward Target only at $50M+

@@ -52,7 +52,7 @@ const emailOk = (p, min) => p?.email && (p.email_status === 'valid' || (p.email_
 // no going-concern warning), each with a usable contact. Nothing already enrolled.
 async function picks(st) {
   const [bdc, cr, en] = await Promise.all([
-    sb.from('bdc_signals').select('*').eq('verdict', 'target').eq('lane', 'refi').eq('status', 'new').not('owner_checked_at', 'is', null).limit(2000),   // owner checked = not PE-owned (rules v4)
+    sb.from('bdc_signals').select('*').eq('verdict', 'target').eq('lane', 'refi').eq('status', 'new').not('owner_checked_at', 'is', null).neq('rules_version', 0).limit(2000),   // owner checked and re-judged since (0 = stale)
     sb.from('credit_signals').select('*').eq('verdict', 'target').eq('status', 'new').limit(2000),
     sb.from('outreach_enrollments').select('kind,key'),
   ]);

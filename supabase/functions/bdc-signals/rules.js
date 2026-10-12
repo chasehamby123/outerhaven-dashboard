@@ -14,10 +14,12 @@
 //   time (NDA, diligence and settlement take 4-8 weeks; the lender and owner are already negotiating), so it's Maybe in both lanes.
 //   Lenders count by manager, not by fund (BCP Investment + BC Partners Lending = one seller). Scores shown out of 100 = points ÷ the
 //   lane's maximum (refi 69, loan sale 78); verdicts are decided on the points, so rescaling changes no verdict and no order.
-export const BDC_RULES_VERSION = 5;
+// v6 (12 Oct 2026, TAUC Management = Total Access Urgent Care, owned by ICV Partners; search on "TAUC" found nothing): no owner found
+//   no longer scores (+5 "possibly founder-owned" removed, refi max 64); it's a Check line instead.
+export const BDC_RULES_VERSION = 6;
 export const SIZE = { min: 10e6, core: 75e6, max: 150e6, sale: 20e6 };
 // Most points a row can get in each lane (sum of every positive rule below). Change these with any rule's points.
-export const MAX = { refi: 15 + 25 + 8 + 8 + 3 + 5 + 5, loan_sale: 20 + 25 + 8 + 10 + 10 + 5 };
+export const MAX = { refi: 15 + 25 + 8 + 8 + 3 + 5, loan_sale: 20 + 25 + 8 + 10 + 10 + 5 };
 const TOO_LATE = 122;   // days: under ~4 months a refinancing or a loan sale can't close before maturity
 
 // Lender families by BDC name. Big platforms = upper middle market (sponsor deals, facility far bigger than the BDC piece);
@@ -116,7 +118,8 @@ export function classifyBdc(s, today = new Date()) {
   // Ownership: a PE or corporate owner runs the refinancing with its own bankers and won't pay us a retainer.
   if (s.owner) { maybe = true; reasons.push({ tone: 'maybe', text: `Owned by ${s.owner} (found in search; check it's still current): the owner runs the refinancing, not management. Pitch the owner's deal partner or skip.` }); }
   else if (HOLDCO.test(s.company_name || '')) { score -= 10; reasons.push({ tone: 'maybe', text: 'Holding-company name (Buyer / Midco / Parent): likely PE-owned. Confirm the owner before calling.' }); }
-  else if (s.owner_checked_at) { score += 5; reasons.push({ tone: 'good', text: 'No PE or corporate owner found in search: possibly founder-owned.' }); }
+  // Not finding an owner proves nothing: filings use legal names or acronyms ("TAUC" = Total Access Urgent Care, ICV Partners-owned).
+  else if (s.owner_checked_at) reasons.push({ tone: 'maybe', text: 'No owner found by search, which is not proof: most BDC borrowers are PE-backed and filings often use a legal name or acronym. Confirm before calling.' });
   else reasons.push({ tone: 'info', text: 'Owner not checked yet (Find contacts checks it).' });
 
   if (!trigger) { reasons.push({ tone: 'maybe', text: 'No trigger: nothing forces a refinancing in the next 4–24 months.' }); return out('maybe', Math.min(score, 34), 'refi'); }

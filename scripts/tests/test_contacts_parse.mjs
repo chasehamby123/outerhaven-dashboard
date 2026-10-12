@@ -71,4 +71,23 @@ assert.equal(ownerFrom([{ title: 'Acme Widgets acquired by Big Corp', descriptio
 assert.equal(ownerFrom([{ title: 'Integrated Flooring news', description: 'Global Integrated Flooring acquired by Global Integrated Flooring Systems' }], gifs), null);  // itself
 assert.equal(ownerFrom([{ title: 'Marquis Software', description: 'Marquis Software Solutions, a Pamlico Capital portfolio company, today announced' }], 'Marquis Software Solutions Inc').owner, 'Pamlico Capital');
 assert.equal(ownerFrom([{ title: 'About us', description: 'Integrated Flooring has been family-owned since 1985.' }], gifs), null);
+// Total Access Urgent Care (12 Oct 2026): owner named first.
+assert.equal(ownerFrom([{ url: 'https://pe.wire/x', title: 'ICV Partners Makes Majority Investment in Total Access Urgent Care', description: 'ICV Partners announced a majority investment in Total Access Urgent Care in partnership with management.' }], 'Total Access Urgent Care, LLC').owner, 'ICV Partners');
+assert.equal(ownerFrom([{ title: 'Pamlico Capital acquires Marquis Software Solutions', description: '' }], 'Marquis Software Solutions Inc').owner, 'Pamlico Capital');
+assert.equal(ownerFrom([{ title: 'Marquis Software acquires Widget Co', description: '' }], 'Marquis Software Solutions Inc'), null);   // the company buying, not bought
+assert.equal(ownerFrom([{ title: 'Shore Capital Completes Recapitalization in Acme Dental', description: '' }], 'Acme Dental LLC').owner, 'Shore Capital');
+assert.equal(ownerFrom([{ title: 'Total Access Urgent Care Acquired By ICV Partners', description: '' }], 'Total Access Urgent Care, LLC').owner, 'ICV Partners');
+// PCS Software (12 Oct 2026, live run): the law firm's page named Willkie as owner. Real owner: LLR Partners.
+assert.equal(ownerFrom([{ url: 'https://www.willkie.com/news/2022/09/pcs-software-to-llr-partners', title: 'Willkie Advises Capstreet Group in Sale of Majority Stake in PCS Software to LLR Partners | Willkie Farr & Gallagher LLP',
+  description: 'On September 21, LLR Partners announced its growth investment in PCS Software, a transportation management platform and portfolio company of Willkie client Capstreet Group, which remains a minority shareholder in the business.' }], 'PCS Software, Inc.').owner, 'LLR Partners');
+// Ready Education (live run): a Crunchbase page title came back as the owner.
+assert.equal(ownerFrom([{ url: 'https://www.crunchbase.com/organization/oohlala-mobile', title: 'Ready Education - Crunchbase Company Profile & Funding', description: 'Crunchbase Company Profile & Funding acquired by nobody' }], 'Ready Education'), null);
+// Live run 12 Oct 2026: a lender, a data site across a full stop, and a one-word name matched on an unrelated page.
+assert.equal(ownerFrom([{ title: 'Nova Farms secures $40M facility backed by Chicago Atlantic', description: '' }], 'Nova Farms, LLC', ['CHICAGO ATLANTIC BDC, INC.']), null);
+assert.equal(ownerFrom([{ title: 'Mergr. Eastport Holdings acquired', description: 'Eastport Holdings acquired by Mergr. Eastport Holdings' }], 'Eastport Holdings, LLC'), null);
+assert.equal(ownerFrom([{ title: 'Ensysce Biosciences acquires asset', description: 'Ensysce Biosciences has acquired rights. Shares fell in leisure trading.' }], 'Leisure, Company'), null);
+assert.equal(ownerFrom([{ title: 'QED Investors Exits QED Technologies stake', description: '' }], 'QED Technologies International, Inc.'), null);
+assert.equal(ownerFrom([{ title: 'Platinum Equity Portfolio Company HC Companies acquires Pro Cal', description: 'HC Companies, a portfolio company of Platinum Equity Portfolio Company HC Companies' }], 'The HC Companies, Inc.')?.owner, 'Platinum Equity');
+assert.equal(ownerFrom([{ title: 'Muenster Milling', description: 'PrevPreviousKainos Capital acquires Muenster Milling Company' }], 'MUENSTER MILLING COMPANY, LLC')?.owner, 'Kainos Capital');
+assert.equal(ownerFrom([{ title: 'x', description: 'QED was acquired by ComplyAdvantage.Read more about regtech' }], 'QED Technologies International, Inc.')?.owner, 'ComplyAdvantage');  // name cleaned (the fact itself can still be wrong)
 console.log('ownership: ok');

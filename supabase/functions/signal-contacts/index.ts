@@ -2,7 +2,8 @@
 // Ingest (header x-fund-ingest = FUND_INGEST_SECRET, from scripts/officers.py on GitHub):
 //   kind 'officers_todo' → credit targets whose SEC officers are missing or older than 30 days
 //   kind 'officers' {items: [{cik, company_name, people, phone, website, officer_change}]} → stored (SEC = exact names)
-// Cron (header x-outerhaven-cron = LINKEDIN_CRON_SECRET, every 30 min): action 'cron' looks up the next targets (DAILY_CAP a day).
+// Cron (header x-outerhaven-cron = LINKEDIN_CRON_SECRET, every 30 min): action 'cron' looks up the next targets (DAILY_CAP a day);
+//   action 'owners' {limit} = owner checks only for unchecked BDC refi targets (1 Brave query each, outside DAILY_CAP).
 // Admin (user JWT): action 'lookup' {kind, key} = Find contacts now; 'email' {kind, key, name} = Hunter email finder;
 //   'mark' {kind, key, name, status: 'confirmed'|'wrong'|null}.
 // Keys (pasted in HQ, write-only): BRAVE_SEARCH_KEY (LinkedIn + website), HUNTER_API_KEY (work email). Missing key = that step is skipped.
@@ -55,8 +56,42 @@ async function brave(q: string, key: string) {
 // Re-judge BDC rows after their owner changed (rules live in the bdc-signals function).
 async function rejudgeBdc(keys: string[]) {
   const k = await secret("FUND_INGEST_SECRET");
-  if (!k) return;
-  await fetch(`${SUPABASE_URL}/functions/v1/bdc-signals`, { method: "POST", headers: { "content-type": "application/json", "x-fund-ingest": k }, body: JSON.stringify({ kind: "rejudge", keys }) }).catch(() => null);
+  if (!k || !keys.length) return false;
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/bdc-signals`, { method: "POST", headers: { "content-type": "application/json", "x-fund-ingest": k }, body: JSON.stringify({ kind: "rejudge", keys }) }).catch(() => null);
+  return !!r?.ok;
+}
+
+// Safety net: BDC rows left stale (rules_version 0) because a per-company re-judge failed get re-judged in one call.
+async function retryStale() {
+  const stale = ((await sb.from("bdc_signals").select("company_key").eq("rules_version", 0).limit(50)).data || []).map((x: any) => x.company_key);
+  if (stale.length) await rejudgeBdc(stale);
+  return stale.length;
+}
+
+// BDC borrowers: who owns it. A PE or corporate owner runs the refinancing, so the rules drop it to Maybe (bdc-signals rules v4).
+async function checkOwner(key: string, company: string, bk: string) {
+  const b = brand(company), alt = searchName(company), name = alt && alt !== b.toLowerCase() ? alt : b;
+  const lenders = (((await sb.from("bdc_signals").select("holders").eq("company_key", key).maybeSingle()).data?.holders || []) as any[]).map(h => String(h.bdc || ''));
+  const own = ownerFrom(await brave(`"${name}" ("portfolio company" OR "acquired by" OR "backed by" OR "investment from" OR "majority investment")`, bk), company, lenders);
+  // rules_version 0 = stale until bdc-signals re-judges it (a failed re-judge stays visible instead of leaving an old verdict).
+  const up = await sb.from("bdc_signals").update({ owner: own?.owner || null, owner_url: own?.url || null, owner_checked_at: new Date().toISOString(), rules_version: 0 }).eq("company_key", key);
+  if (up.error) throw new Error(up.error.message);
+  await rejudgeBdc([key]);
+  return own;
+}
+
+// Owner checks only (1 search per company, outside the contacts quota): refi targets not checked yet, best first.
+async function owners(limit = 20) {
+  const bk = await secret("BRAVE_SEARCH_KEY");
+  if (!bk) return { skipped: "no Brave key" };
+  const rows = (await sb.from("bdc_signals").select("company_key,company_name").eq("lane", "refi").eq("verdict", "target").is("owner_checked_at", null)
+    .order("score", { ascending: false }).limit(Math.min(limit, 40))).data || [];
+  const found: string[] = [];
+  for (const r of rows as any[]) {
+    try { const o = await checkOwner(r.company_key, r.company_name, bk); if (o) found.push(`${r.company_name}: ${o.owner}`); }
+    catch (e) { if (String(e).includes("rate limit")) break; }
+  }
+  return { checked: rows.length, found, stale: await retryStale() };
 }
 
 // Find contacts for one company: LinkedIn profiles of the CFO / CEO and the company website.
@@ -85,13 +120,7 @@ async function lookup(kind: string, key: string, name?: string) {
     const seen = new Set<string>();
     for (const r of res) { const p = profileFrom(r, company); if (p && !seen.has(p.name)) { seen.add(p.name); found.push({ ...p, source: "search", source_url: p.linkedin }); } }
   }
-  // BDC borrowers: who owns it. A PE or corporate owner runs the refinancing, so the rules drop it to Maybe (bdc-signals rules v4).
-  if (kind === "bdc") {
-    const own = ownerFrom(await brave(`"${loose ? alt : b}" ("portfolio company" OR "acquired by" OR "backed by" OR "investment from")`, bk), company);
-    const up = await sb.from("bdc_signals").update({ owner: own?.owner || null, owner_url: own?.url || null, owner_checked_at: new Date().toISOString() }).eq("company_key", key);
-    if (up.error) throw new Error(up.error.message);
-    await rejudgeBdc([key]);
-  }
+  if (kind === "bdc") await checkOwner(key, company, bk);
   let site = row?.domain ? null : websiteFrom(await brave(`"${b}" official website`, bk), company);
   const note = found.length ? null : named.length ? "SEC officers found, no LinkedIn match." : "No CFO / CEO profile found in search.";
   await save(kind, key, { company_name: company, people: mergePeople(people, found.slice(0, 4)), ...(site ? { website: site.website, domain: site.domain } : {}), looked_up_at: new Date().toISOString(), lookup_note: note });
@@ -119,7 +148,7 @@ async function cron() {
   if (!bk) return { skipped: "no Brave key" };
   const since = new Date(Date.now() - 864e5).toISOString();
   const today = (await sb.from("signal_contacts").select("key", { count: "exact", head: true }).gte("looked_up_at", since)).count || 0;
-  if (today >= DAILY_CAP) return { skipped: "daily cap" };
+  if (today >= DAILY_CAP) return { skipped: "daily cap", stale: await retryStale() };
   const done = new Set(((await sb.from("signal_contacts").select("kind,key,looked_up_at").not("looked_up_at", "is", null)).data || []).map((r: any) => `${r.kind}:${r.key}`));
   // Order: BDC and credit targets alternately (best first in each, so both outreach lanes fill), then UCC; nothing already looked up.
   const lists: Record<string, [string, string, string][]> = {};
@@ -142,7 +171,7 @@ async function cron() {
       if (kind === "bdc") await sb.from("bdc_signals").update({ owner_checked_at: new Date().toISOString() }).eq("company_key", key);   // don't retry it every run
     }
   }
-  return { looked_up: n, left: Math.max(0, todo.length - n) };
+  return { looked_up: n, left: Math.max(0, todo.length - n), stale: await retryStale() };
 }
 
 async function ingest(body: any) {
@@ -182,7 +211,7 @@ Deno.serve(async (req) => {
     if (cronKey) {
       const want = await secret("LINKEDIN_CRON_SECRET");
       if (!want || cronKey !== want) return json({ ok: false, error: "Bad cron key." }, 401);
-      return json({ ok: true, ...(await cron()) });
+      return json({ ok: true, ...(body.action === "owners" ? await owners(Number(body.limit) || 20) : await cron()) });
     }
     const user = await admin(req);
     if (!user) return json({ ok: false, error: "Admins only." }, 403);
