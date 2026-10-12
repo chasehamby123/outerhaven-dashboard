@@ -415,8 +415,12 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   / consultant rejected. Stored `employer` shows in the batch window. Add every bad match to `scripts/tests/test_contacts_parse.mjs`.
 - Email (12 Oct 2026): Apify actor `overpowered/email-finder` on `APIFY_TOKEN` first (10 name patterns checked against the mail server,
   $0.045 a person, ~25 s; only "Okay to Send"+"Accepted" = valid; run cap $0.10 because $0.05 aborted on the 10th row; the dataset is read
-  whatever the run status). Hunter (`HUNTER_API_KEY`, 50/month) only when Apify finds no valid mailbox. On click only ("Find email"); needs
+  whatever the run status). Hunter (`HUNTER_API_KEY`, 50/month) only when Apify finds no valid mailbox. On click only ("Find email", or automatically in the batch); needs
   the domain from the lookup. All-rejected can be a filtering gateway (Proofpoint at unifi.com rejected every pattern). `email_src` = apify|hunter.
+  **Send today's batch finds emails itself** (12 Oct, Tengku): rows whose person has no email and was never searched (`email_checked`) are
+  let into the batch when the company has a domain; the window runs `findEmail()` (contacts.js) 4 at a time, Send stays disabled until
+  done, and a row that would go email-only with no confirmed email is unticked and locked. Cards and the batch window always state
+  LinkedIn ✓ found / ✕ not found / … not searched yet, and email ✓ confirmed / ? unconfirmed (never emailed) / ✕ none found.
 - Keys pasted by an admin in any signal tab → "Contacts setup" (RPC `set_contact_key`, write-only; never enter them for the user).
 - "Add to pipeline" pre-fills name, title and LinkedIn from the best person.
 

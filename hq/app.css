@@ -1299,6 +1299,7 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .ctOk{font-size:var(--fs-xs);font-weight:600;font-style:normal;color:var(--good)}
 .ctMeta{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;font-size:var(--fs-xs)}
 .ctNone{color:var(--muted)}
+.ctMiss{font-size:var(--fs-xs);font-weight:600;color:var(--muted)}
 .ctWarn{flex-basis:100%;color:var(--warn);font-weight:600;text-decoration:none}
 
 /* Sidebar groups (10 Oct 2026): readable headers, a little more room per link (Peter: "old person friendly") */

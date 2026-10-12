@@ -20,6 +20,7 @@ export function loadContacts(kind, fresh = false) {
   })();
 }
 const get = (kind, key) => cache[kind]?.get(String(key)) || null;
+export const contactOf = get;
 const live = c => (c?.people || []).filter(p => p.status !== 'wrong');
 export const bestPerson = (kind, key) => live(get(kind, key))[0] || null;
 
@@ -28,12 +29,14 @@ function personHtml(kind, key, p, c) {
   const enc = encodeURIComponent(p.name);
   const src = p.source === 'sec' ? `<a class="ctSrc" href="${esc(p.source_url || '#')}" target="_blank" rel="noopener" title="Signed the ${esc(p.form || '10-K/10-Q')} certification filed ${esc(p.filed || '')}">SEC</a>` : '';
   const email = p.email
-    ? `<button type="button" class="ctLink" data-ctcopy="${esc(p.email)}" title="Copy · ${p.email_src === 'apify' ? 'mail server check' : 'Hunter score ' + (p.email_score ?? '?')}${p.email_status ? ' · ' + esc(p.email_status) : ''}">${esc(p.email)}</button>`
-    : c?.domain ? `<button type="button" class="ctLink muted" data-ctemail="${enc}">Find email</button>` : '';
+    ? `<button type="button" class="ctLink" data-ctcopy="${esc(p.email)}" title="Copy · ${p.email_src === 'apify' ? 'mail server check' : 'Hunter score ' + (p.email_score ?? '?')}${p.email_status ? ' · ' + esc(p.email_status) : ''}">${p.email_status === 'valid' ? '✓ ' : '? '}${esc(p.email)}</button>`
+    : c?.domain ? `<button type="button" class="ctLink muted" data-ctemail="${enc}" title="${p.email_checked ? 'Searched ' + esc(String(p.email_checked).slice(0, 10)) + '. Click to try again' : 'Find their work email (~$0.05)'}">${p.email_checked ? '✕ No email found' : 'Find email'}</button>` : '';
+  const li = p.linkedin ? `<a class="ctLink" href="${esc(p.linkedin)}" target="_blank" rel="noopener">✓ LinkedIn ↗</a>`
+    : `<span class="ctMiss">${c?.looked_up_at ? '✕ No LinkedIn found' : '… LinkedIn not searched yet'}</span>`;
   const check = p.status === 'confirmed' ? '<span class="ctOk" title="Confirmed by the team">✓ confirmed</span>'
     : p.source === 'sec' ? '' : `<button type="button" class="ctLink muted" data-ctmark="${enc}" data-st="confirmed" title="This is the right person">✓ Right</button><button type="button" class="ctLink muted" data-ctmark="${enc}" data-st="wrong" title="Wrong person or left the company">✕ Wrong</button>`;
   return `<div class="ctPerson"><span class="ctRole">${ROLE[p.role] || 'Exec'}</span><b>${esc(p.name)}</b>${src}
-    ${p.linkedin ? `<a class="ctLink" href="${esc(p.linkedin)}" target="_blank" rel="noopener">LinkedIn ↗</a>` : ''}${email}${check}</div>`;
+    ${li}${email}${check}</div>`;
 }
 
 // The contact block for one card. key: credit = cik, bdc / ucc = company_key.
@@ -52,6 +55,12 @@ async function call(body) {
   if (error || data?.ok === false) throw new Error(data?.error || error?.message || 'Failed');
   return data;
 }
+// Find one person's work email (Apify, Hunter fallback) and refresh the cache. Returns the stored person.
+export async function findEmail(kind, key, name) {
+  const r = await call({ action: 'email', kind, key, name });
+  await refresh(kind, key);
+  return { ...r, person: live(get(kind, key)).find(p => p.name === name) || null };
+}
 async function refresh(kind, key) {
   const r = await sb.from('signal_contacts').select('*').eq('kind', kind).eq('key', String(key)).maybeSingle();
   if (r.data) { cache[kind] ||= new Map(); cache[kind].set(String(key), r.data); }
@@ -68,7 +77,7 @@ export function bindContacts(root, kind, redraw) {
   });
   $$('[data-ctemail]', root).forEach(b => b.onclick = async () => {
     const key = keyOf(b), name = decodeURIComponent(b.dataset.ctemail); b.disabled = true; b.textContent = 'Finding…';
-    try { const r = await call({ action: 'email', kind, key, name }); await refresh(kind, key); toast(r.email ? `${r.email} (score ${r.score ?? '?'})` : 'No email found'); }
+    try { const r = await findEmail(kind, key, name); toast(r.email ? `${r.email} (${r.status === 'valid' ? 'confirmed by the mail server' : 'unconfirmed: not emailed'})` : 'No email found'); }
     catch (e) { toast(e.message); }
     redraw();
   });
@@ -89,7 +98,7 @@ export async function contactsSetup() {
       <p class="s muted" style="grid-column:1/-1;margin:0">Public companies get their CFO and CEO from SEC filings automatically (free). For LinkedIn profiles, websites and private companies, add a <a href="https://api-dashboard.search.brave.com/" target="_blank" rel="noopener">Brave Search API</a> key. Work emails use the Apify account already saved (about $0.05 a person); a <a href="https://hunter.io/api-keys" target="_blank" rel="noopener">Hunter</a> key is an optional fallback. Keys are stored write-only.</p>
       <label class="field">Brave Search key ${set?.brave ? '<em class="ctOk">✓ saved</em>' : ''}<input class="input" name="brave" type="password" autocomplete="off" placeholder="${set?.brave ? 'Saved. Paste to replace' : 'Paste key'}"></label>
       <label class="field">Hunter key ${set?.hunter ? '<em class="ctOk">✓ saved</em>' : ''}<input class="input" name="hunter" type="password" autocomplete="off" placeholder="${set?.hunter ? 'Saved. Paste to replace' : 'Paste key'}"></label>
-      <p class="s muted" style="grid-column:1/-1;margin:0">With the Brave key saved, HQ looks up ~120 targets a day on its own (best BDC targets first). "Find email" runs only when you click it: Apify checks the mail server (~$0.05), Hunter only if that finds no confirmed mailbox.</p></div>`,
+      <p class="s muted" style="grid-column:1/-1;margin:0">With the Brave key saved, HQ looks up ~120 targets a day on its own (best BDC targets first). "Send today's batch" finds the email of everyone in the batch on its own; "Find email" on a card does one person. Apify checks the mail server (~$0.05 a person), Hunter only if that finds no confirmed mailbox.</p></div>`,
     async onSubmit(fd) {
       for (const [field, name] of [['brave', 'BRAVE_SEARCH_KEY'], ['hunter', 'HUNTER_API_KEY']]) {
         const v = String(fd.get(field) || '').trim();

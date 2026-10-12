@@ -5,7 +5,7 @@
 // message before sending. Personalisation = one true, dated fact about THEIR company; no AI icebreakers, no opener.
 // Variant test (11 Oct): dated vs plain (same message without the date line) when an account has a plain campaign.
 import { sb, esc, $, $$, toast, modal, opts } from './core.js';
-import { loadContacts, bestPerson } from './contacts.js';
+import { loadContacts, bestPerson, contactOf, findEmail } from './contacts.js';
 import { needLine } from './kinds.js';
 
 // Same rules as the outreach function (cleanName / deadlineOf), so the preview is what Prosp sends.
@@ -58,7 +58,8 @@ async function picks(st) {
   ]);
   await Promise.all([loadContacts('bdc', true), loadContacts('credit', true)]);
   const done = new Set((en.data || []).map(e => `${e.kind}:${e.key}`));
-  const usable = (kind, key) => { const p = bestPerson(kind, key); return p && (p.linkedin || emailOk(p, st.min_email_score)) ? p : null; };
+  // Usable = LinkedIn, a confirmed email, or an email we haven't looked for yet (the window finds it before Send).
+  const usable = (kind, key) => { const p = bestPerson(kind, key); return p && (p.linkedin || emailOk(p, st.min_email_score) || (!p.email && !p.email_checked && contactOf(kind, key)?.domain)) ? p : null; };
   const b = (bdc.data || []).filter(s => !done.has(`bdc:${s.company_key}`)).map(s => ({ kind: 'bdc', key: s.company_key, s, p: usable('bdc', s.company_key) }))
     .filter(x => x.p).sort((x, y) => ahead(x.s.earliest_maturity) - ahead(y.s.earliest_maturity) || y.s.score - x.s.score);
   const c = (cr.data || []).filter(s => !done.has(`credit:${String(Number(s.cik))}`) && s.ebitda > 0 && s.revenue >= 20e6 && !(s.flags || {}).going_concern)
@@ -66,7 +67,7 @@ async function picks(st) {
   const waiting = { bdc: (bdc.data || []).length, credit: (cr.data || []).length };
   // A lead is sendable when it has a date to cite (dated message), or a plain campaign exists, or it has a valid email.
   const anyPlain = (st.prosp || []).some(a => a.plain_campaign_id);
-  const can = x => (x.deadline = deadlineOf(x.kind, x.s)) || anyPlain || emailOk(x.p, st.min_email_score);
+  const can = x => (x.deadline = deadlineOf(x.kind, x.s)) || anyPlain || emailOk(x.p, st.min_email_score) || (!x.p.email && !x.p.email_checked);   // last = email still to find
   const bb = b.filter(can), cc = c.filter(can);
   return { list: [...bb.slice(0, st.bdc_per_day ?? 10), ...cc.slice(0, st.credit_per_day ?? 10)], waiting, ready: { bdc: bb.length, credit: cc.length }, held: b.length + c.length - bb.length - cc.length };
 }
@@ -85,26 +86,32 @@ export async function sendBatchModal(onDone) {
     return x.p.linkedin && plain ? 'plain' : 'email_only'; };
   const msg = (x, v) => v === 'email_only' ? '' : fillTemplate(v === 'dated' ? (st.li_template_dated || TEMPLATE.dated) : (st.li_template_plain || TEMPLATE.plain), { first_name: String(x.p.name).split(/\s+/)[0], company: cleanName(x.s.company_name), deadline: x.deadline || '' });
   const VLABEL = { dated: '▲ Dated', plain: '○ Plain', email_only: '✉ Email only' };
+  // LinkedIn / email columns say found or not found in words + symbol, never a blank.
+  const liCell = x => x.p.linkedin ? `<a href="${esc(x.p.linkedin)}" target="_blank" rel="noopener">✓ Found ↗</a>` : '<span class="s muted">✕ Not found</span>';
+  const emCell = x => x.finding ? '<span class="s muted">… Finding</span>' : emailOk(x.p, st.min_email_score) ? `<span title="${esc(x.p.email)}">✓ Confirmed</span>`
+    : x.p.email ? `<span class="s muted" title="${esc(x.p.email)}">? Unconfirmed, won't email</span>` : x.p.email_checked ? '<span class="s muted">✕ None found</span>'
+    : contactOf(x.kind, x.key)?.domain ? '<span class="s muted">… Queued</span>' : '<span class="s muted">✕ No website</span>';
   const cell = (x, i, owner) => { const v = variantFor(x, owner); return `<span class="obVar" data-v="${v}">${VLABEL[v]}</span>${x.deadline ? `<div class="s muted">${esc(x.deadline)}</div>` : '<div class="s muted">no date to cite</div>'}${v === 'email_only' ? '' : `<details class="obMsg"><summary>Message</summary><pre>${esc(msg(x, v))}</pre></details>`}`; };
   const warn = [!keys?.prosp && 'No Prosp key: LinkedIn will be skipped.', keys?.prosp && !accounts.length && 'No Prosp campaign set: LinkedIn will be skipped.',
     !keys?.plusvibe && 'No PlusVibe key: email will be skipped.', keys?.plusvibe && !(st.plusvibe_workspace_id && st.plusvibe_campaign_id) && 'No PlusVibe campaign set: email will be skipped.'].filter(Boolean);
   modal({
     title: "Send today's batch", submit: list.length ? `Send ${list.length}` : 'Close', wide: true,
     body: `<div class="obWrap">
-      <p class="s muted" style="margin:0 0 10px">${held ? `${held} held back: no date to cite, no plain campaign, no email. ` : ''}${list.filter(x => x.kind === 'bdc').length} BDC (maturing soonest) + ${list.filter(x => x.kind === 'credit').length} public credit (lendable). Ready with a contact: ${ready.bdc} BDC, ${ready.credit} credit. Untick anyone who looks wrong.</p>
+      <p class="s muted" style="margin:0 0 10px">Work emails are found for everyone below as this window opens (~$0.05 each); a row with no LinkedIn and no email found is skipped. ${held ? `${held} held back: no date to cite, no plain campaign, no email. ` : ''}${list.filter(x => x.kind === 'bdc').length} BDC (maturing soonest) + ${list.filter(x => x.kind === 'credit').length} public credit (lendable). Ready with a contact: ${ready.bdc} BDC, ${ready.credit} credit. Untick anyone who looks wrong.</p>
       ${warn.length ? `<div class="obWarn">⚠ ${warn.map(esc).join('<br>⚠ ')} <button type="button" class="link" id="obSetup">Outreach setup</button></div>` : ''}
       ${list.length ? `<table class="tbl obTbl"><thead><tr><th></th><th>Company</th><th>Contact</th><th>Message</th><th>LinkedIn</th><th>Email</th><th>From</th></tr></thead><tbody>
       ${list.map((x, i) => `<tr><td><input type="checkbox" name="pick" value="${i}" checked aria-label="Send to ${esc(x.s.company_name)}"></td>
         <td><b>${esc(x.s.company_name)}</b><br><span class="s muted">${x.kind === 'bdc' ? 'BDC' : 'Public'} · ${esc(needLine(x.s.reasons) || '')}</span></td>
         <td>${esc(x.p.name)}<br><span class="s muted">${esc(x.p.title || x.p.role?.toUpperCase() || '')}${x.p.employer ? ' at ' + esc(x.p.employer) : ''}${x.p.source === 'sec' ? ' · SEC' : x.p.status === 'confirmed' ? ' · confirmed' : ' · unconfirmed'}</span></td>
         <td class="obMsgCell" data-row="${i}">${cell(x, i, owners[i % owners.length])}</td>
-        <td>${x.p.linkedin ? `<a href="${esc(x.p.linkedin)}" target="_blank" rel="noopener">✓ ↗</a>` : '—'}</td>
-        <td>${emailOk(x.p, st.min_email_score) ? '✓' : x.p.email ? '<span class="s muted">low score</span>' : '—'}</td>
+        <td>${liCell(x)}</td>
+        <td data-em="${i}">${emCell(x)}</td>
         <td><select class="select sm" name="owner${i}">${opts(owners, owners[i % owners.length])}</select></td></tr>`).join('')}
       </tbody></table>` : '<div class="empty">No targets with a contact yet. Contacts fill in as the lookup runs (about 120 companies a day), or click "Find contacts" on a card.</div>'}</div>`,
     async onSubmit(fd) {
       if (!list.length) return;
       const idx = fd.getAll('pick').map(Number);
+      if (list.some(x => x.finding)) { toast('Still finding emails, one moment'); return false; }
       const items = idx.map(i => { const x = list[i], owner = fd.get(`owner${i}`); return { kind: x.kind, key: x.key, person: x.p.name, owner, variant: variantFor(x, owner) }; });
       if (!items.length) return;
       const { data, error } = await sb.functions.invoke('outreach', { body: { action: 'send', items } });
@@ -118,10 +125,31 @@ export async function sendBatchModal(onDone) {
   $('#obSetup')?.addEventListener('click', () => { document.querySelector('.modal .x, .modal [data-close]')?.click(); outreachSetup(); });
   // The send button counts what is ticked, so "Send 10" never goes out with 3 ticked.
   const btn = document.querySelector('.modal button[type=submit]');
-  const recount = () => { const n = $$('.modal input[name=pick]:checked').length; if (btn) { btn.textContent = n ? `Send ${n}` : 'Nothing ticked'; btn.disabled = !n; } };
+  const recount = () => { const n = $$('.modal input[name=pick]:checked').length, left = list.filter(x => x.finding || x.queued).length;
+    if (btn) { btn.textContent = left ? `Finding emails… ${left} left` : n ? `Send ${n}` : 'Nothing ticked'; btn.disabled = !!left || !n; } };
   $$('.modal input[name=pick]').forEach(b => b.addEventListener('change', recount));
+  findBatchEmails(list, st, emCell, recount, i => variantFor(list[i], $(`.modal select[name=owner${i}]`)?.value) !== 'email_only');
   // Changing the sender can change the variant (only some accounts have a plain campaign): redraw that row's message.
   list.forEach((x, i) => $(`.modal select[name=owner${i}]`)?.addEventListener('change', e => { const td = $(`.modal .obMsgCell[data-row="${i}"]`); if (td) td.innerHTML = cell(x, i, e.target.value); }));
+}
+
+// Find the work email of everyone in the batch who has none yet, 4 at a time (each is one Apify run, ~25 s).
+// A row that would go by email only and has no confirmed email can't be reached: unticked and locked.
+async function findBatchEmails(list, st, emCell, recount, onLinkedIn) {
+  const todo = list.map((x, i) => [x, i]).filter(([x]) => !x.p.email && !x.p.email_checked && contactOf(x.kind, x.key)?.domain);
+  todo.forEach(([x]) => x.queued = true); recount();
+  const draw = i => { const td = $(`.modal [data-em="${i}"]`); if (td) td.innerHTML = emCell(list[i]); };
+  const lock = i => { if (onLinkedIn(i) || emailOk(list[i].p, st.min_email_score)) return; const b = $(`.modal input[name=pick][value="${i}"]`); if (b) { b.checked = false; b.disabled = true; b.title = 'No LinkedIn message and no email found'; } };
+  list.forEach((x, i) => { if (!x.queued) lock(i); });
+  const one = async ([x, i]) => {
+    x.queued = false; x.finding = true; draw(i);
+    try { const r = await findEmail(x.kind, x.key, x.p.name); if (r.person) x.p = r.person; else x.p = { ...x.p, email_checked: new Date().toISOString() }; }
+    catch { x.p = { ...x.p, email_checked: new Date().toISOString() }; }
+    x.finding = false; draw(i);
+    lock(i); recount();
+  };
+  const queue = [...todo];
+  await Promise.all(Array.from({ length: Math.min(4, queue.length) }, async () => { while (queue.length) await one(queue.shift()); }));
 }
 
 export async function outreachSetup() {
