@@ -413,7 +413,10 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   pass `sameCompany()` = every distinctive brand word present and no distinctive word the company's name lacks (FILLER words ignored), so
   "Colonnade Advisors" ≠ Colonnade Parent and "Marquis Companies" ≠ Marquis Software; "Vice President" is not a CEO; former / fractional
   / consultant rejected. Stored `employer` shows in the batch window. Add every bad match to `scripts/tests/test_contacts_parse.mjs`.
-- Email: Hunter email-finder (`HUNTER_API_KEY`), on click only ("Find email", one credit per person); needs the domain from the lookup.
+- Email (12 Oct 2026): Apify actor `overpowered/email-finder` on `APIFY_TOKEN` first (10 name patterns checked against the mail server,
+  $0.045 a person, ~25 s; only "Okay to Send"+"Accepted" = valid; run cap $0.10 because $0.05 aborted on the 10th row; the dataset is read
+  whatever the run status). Hunter (`HUNTER_API_KEY`, 50/month) only when Apify finds no valid mailbox. On click only ("Find email"); needs
+  the domain from the lookup. All-rejected can be a filtering gateway (Proofpoint at unifi.com rejected every pattern). `email_src` = apify|hunter.
 - Keys pasted by an admin in any signal tab → "Contacts setup" (RPC `set_contact_key`, write-only; never enter them for the user).
 - "Add to pipeline" pre-fills name, title and LinkedIn from the best person.
 
@@ -455,7 +458,7 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   `messageFor()` (same template). Status `stopped` = withdrawn send (re-sendable; the 3 test sends of 10 Oct are stopped).
 - Open items (11 Oct, user to do in Prosp): Peter's sender shows Disconnected in "private credit signals"; delete the 3 test rows in list
   "HQ – private credit"; optionally duplicate the campaign minus the "Noticed…" line as the plain campaign and pick it in Outreach setup.
-- Hunter: one key, 50 lookups/month. Don't build rotation across extra free accounts (Tengku floated it; it breaks Hunter's terms).
+- Hunter: one key, 50 lookups/month, now only the fallback behind Apify. Don't build rotation across extra free accounts (Tengku floated it; it breaks Hunter's terms).
 
 ## Post formats, format tests, breakdowns (11 Oct 2026; `hq/formats.js`, `hq/formattest.js`, `supabase/2026-10-11-post-formats.sql`)
 - `post_formats`: our names mapped to what LinkedIn shows (`linkedin_type`) + page shape for documents. **Presentation = landscape

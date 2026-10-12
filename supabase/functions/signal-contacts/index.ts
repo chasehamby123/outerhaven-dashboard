@@ -4,9 +4,9 @@
 //   kind 'officers' {items: [{cik, company_name, people, phone, website, officer_change}]} → stored (SEC = exact names)
 // Cron (header x-outerhaven-cron = LINKEDIN_CRON_SECRET, every 30 min): action 'cron' looks up the next targets (DAILY_CAP a day);
 //   action 'owners' {limit} = owner checks only for unchecked BDC refi targets (1 Brave query each, outside DAILY_CAP).
-// Admin (user JWT): action 'lookup' {kind, key} = Find contacts now; 'email' {kind, key, name} = Hunter email finder;
+// Admin (user JWT): action 'lookup' {kind, key} = Find contacts now; 'email' {kind, key, name} = work email (Apify, Hunter fallback);
 //   'mark' {kind, key, name, status: 'confirmed'|'wrong'|null}.
-// Keys (pasted in HQ, write-only): BRAVE_SEARCH_KEY (LinkedIn + website), HUNTER_API_KEY (work email). Missing key = that step is skipped.
+// Keys (pasted in HQ, write-only): BRAVE_SEARCH_KEY (LinkedIn + website), APIFY_TOKEN + HUNTER_API_KEY (work email). Missing key = that step is skipped.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { brand, searchName, profileFrom, websiteFrom, mergePeople, ownerFrom } from "./parse.js";
 
@@ -128,20 +128,48 @@ async function lookup(kind: string, key: string, name?: string) {
   return { ok: true, found: found.length, domain: site?.domain || row?.domain || null };
 }
 
-// Hunter email finder for one named person at the company's domain (on demand, it uses paid credits).
-async function email(kind: string, key: string, name: string) {
-  const hk = await secret("HUNTER_API_KEY");
-  if (!hk) throw new Error("No Hunter key yet (HQ → Contacts setup).");
-  const row = await getRow(kind, key);
-  if (!row?.domain) throw new Error("No company website found yet. Run Find contacts first.");
-  const parts = String(name).trim().split(/\s+/), first = parts[0], last = parts[parts.length - 1];
-  const r = await fetch(`https://api.hunter.io/v2/email-finder?domain=${encodeURIComponent(row.domain)}&first_name=${encodeURIComponent(first)}&last_name=${encodeURIComponent(last)}&api_key=${hk}`);
+// Apify overpowered/email-finder (12 Oct 2026): checks 10 name patterns against the company's mail server.
+// $0.045 a person (10 x $0.0045) on the paid Apify account; cap $0.10 (at $0.05 the 10th row tipped it into ABORTED, so the dataset
+// is read whatever the status). ~20-30 s. Only "Okay to Send" + "Accepted" = valid. All 10 rejected can be a filtering gateway
+// (Proofpoint rejected every pattern at unifi.com), so Hunter is still tried after it when a key is saved.
+async function apifyEmail(domain: string, first: string, last: string) {
+  const token = await secret("APIFY_TOKEN");
+  if (!token) return null;
+  const headers = { "content-type": "application/json", authorization: `Bearer ${token}` }, api = "https://api.apify.com/v2";
+  const r = await fetch(`${api}/acts/overpowered~email-finder/runs?timeout=100&maxTotalChargeUsd=0.10&waitForFinish=60`, { method: "POST", headers, body: JSON.stringify({ name: first, surname: last, domain }) });
+  let run = (await r.json().catch(() => ({})))?.data;
+  if (!r.ok || !run?.id) return null;   // Hunter fallback below
+  if (["READY", "RUNNING"].includes(run.status)) run = (await (await fetch(`${api}/actor-runs/${run.id}?waitForFinish=60`, { headers })).json().catch(() => ({})))?.data || run;
+  const items = ((await (await fetch(`${api}/datasets/${run.defaultDatasetId}/items?clean=true&format=json`, { headers })).json().catch(() => [])) || []) as any[];
+  if (!Array.isArray(items) || !items.length) return null;
+  const hit = items.find(i => /okay to send/i.test(i?.validation_status || "") && /accepted/i.test(i?.validation_analysis || ""));
+  if (hit) return { email: hit.email, score: 100, status: "valid", src: "apify" };
+  // Catch-all or unknown: keep the best guess but never as valid (outreach won't email it unless the score passes).
+  const maybe = items.find(i => !/do not send/i.test(i?.validation_status || ""));
+  return maybe ? { email: maybe.email, score: 50, status: String(maybe.validation_analysis || maybe.validation_status || "unknown").toLowerCase(), src: "apify" } : { email: null, score: null, status: "not_found", src: "apify" };
+}
+
+async function hunterEmail(domain: string, first: string, last: string, hk: string) {
+  const r = await fetch(`https://api.hunter.io/v2/email-finder?domain=${encodeURIComponent(domain)}&first_name=${encodeURIComponent(first)}&last_name=${encodeURIComponent(last)}&api_key=${hk}`);
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j?.errors?.[0]?.details || `Hunter HTTP ${r.status}`);
   const d = j?.data || {};
-  const people = (row.people || []).map((p: any) => p.name === name ? { ...p, email: d.email || null, email_score: d.score ?? null, email_status: d.verification?.status || null, email_checked: new Date().toISOString() } : p);
+  return { email: d.email || null, score: d.score ?? null, status: d.verification?.status || null, src: "hunter" };
+}
+
+// Work email for one named person at the company's domain (on demand). Apify first; Hunter only when Apify has no valid mailbox.
+async function email(kind: string, key: string, name: string) {
+  const row = await getRow(kind, key);
+  if (!row?.domain) throw new Error("No company website found yet. Run Find contacts first.");
+  const parts = String(name).replace(/[,.]/g, " ").trim().split(/\s+/).filter(w => !/^(jr|sr|ii|iii|iv)$/i.test(w));
+  const first = parts[0], last = parts[parts.length - 1];
+  let d: any = await apifyEmail(row.domain, first, last);
+  const hk = await secret("HUNTER_API_KEY");
+  if (d?.status !== "valid" && hk) d = await hunterEmail(row.domain, first, last, hk).then(h => h.email || !d ? h : d, e => d || Promise.reject(e));
+  if (!d) throw new Error("No Apify token or Hunter key saved.");
+  const people = (row.people || []).map((p: any) => p.name === name ? { ...p, email: d.email || null, email_score: d.score ?? null, email_status: d.status || null, email_src: d.src, email_checked: new Date().toISOString() } : p);
   await save(kind, key, { people });
-  return { ok: true, email: d.email || null, score: d.score ?? null, status: d.verification?.status || null };
+  return { ok: true, email: d.email || null, score: d.score ?? null, status: d.status || null, src: d.src };
 }
 
 async function cron() {

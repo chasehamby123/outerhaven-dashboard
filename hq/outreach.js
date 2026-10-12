@@ -155,7 +155,7 @@ export async function outreachSetup() {
       <label class="field">BDC per day<input class="input" name="bdc_n" type="number" min="0" max="40" value="${st.bdc_per_day ?? 10}"></label>
       <label class="field">Credit per day<input class="input" name="cr_n" type="number" min="0" max="40" value="${st.credit_per_day ?? 10}"></label>
       <label class="field">Email after LinkedIn (days)<input class="input" name="delay" type="number" min="0" max="14" value="${st.email_delay_days ?? 3}"></label>
-      <label class="field">Min Hunter email score<input class="input" name="min_score" type="number" min="50" max="100" value="${st.min_email_score ?? 90}"></label></div>`,
+      <label class="field">Min email score (Hunter)<input class="input" name="min_score" type="number" min="50" max="100" value="${st.min_email_score ?? 90}"></label></div>`,
     async onSubmit(fd) {
       for (const [f, name] of [['prosp_key', 'PROSP_API_KEY'], ['pv_key', 'PLUSVIBE_API_KEY']]) {
         const v = String(fd.get(f) || '').trim();

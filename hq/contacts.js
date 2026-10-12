@@ -1,6 +1,6 @@
 // Contact line on Credit / BDC / UCC signal cards (10 Oct 2026): who to contact and how.
 // Data: signal_contacts (one row per kind + key), filled by scripts/officers.py (SEC names for public companies) and the
-// signal-contacts edge function (LinkedIn + website via Brave Search, email via Hunter). See supabase/functions/signal-contacts.
+// signal-contacts edge function (LinkedIn + website via Brave Search, email via Apify, Hunter fallback). See supabase/functions/signal-contacts.
 import { sb, esc, $$, toast, modal, state } from './core.js';
 
 const cache = { credit: null, bdc: null, ucc: null }, loading = {};
@@ -28,7 +28,7 @@ function personHtml(kind, key, p, c) {
   const enc = encodeURIComponent(p.name);
   const src = p.source === 'sec' ? `<a class="ctSrc" href="${esc(p.source_url || '#')}" target="_blank" rel="noopener" title="Signed the ${esc(p.form || '10-K/10-Q')} certification filed ${esc(p.filed || '')}">SEC</a>` : '';
   const email = p.email
-    ? `<button type="button" class="ctLink" data-ctcopy="${esc(p.email)}" title="Copy · Hunter score ${p.email_score ?? '?'}${p.email_status ? ' · ' + esc(p.email_status) : ''}">${esc(p.email)}</button>`
+    ? `<button type="button" class="ctLink" data-ctcopy="${esc(p.email)}" title="Copy · ${p.email_src === 'apify' ? 'mail server check' : 'Hunter score ' + (p.email_score ?? '?')}${p.email_status ? ' · ' + esc(p.email_status) : ''}">${esc(p.email)}</button>`
     : c?.domain ? `<button type="button" class="ctLink muted" data-ctemail="${enc}">Find email</button>` : '';
   const check = p.status === 'confirmed' ? '<span class="ctOk" title="Confirmed by the team">✓ confirmed</span>'
     : p.source === 'sec' ? '' : `<button type="button" class="ctLink muted" data-ctmark="${enc}" data-st="confirmed" title="This is the right person">✓ Right</button><button type="button" class="ctLink muted" data-ctmark="${enc}" data-st="wrong" title="Wrong person or left the company">✕ Wrong</button>`;
@@ -86,10 +86,10 @@ export async function contactsSetup() {
   modal({
     title: 'Contacts setup', submit: 'Save',
     body: `<div class="form pForm">
-      <p class="s muted" style="grid-column:1/-1;margin:0">Public companies get their CFO and CEO from SEC filings automatically (free). For LinkedIn profiles, websites and private companies, add a <a href="https://api-dashboard.search.brave.com/" target="_blank" rel="noopener">Brave Search API</a> key. For work emails, add a <a href="https://hunter.io/api-keys" target="_blank" rel="noopener">Hunter</a> key. Keys are stored write-only.</p>
+      <p class="s muted" style="grid-column:1/-1;margin:0">Public companies get their CFO and CEO from SEC filings automatically (free). For LinkedIn profiles, websites and private companies, add a <a href="https://api-dashboard.search.brave.com/" target="_blank" rel="noopener">Brave Search API</a> key. Work emails use the Apify account already saved (about $0.05 a person); a <a href="https://hunter.io/api-keys" target="_blank" rel="noopener">Hunter</a> key is an optional fallback. Keys are stored write-only.</p>
       <label class="field">Brave Search key ${set?.brave ? '<em class="ctOk">✓ saved</em>' : ''}<input class="input" name="brave" type="password" autocomplete="off" placeholder="${set?.brave ? 'Saved. Paste to replace' : 'Paste key'}"></label>
       <label class="field">Hunter key ${set?.hunter ? '<em class="ctOk">✓ saved</em>' : ''}<input class="input" name="hunter" type="password" autocomplete="off" placeholder="${set?.hunter ? 'Saved. Paste to replace' : 'Paste key'}"></label>
-      <p class="s muted" style="grid-column:1/-1;margin:0">With the Brave key saved, HQ looks up ~120 targets a day on its own (best BDC targets first). "Find email" uses one Hunter credit per person, only when you click it.</p></div>`,
+      <p class="s muted" style="grid-column:1/-1;margin:0">With the Brave key saved, HQ looks up ~120 targets a day on its own (best BDC targets first). "Find email" runs only when you click it: Apify checks the mail server (~$0.05), Hunter only if that finds no confirmed mailbox.</p></div>`,
     async onSubmit(fd) {
       for (const [field, name] of [['brave', 'BRAVE_SEARCH_KEY'], ['hunter', 'HUNTER_API_KEY']]) {
         const v = String(fd.get(field) || '').trim();
