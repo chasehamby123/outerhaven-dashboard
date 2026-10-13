@@ -90,6 +90,7 @@ export function elementsOf(post) {
   const b = post.breakdown || {}, c = b.cover || {}, cp = b.copy || {}, f = post.features || {}, out = [];
   const add = (group, label, value) => { if (value != null && value !== '') out.push({ group, label, value: String(value) }); };
   add('format', 'Format', post.tags?.format);
+  add('format', 'Archetype', pretty(b.archetype));   // the recipe (breakdown v2), e.g. Fake doc viewer: a single image dressed as an open PDF
   // Cover / single image
   add('cover', 'Cover promise', pretty(c.promise)); add('cover', 'Number on cover', yn(c.has_number)); add('cover', 'Cover subject', pretty(c.subject));
   add('cover', 'Face', pretty(c.face)); add('cover', 'Eye contact', c.face && c.face !== 'none' ? yn(c.eye_contact) : null);
@@ -157,9 +158,9 @@ export function selfTest() {
   assert(predict({}, fx).multiplier === 1, 'no factors = 1x');
   assert(recipe(fx).every(r => r.effect > 0), 'recipe positive only');
   const ex = explain({ hook: 'Story' }, fx); assert(ex.helps.length + ex.hurts.length + ex.neutral.length === 1, 'explain buckets');
-  const el = elementsOf({ tags: { format: 'Presentation' }, breakdown: { cover: { has_number: true, promise: 'number_list' }, pages: [{}, {}, {}], copy: { reading_grade: 6 } }, features: { chars: 900, hook_words: 5, emojis: 0 } });
+  const el = elementsOf({ tags: { format: 'Presentation' }, breakdown: { archetype: 'fake_doc_viewer', cover: { has_number: true, promise: 'number_list' }, pages: [{}, {}, {}], copy: { reading_grade: 6 } }, features: { chars: 900, hook_words: 5, emojis: 0 } });
   const has = (l, v) => el.some(e => e.label === l && e.value === v);
-  assert(has('Number on cover', 'Yes') && has('Cover promise', 'Number list') && has('Page count', '2-5') && has('Reading grade', '≤6') && has('Caption length', 'Medium (400-1,200)') && has('Emojis', '0') && has('Format', 'Presentation'), 'elementsOf flattens breakdown + counts');
+  assert(has('Number on cover', 'Yes') && has('Cover promise', 'Number list') && has('Page count', '2-5') && has('Reading grade', '≤6') && has('Caption length', 'Medium (400-1,200)') && has('Emojis', '0') && has('Format', 'Presentation') && has('Archetype', 'Fake doc viewer'), 'elementsOf flattens breakdown + counts');
   const ee = elementEffects(scorePosts([1, 2, 3, 4].map(i => ({ id: 'e' + i, account: 'A', meetings: 0, tags: {}, features: { chars: i > 2 ? 1500 : 100 }, m: { comments: i > 2 ? 30 : 5, reactions: 0, reposts: 0 } }))));
   const longC = ee.find(e => e.label === 'Caption length' && e.value === 'Long (1,200+)'), shortC = ee.find(e => e.label === 'Caption length' && e.value === 'Short (<400)');
   assert(longC.effect > 0 && shortC.effect < 0 && longC.n === 2, 'elementEffects ranks within account');

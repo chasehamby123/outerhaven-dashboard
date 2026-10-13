@@ -491,6 +491,10 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   GPT image: canvas, palette, fonts, every page as back-to-front layers (exact text, % boxes, font size/weight/hex, images, shapes, charts) and a
   standalone prompt per page + `gpt_image_pitfalls`. HQ: Growth → Posts → click a creative → Copy JSON for GPT image / Copy page N prompt /
   Copy breakdown.
+- **Archetype** (breakdown v2, 13 Oct 2026): the recipe a creative copies, separate from the format. Format = what LinkedIn shows
+  (measured); archetype = what the creative pretends to be (`fake_doc_viewer` = one image dressed as an open PDF with a contents page and a
+  "Comment WORD" button; first seen on Felizitas Grein Groth's ROOM post, ~1K followers, 279 comments). List in the skill; ranked as the
+  "Archetype" element in Playbook. Never add an archetype as a post_formats row: formats must be tellable apart by the scraper.
 - **Elements, ranked** (Growth → Playbook; `elementsOf()` / `elementEffects()` in scoring.js, tested in `node hq/scoring-test.mjs`): flattens
   measured format + `text_features` (bucketed) + `breakdown` into element values and scores each like a factor (lift vs own account,
   shrunk K=3). ▲/▼ symbols carry direction.
