@@ -1443,3 +1443,6 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .pbEvidence > summary::-webkit-details-marker{display:none}.pbEvidence > summary h2{margin:0;font-size:15px;font-weight:600}
 .pbEvidence > summary::before{content:"▸";color:var(--muted)}.pbEvidence[open] > summary::before{content:"▾"}
 @media (max-width:760px){.pdGrid{grid-template-columns:1fr}.swOpen{grid-template-columns:1fr}.swShots{grid-auto-flow:column;grid-auto-columns:40%;overflow-x:auto;max-height:none}.swCap{max-width:160px}.paGrid{grid-template-columns:1fr}}
+.swFeed{margin:0;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--sunk);white-space:pre-wrap;font-size:14px;line-height:1.45}
+.swCaption{white-space:pre-wrap;font:inherit;font-size:13px;line-height:1.5;margin:8px 0 0;max-height:320px;overflow:auto}
+.swGrowth{margin:0 0 4px}.swGrowth th,.swGrowth td{padding:6px 8px}

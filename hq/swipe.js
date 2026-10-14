@@ -33,11 +33,26 @@ export const per1k = s => s.author_followers > 0 && s.comments != null ? s.comme
 const gate = s => s.reactions > 0 && s.comments != null ? s.comments / s.reactions : null;
 const STATUS = { new: '… Not started', queued: '… Claude is breaking it down', ready: '✓ Ready', failed: '✕ Failed' };
 
+// image_paths: bucket paths, or a full https URL (a seeded / public image).
 async function thumbs(root) {
   for (const el of $$('[data-swthumb]', root)) {
-    const { data } = await sb.storage.from('swipe').createSignedUrl(el.dataset.swthumb, 3600);
-    if (data?.signedUrl) el.style.backgroundImage = `url("${data.signedUrl}")`;
+    const p = el.dataset.swthumb, url = /^https:\/\//.test(p) ? p : (await sb.storage.from('swipe').createSignedUrl(p, 3600)).data?.signedUrl;
+    if (url) el.style.backgroundImage = `url("${url}")`;
   }
+}
+
+// Growth over time: each reading of the numbers, with hours since posted and comments per hour since the reading before.
+const hoursAt = (s, at) => s.posted_at ? (Date.parse(at) - Date.parse(s.posted_at)) / 36e5 : null;
+export function growth(s) {
+  const snaps = [...(s.snapshots || [])].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  return snaps.map((x, i) => { const h = hoursAt(s, x.at), prev = snaps[i - 1], ph = prev ? hoursAt(s, prev.at) : 0, pc = prev ? prev.comments : 0;
+    return { ...x, h, perHour: h != null && h > ph && x.comments != null ? (x.comments - (pc || 0)) / (h - ph) : null }; });
+}
+const hrs = h => h == null ? '' : h < 48 ? `${Math.round(h)} h` : `${(h / 24).toFixed(1)} days`;
+// What the feed shows before "…see more": the first paragraph, at most ~210 characters (LinkedIn's cut). Approximate.
+export function feedHook(caption) {
+  const t = String(caption || ''), para = t.split(/\n\s*\n/)[0];
+  return para.length > 210 ? para.slice(0, 210).replace(/\s+\S*$/, '') + '…' : para;
 }
 
 export function swipeTable(list, onChange) {
@@ -48,7 +63,7 @@ export function swipeTable(list, onChange) {
       <td style="max-width:300px"><b>${esc(s.author || 'Unknown author')}</b>${s.author_followers ? `<span class="s muted"> · ${fmt(s.author_followers)} followers</span>` : ''}
         <div class="s muted swCap">${esc(s.breakdown?.copy?.hook || (s.caption || '').slice(0, 120))}</div></td>
       <td>${s.archetype ? `<b>${esc(archLabel(s.archetype))}</b>` : '<span class="muted s">—</span>'}</td>
-      <td class="n">${p == null ? '<span class="muted">—</span>' : `<b>${p >= 10 ? Math.round(p) : p.toFixed(1)}</b><div class="s muted">${fmt(s.comments)} comments</div>`}</td>
+      <td class="n">${p == null ? '<span class="muted">—</span>' : `<b>${p >= 10 ? Math.round(p) : p.toFixed(1)}</b><div class="s muted">${fmt(s.comments)} comments${(() => { const g = growth(s).at(-1); return g?.h ? ` in ${hrs(g.h)}` : ''; })()}</div>`}</td>
       <td class="n">${g == null ? '<span class="muted">—</span>' : `${g.toFixed(1)}${g > 2 ? '<div class="s muted">comment gate</div>' : ''}`}</td>
       <td class="s">${STATUS[s.status] || esc(s.status)}${s.status === 'failed' && s.error ? `<div class="muted">${esc(s.error.slice(0, 80))}</div>` : ''}</td>
       <td style="white-space:nowrap">${s.breakdown ? `<button class="btn sm" data-swview="${s.id}">Open</button>` : s.status === 'queued' ? '' : `<button class="btn sm" data-swrun="${s.id}">${s.status === 'failed' ? 'Retry' : 'Break down'}</button>`}</td></tr>`; }).join('')}
@@ -57,7 +72,7 @@ export function swipeTable(list, onChange) {
 
 export function bindSwipe(root, onChange) {
   thumbs(root);
-  $$('[data-swview]', root).forEach(b => b.onclick = () => openSwipe(swipeRows().find(s => s.id === b.dataset.swview)));
+  $$('[data-swview]', root).forEach(b => b.onclick = () => openSwipe(swipeRows().find(s => s.id === b.dataset.swview), onChange));
   $$('[data-swrun]', root).forEach(b => b.onclick = async () => { b.disabled = true; b.textContent = 'Starting…'; await runBreakdown(b.dataset.swrun); onChange(); });
   // While Claude works (a few minutes), check back every 20 s.
   clearInterval(poll);
@@ -83,7 +98,7 @@ export function addSwipeModal(onChange) {
       <label class="field">Reactions${num('reactions')}</label>
       <label class="field">Comments${num('comments')}</label>
       <label class="field">Reposts${num('reposts')}</label>
-      <label class="field">Hours since posted${num('hours_live')}</label>
+      <label class="field">Posted how long ago (hours; 1d = 24)${num('hours_live')}</label>
       <label class="field full">Link to the post (optional)<input class="input" name="url" placeholder="https://www.linkedin.com/posts/…"></label>
       <label class="field full">Why save it (optional)<input class="input" name="note" placeholder="e.g. 279 comments on 1K followers"></label></div>
       <p class="s muted" style="margin:10px 0 0">Claude reads the screenshots, names the archetype, breaks it into the same parts as our posts and writes a GPT image prompt to rebuild it. A few minutes; counts as one of today's Claude jobs.</p>`,
@@ -104,6 +119,10 @@ export function addSwipeModal(onChange) {
         paths.push(path);
       }
       if (paths.length) await sb.from('swipe_posts').update({ image_paths: paths }).eq('id', ins.data.id);
+      // First reading of the numbers, so growth can be tracked when someone updates them later.
+      const h = n('hours_live'), now = new Date();
+      if (h != null || n('comments') != null) await sb.from('swipe_posts').update({ posted_at: h != null ? new Date(now - h * 36e5).toISOString() : null,
+        snapshots: [{ at: now.toISOString(), reactions: n('reactions'), comments: n('comments'), reposts: n('reposts') }] }).eq('id', ins.data.id);
       await runBreakdown(ins.data.id);
       onChange();
     },
@@ -111,7 +130,7 @@ export function addSwipeModal(onChange) {
 }
 
 // One saved post, read like a brief: what it is, why it works, what to copy. JSON only behind the copy buttons.
-export function openSwipe(s) {
+export function openSwipe(s, onChange = () => {}) {
   if (!s) return;
   const b = s.breakdown || {}, c = b.cover || {}, cp = b.copy || {}, pages = s.recreate?.pages || [];
   const li = a => (a || []).map(x => `<li>${esc(x)}</li>`).join('');
@@ -123,6 +142,8 @@ export function openSwipe(s) {
       <div>
         <p class="s muted" style="margin:0 0 12px">${esc(ARCHETYPES[s.archetype]?.[1] || '')}</p>
         ${line('Results', [s.comments != null && `${fmt(s.comments)} comments`, s.reactions != null && `${fmt(s.reactions)} reactions`, s.author_followers && `${fmt(s.author_followers)} followers`, s.hours_live && `${s.hours_live} h live`].filter(Boolean).map(esc).join(' · '))}
+        ${growth(s).length ? `<h4 class="swH">Growth</h4><table class="tbl swGrowth"><thead><tr><th>After</th><th class="n">Comments</th><th class="n">Likes</th><th class="n">Reposts</th><th class="n">Comments per hour</th></tr></thead><tbody>${growth(s).map(g => `<tr><td>${g.h != null ? hrs(g.h) : esc(String(g.at).slice(0, 10))}</td><td class="n"><b>${fmt(g.comments)}</b></td><td class="n">${fmt(g.reactions)}</td><td class="n">${fmt(g.reposts)}</td><td class="n">${g.perHour != null ? (g.perHour >= 10 ? Math.round(g.perHour) : g.perHour.toFixed(1)) : '—'}</td></tr>`).join('')}</tbody></table>` : ''}
+        ${s.caption ? `<h4 class="swH">What the feed shows before "…see more"</h4><p class="swFeed">${esc(feedHook(s.caption))}</p>` : ''}
         ${line('Cover headline', esc(c.headline || ''))}
         ${line('Hook', esc(cp.hook || ''))}
         ${line('Ask', esc([cp.cta && cp.cta.replace(/_/g, ' '), cp.cta_keyword && `"${cp.cta_keyword}"`, cp.lead_magnet].filter(Boolean).join(' · ')))}
@@ -132,8 +153,11 @@ export function openSwipe(s) {
         <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:14px">
           ${pages.length ? `<button class="btn primary sm" type="button" data-copy="prompt">Copy GPT image prompt${pages.length > 1 ? 's' : ''}</button>` : ''}
           <button class="btn sm" type="button" data-copy="json">Copy breakdown JSON</button>
+          <button class="btn sm" type="button" data-swnums>Update numbers</button>
           ${s.url ? `<a class="btn sm ghost" href="${esc(s.url)}" target="_blank" rel="noopener">Open on LinkedIn ↗</a>` : ''}
+          <button class="btn sm ghost" type="button" data-swdel>Remove</button>
         </div>
+        ${s.caption ? `<details class="swPit"><summary class="s">Full caption, line breaks as posted</summary><pre class="swCaption">${esc(s.caption)}</pre></details>` : ''}
         ${s.recreate?.gpt_image_pitfalls?.length ? `<details class="swPit"><summary class="s">What GPT image gets wrong here</summary><ul class="swList s">${li(s.recreate.gpt_image_pitfalls)}</ul></details>` : ''}
       </div></div>`,
   });
@@ -141,4 +165,31 @@ export function openSwipe(s) {
   const copy = async t => { try { await navigator.clipboard.writeText(t); toast('Copied'); } catch { toast('Copy failed'); } };
   $('[data-copy=prompt]', m.el)?.addEventListener('click', () => copy(pages.map((p, i) => (pages.length > 1 ? `Page ${i + 1}:\n` : '') + p.prompt).join('\n\n')));
   $('[data-copy=json]', m.el)?.addEventListener('click', () => copy(JSON.stringify({ breakdown: s.breakdown, recreate: s.recreate }, null, 2)));
+  $('[data-swnums]', m.el)?.addEventListener('click', () => { m.close(); updateNumbers(s, onChange); });
+  $('[data-swdel]', m.el)?.addEventListener('click', async () => {
+    if (!confirm(`Remove ${s.author || 'this post'} from the swipe file?`)) return;
+    const r = await sb.from('swipe_posts').delete().eq('id', s.id); if (r.error) return toast(r.error.message);
+    m.close(); await loadSwipe(); onChange();
+  });
+}
+
+// A new reading of the numbers: appended to snapshots (never overwrites the earlier ones), so the growth curve builds up.
+function updateNumbers(s, onChange) {
+  const g = growth(s).at(-1) || {}, num = (n, v) => `<input class="input" name="${n}" type="number" min="0" inputmode="numeric" value="${v ?? ''}">`;
+  modal({
+    title: `Update numbers · ${s.author || 'saved post'}`, submit: 'Save',
+    body: `<div class="form"><label class="field">Comments${num('comments', '')}</label><label class="field">Likes${num('reactions', '')}</label><label class="field">Reposts${num('reposts', '')}</label>
+      ${s.posted_at ? '' : '<label class="field">Posted how long ago (hours)<input class="input" name="ago" type="number" min="0"></label>'}</div>
+      <p class="s muted" style="margin:10px 0 0">${g.comments != null ? `Last reading: ${fmt(g.comments)} comments, ${fmt(g.reactions)} likes${g.h ? ` after ${hrs(g.h)}` : ''}.` : 'First reading.'}</p>`,
+    async onSubmit(fd) {
+      const n = k => { const v = String(fd.get(k) || '').trim(); return v === '' ? null : Number(v); }, now = new Date();
+      if (n('comments') == null && n('reactions') == null) { toast('Type at least comments or likes'); return false; }
+      const posted = s.posted_at || (n('ago') != null ? new Date(now - n('ago') * 36e5).toISOString() : null);
+      const snap = { at: now.toISOString(), reactions: n('reactions'), comments: n('comments'), reposts: n('reposts') };
+      const r = await sb.from('swipe_posts').update({ snapshots: [...(s.snapshots || []), snap], posted_at: posted, reactions: snap.reactions ?? s.reactions, comments: snap.comments ?? s.comments,
+        reposts: snap.reposts ?? s.reposts, hours_live: posted ? Math.round((now - Date.parse(posted)) / 36e4) / 10 : s.hours_live }).eq('id', s.id);
+      if (r.error) { toast(r.error.message); return false; }
+      toast('Saved'); await loadSwipe(); onChange();
+    },
+  });
 }

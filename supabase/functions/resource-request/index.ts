@@ -165,12 +165,14 @@ Deno.serve(async (req) => {
     if (!paths.length && !sw.caption) return json({ ok: false, error: "Add a screenshot or the caption first." }, 400);
     if (!(await underCap())) return json({ ok: false, error: `Today's limit of ${cap} Claude jobs is reached. An admin can raise it in Resources → Settings.` }, 429);
     // The routine can't read the private bucket: week-long signed links, in order.
-    const signed = paths.length ? ((await sb.storage.from("swipe").createSignedUrls(paths, 7 * 86400)).data || []).map((x: any) => x.signedUrl).filter(Boolean) : [];
+    // A full https path is a public image (seeded rows): passed as is.
+    const signed: string[] = [];
+    for (const p of paths) { const u = /^https:\/\//.test(p) ? p : (await sb.storage.from("swipe").createSignedUrl(p, 7 * 86400)).data?.signedUrl; if (u) signed.push(u); }
     const row = {
       created_by: who.id, requested_by: who.email, kind: "resource", format: "other", poster: "Tengku Harris",
       topic: `Breakdown: ${sw.author || "saved post"}`, caption: sw.caption || "", fired_at: new Date().toISOString(),
       payload: { type: "breakdown", swipe_id: sw.id, images: signed, author: sw.author, author_followers: sw.author_followers,
-        reactions: sw.reactions, comments: sw.comments, reposts: sw.reposts, hours_live: sw.hours_live, url: sw.url, note: sw.note },
+        reactions: sw.reactions, comments: sw.comments, reposts: sw.reposts, hours_live: sw.hours_live, posted_at: sw.posted_at, snapshots: sw.snapshots, url: sw.url, note: sw.note },
     };
     const { data: ins, error: e3 } = await sb.from("resource_jobs").insert(row).select("id").single();
     if (e3) return json({ ok: false, error: e3.message }, 500);

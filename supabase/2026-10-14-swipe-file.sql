@@ -33,3 +33,8 @@ values ('swipe', 'swipe', false, 15728640, array['image/png','image/jpeg','image
 on conflict (id) do nothing;
 create policy swipe_admin_read on storage.objects for select to authenticated using (bucket_id = 'swipe' and public.can_access_dashboard());
 create policy swipe_admin_write on storage.objects for insert to authenticated with check (bucket_id = 'swipe' and public.can_access_dashboard());
+
+-- Growth over time (same day, Tengku: "remember exactly how viral it gets, the timespan"). posted_at from "16h" / "1d" on the post;
+-- every time someone reads the numbers they're appended to snapshots, so HQ shows comments per hour between readings.
+alter table public.swipe_posts add column if not exists posted_at timestamptz;
+alter table public.swipe_posts add column if not exists snapshots jsonb not null default '[]'::jsonb;

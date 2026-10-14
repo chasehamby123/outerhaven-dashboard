@@ -79,6 +79,7 @@ Use exactly these keys. Enum values are listed after the key; pick one. `null` w
 
   "copy": {
     "hook": "first line, exact",
+    "hook_visible": "everything shown before \"…see more\", exact, line breaks as \\n (usually the first paragraph, ~210 characters)",
     "hook_type": "contrarian | data_point | story | question | pain_point | list_how_to | timely | social_proof | bold_claim | callout",
     "hook_specificity": "generic | specific",
     "curiosity_gap": true,
