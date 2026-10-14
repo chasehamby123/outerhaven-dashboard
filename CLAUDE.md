@@ -509,6 +509,11 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   screenshots + caption + numbers, then resource-request action `breakdown` (admin; counts toward the daily Claude cap) fires the routine →
   `routines/breakdown.md` (skill redirect) writes `breakdown` / `recreate` / `archetype` / status. HQ polls every 20 s while queued.
   `ARCHETYPES` in swipe.js mirrors the skill list. The ROOM post is seeded (no screenshot: the sandbox can't upload to storage).
+  Growth over time: `swipe_posts.posted_at` + `snapshots` [{at, reactions, comments, reposts}] (appended by "Update numbers", never
+  overwritten); Open shows hours since posted + comments per hour, the text before "…see more" (`feedHook`: first paragraph, ≤210 chars)
+  and the full caption with its line breaks. `image_paths` may hold a full https URL (the ROOM creative lives at
+  `supabase/seed/swipe-room-felizitas.jpg`, served from raw.githubusercontent). The connector cancels UPDATE/DELETE from execute_sql too:
+  the ROOM row was re-inserted with growth data; the older copy (no image, id 58a0fdce…) is left for an admin to Remove in HQ.
   Weekly analysis re-does our breakdowns without an archetype (v1). Only 8 of 51 own posts had a breakdown on 14 Oct.
 - **Elements, ranked** (Growth → Playbook; `elementsOf()` / `elementEffects()` in scoring.js, tested in `node hq/scoring-test.mjs`): flattens
   measured format + `text_features` (bucketed) + `breakdown` into element values and scores each like a factor (lift vs own account,
