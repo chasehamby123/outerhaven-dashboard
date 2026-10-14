@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 17;
+export const RULES_VERSION = 18;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -160,6 +160,8 @@ export function classify(s, now = Date.now()) {
     if (stage === 'raising' && months >= 12) stage = 'stuck';
     if (stage === 'stuck') {
       add('good', `Still raising ${nm} ${Math.round(months)} months after the first sale: pitch placement on this fund`, 15);
+      // Tengku: a Fund I has no fund track record to sell. Only placeable on attributable deals from a prior firm or deal-by-deal.
+      if (n === 1) add('maybe', 'Fund I: no fund track record yet. Placeable only if the GPs have attributable deals (prior firm or deal-by-deal): ask first');
       if (!(s.sold > 0)) add('maybe', `No money reported raised after ${Math.round(months)} months: no first close, investors have likely passed`, -10);
       else if (full != null && full >= 0.6) add('info', `Already ${pctTxt(full)} raised: little left to place`, -10);
       else if (full != null) add('good', `First close done: ${money(s.sold)} in (${pctTxt(full)}), ${money(s.offering - s.sold)} still to raise`, 10);
