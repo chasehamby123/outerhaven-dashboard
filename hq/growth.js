@@ -1,7 +1,7 @@
 // Growth lab: posts (tagged), A/B experiments with creatives, insights, meetings log, sheet history.
 import { esc, fmt, pct, fmtDate, today, opts, modal, toast, fail, lightbox, num, $, $$, acctName } from './core.js';
 import { store, load, savePost, saveExperiment, deleteExperiment, saveMeeting, deleteMeeting, uploadAsset, assetUrl, removeAsset, accountName } from './data.js';
-import { DIMENSIONS, GROUPS, METRIC_DEFS, breakdown, accountBreakdown, sameCreative, boostEffect, commentsNoMeetings, suggestTests, verdict, confidenceLabel } from './insights.js';
+import { DIMENSIONS, METRIC_DEFS, verdict } from './insights.js';
 import { SOURCES, sheetStatus } from './overview.js';
 import { METRICS } from './sheet.js';
 import { scraperView, scraperStatus } from './scraper.js';
@@ -13,10 +13,9 @@ import { sb, state } from './core.js';
 import { isFormatTest, loadTestData, editFormatTest, formatTestHtml, bindFormatTests } from './formattest.js';
 import { loadFormats, fmtChip, checkHtml } from './formats.js';
 
-const TABS = [['scraper', 'Scraper'], ['posts', 'Posts'], ['insights', 'Insights'], ['playbook', 'Playbook'], ['reply', 'Reply assist'], ['outbound', 'Outbound'], ['dms', 'DM tests'], ['experiments', 'Post experiments'], ['meetings', 'Meetings'], ['sheet', 'Sheet history']];
+const TABS = [['scraper', 'Scraper'], ['posts', 'Posts'], ['playbook', 'Playbook'], ['reply', 'Reply assist'], ['outbound', 'Outbound'], ['dms', 'DM tests'], ['experiments', 'Post experiments'], ['meetings', 'Meetings'], ['sheet', 'Sheet history']];
 const EXP_METRICS = [['impressions', 'Impressions'], ['sent', 'Messages sent'], ['comments', 'Comments'], ['reactions', 'Reactions'], ['saves', 'Saves'], ['sends', 'Sends (shares)'], ['replies', 'Replies'], ['dms', 'Inbound DMs'], ['meetings', 'Meetings']];
 const VARIABLES = [...Object.values(DIMENSIONS).map(d => d.label), 'Account', 'Boost', 'Other'];
-let insightMetric = 'engagement';
 
 const isTagged = p => ['hook', 'creative', 'cta', 'length', 'topic'].some(k => p.tags[k]) || (p.tags.format && !p.autoFormat);
 const accountNames = () => store.accounts.map(a => a.owner_name).filter(Boolean);
@@ -27,13 +26,14 @@ function migrationBanner() {
 }
 
 export function renderGrowth(root, tab = 'posts') {
+  if (tab === 'insights') tab = 'playbook';   // Insights merged into Playbook (14 Oct 2026)
   if (!TABS.some(t => t[0] === tab)) tab = 'posts';
   root.innerHTML = `<div class="head"><div><h1>Growth</h1><p>LinkedIn content, experiments and what they turn into.</p></div><div class="row" style="gap:16px">${scraperStatus()}${sheetStatus()}</div></div>
     ${migrationBanner()}
     <nav class="tabs">${TABS.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</nav><div id="gBody"></div>`;
   $$('[data-tab]', root).forEach(b => b.onclick = () => { location.hash = `#/growth/${b.dataset.tab}`; });
   const body = $('#gBody', root);
-  ({ scraper: scraperView, posts: postsView, experiments: experimentsView, insights: insightsView, playbook: playbookView, reply: replyView, dms: dmTestsView, outbound: outboundView, meetings: meetingsView, sheet: sheetView })[tab](body);
+  ({ scraper: scraperView, posts: postsView, experiments: experimentsView, playbook: b => playbookView(b, { editExperiment }), reply: replyView, dms: dmTestsView, outbound: outboundView, meetings: meetingsView, sheet: sheetView })[tab](body);
 }
 
 // ---------------- Posts ----------------
@@ -51,7 +51,7 @@ async function postsView(body) {
   await loadFormats().catch(() => {});
   const posts = store.posts, tagged = posts.filter(isTagged).length;
   const avg = posts.length ? posts.reduce((n, p) => n + METRIC_DEFS.engagement.get(p), 0) / posts.length : 0;
-  body.innerHTML = `<section class="card"><header><div><h2>Posts</h2><p>${posts.length} original posts, scraped automatically. Reshares count as boosts. Add tags so Insights can explain why posts worked.</p></div><div class="row"><select class="select sm" id="pAcct" style="width:auto"><option value="">All accounts</option>${opts(accountNames())}</select></div></header>
+  body.innerHTML = `<section class="card"><header><div><h2>Posts</h2><p>${posts.length} original posts, scraped automatically. Reshares count as boosts. Add tags so Playbook can explain why posts worked.</p></div><div class="row"><select class="select sm" id="pAcct" style="width:auto"><option value="">All accounts</option>${opts(accountNames())}</select></div></header>
   <div class="body flush scroll"><table class="tbl"><thead><tr><th>Creative</th><th>Post</th><th title="What went out (read from LinkedIn) and whether it matched the format planned for that slot">Format</th><th>Account</th><th>Date</th><th class="n" title="Comments from people outside the team. Our own accounts' comments are shown underneath.">Comments</th><th class="n">Reactions</th><th class="n">Reposts</th><th class="n">vs avg</th><th class="n">Meetings</th><th>Tags</th><th></th></tr></thead><tbody id="pRows"></tbody></table>${!posts.length ? '<div class="empty">No posts yet. They appear here as the LinkedIn sync picks them up.</div>' : ''}</div></section>`;
   const draw = () => {
     const f = $('#pAcct', body).value;
@@ -89,7 +89,7 @@ async function openSlides(id) {
   const tools = `<div class="gptBox">${rc ? `<div><b>Rebuild in GPT image</b><p class="s muted">Paste the whole JSON with "Render page 1 exactly as specified." For one page, copy its prompt. Paste real logos and faces in afterwards.</p></div>
       <div class="row" style="flex-wrap:wrap;gap:6px"><button type="button" class="btn sm primary" data-cp="all">Copy JSON for GPT image</button>${pages.map((pg, i) => pg.prompt ? `<button type="button" class="btn sm" data-cp="${i}">Copy page ${esc(pg.n || i + 1)} prompt</button>` : '').join('')}${bd ? '<button type="button" class="btn sm ghost" data-cp="bd">Copy breakdown</button>' : ''}</div>
       ${rc.gpt_image_pitfalls?.length ? `<p class="s" style="margin:8px 0 0"><b>⚠ Watch for:</b> ${esc(rc.gpt_image_pitfalls.join(' · '))}</p>` : ''}`
-    : `<div><b>No GPT image JSON yet</b><p class="s muted">Claude writes it for every image and document post in the weekly analysis (Mondays, or Growth → Insights → Run analysis now).</p></div>`}</div>`;
+    : `<div><b>No GPT image JSON yet</b><p class="s muted">Claude writes it for every image and document post in the weekly analysis (Mondays, or Growth → Playbook → Run Claude's analysis).</p></div>`}</div>`;
   const parts = bd ? `<details class="bdBox"><summary>What it's made of</summary><dl>${[['Cover promise', bd.cover?.promise], ['Number on cover', bd.cover?.has_number == null ? null : bd.cover.has_number ? 'yes' : 'no'], ['Cover subject', bd.cover?.subject], ['Text on cover', bd.cover?.text_density], ['Structure', bd.structure], ['Pages', Array.isArray(bd.pages) ? bd.pages.length : null], ['Hook type', bd.copy?.hook_type], ['CTA', bd.copy?.cta], ['Ask size', bd.copy?.ask_size], ['Reading grade', bd.copy?.reading_grade], ['Angle', bd.copy?.angle]].filter(([, v]) => v != null && v !== '').map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(String(v).replace(/_/g, ' '))}</dd>`).join('')}</dl>
       ${bd.why_it_might_work?.length ? `<p class="s"><b>▲ Might work:</b> ${esc(bd.why_it_might_work.join(' · '))}</p>` : ''}${bd.why_it_might_not?.length ? `<p class="s"><b>▼ Might not:</b> ${esc(bd.why_it_might_not.join(' · '))}</p>` : ''}</details>` : '';
   const { el } = modal({ title: raw.post_name || 'Creative', wide: true, submit: '', body: `${head}${tools}${parts}
@@ -161,7 +161,7 @@ async function experimentsView(body) {
       ${e.learning ? `<div class="body s" style="border-top:1px solid var(--line)"><span class="muted">Learning:</span> ${esc(e.learning)}</div>` : ''}</article>`;
   };
   body.innerHTML = `<div class="row" style="margin-bottom:16px"><div class="grow s muted">${running.length} running · ${done.length} complete. Change one variable at a time. Log impressions so results can be called with confidence.</div><button class="btn" id="newFmtTest" title="Book the next posting slots of two accounts in two formats; the scraper checks each one went out in that format">New format test</button><button class="btn primary" id="newExp">New experiment</button></div>
-    <div class="stack">${running.map(card).join('')}${done.length ? `<h3 class="s muted" style="margin:8px 0 -8px;font-weight:500">Completed</h3>${done.map(card).join('')}` : ''}${!ex.length ? '<div class="card"><div class="empty">No experiments yet. Start one, or pick a suggestion from Insights.</div></div>' : ''}</div>`;
+    <div class="stack">${running.map(card).join('')}${done.length ? `<h3 class="s muted" style="margin:8px 0 -8px;font-weight:500">Completed</h3>${done.map(card).join('')}` : ''}${!ex.length ? '<div class="card"><div class="empty">No experiments yet. Start one, or book the one in Playbook → Do this week.</div></div>' : ''}</div>`;
   $('#newExp', body).onclick = () => editExperiment();
   $('#newFmtTest', body).onclick = () => editFormatTest();
   bindFormatTests(body);
@@ -237,60 +237,6 @@ function enterResults(id) {
       if (fail(await saveExperiment(id, row), 'Save results')) return false;
       toast('Results saved'); await load();
     } });
-}
-
-// ---------------- Insights ----------------
-// Weekly Claude analysis: latest report + run status. Runs Mondays 10:05 AM, or now from here (admins).
-async function reportCard(el) {
-  const [r, j] = await Promise.all([
-    sb.from('growth_reports').select('*').order('created_at', { ascending: false }).limit(1),
-    sb.from('resource_jobs').select('id,status,progress,error,created_at,session_url').eq('kind', 'analysis').order('created_at', { ascending: false }).limit(1),
-  ]);
-  if (!el.isConnected) return;
-  const rep = r.data?.[0], job = j.data?.[0], live = job && ['queued', 'building'].includes(job.status);
-  const conf = c => `<span class="tag ${/solid/.test(c) ? 'good' : /early/.test(c) ? 'warn' : ''}">${esc(c || 'anecdotal')}</span>`;
-  const mdList = t => esc(t || '').split(/\n+/).map(l => l.replace(/^\s*[-*]\s*/, '')).filter(Boolean).map(l => `<li>${l.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')}</li>`).join('');
-  el.innerHTML = `<header><div><h2>Weekly analysis by Claude</h2><p>${rep ? `Week of ${fmtDate(rep.week_start)} · reads every creative and caption, compares each post with the same account's past posts` : 'Runs every Monday at 10 AM on your Claude subscription. It tags every creative and caption, compares each post with the same account\'s past posts, and suggests the next tests.'}</p></div>
-      <div class="row s" style="gap:10px">${live ? `<span class="tag warn">Running · ${esc(job.progress || 'starting')}</span>` : job?.status === 'failed' ? `<span class="tag bad" title="${esc(job.error || '')}">Last run failed</span>` : ''}${job?.session_url ? `<a class="muted" href="${esc(job.session_url)}" target="_blank" rel="noopener">Claude's session ↗</a>` : ''}${state.role === 'admin' ? `<button class="btn sm" id="runAnalysis" ${live ? 'disabled' : ''}>Run analysis now</button>` : ''}</div></header>
-    ${rep ? `<div class="body"><ul class="report">${mdList(rep.summary)}</ul></div>
-      ${(rep.findings || []).length ? `<div class="body flush">${rep.findings.map(f => `<div class="insight"><h4>${esc(f.title)} ${conf(f.confidence)} ${f.group ? `<span class="tag">${esc(f.group)}</span>` : ''}</h4><p>${esc(f.detail || '')}</p>${f.evidence ? `<p class="s muted">${esc(f.evidence)}</p>` : ''}</div>`).join('')}</div>` : ''}
-      ${(rep.next_tests || []).length ? `<div class="body"><b class="s">Run next</b><ul class="report">${rep.next_tests.map(t => `<li><b>${esc(t.title)}</b>${t.account ? ` · ${esc(t.account)}` : ''}: A = ${esc(t.a || '')}, B = ${esc(t.b || '')}. <span class="muted">${esc(t.why || '')}</span></li>`).join('')}</ul></div>` : ''}`
-      : `<div class="empty">No report yet. ${state.role === 'admin' ? 'Run it now, or wait for Monday.' : 'The first one lands on Monday.'}</div>`}`;
-  $('#runAnalysis', el)?.addEventListener('click', async e => {
-    e.target.disabled = true; e.target.textContent = 'Starting…';
-    const { data, error } = await sb.functions.invoke('resource-request', { body: { action: 'analysis' } });
-    let msg = data?.error; if (error) { try { msg = (await error.context?.json?.())?.error; } catch { } msg = msg || error.message; }
-    toast(msg || 'Claude is analysing. The report shows up here in about 10–20 minutes.'); reportCard(el);
-  });
-}
-
-function insightsView(body) {
-  const posts = store.posts, tagged = posts.filter(isTagged).length;
-  const md = METRIC_DEFS[insightMetric], fmtV = v => v == null ? '—' : md.rate ? (v * 100).toFixed(2) + '%' : (Math.round(v * 10) / 10).toLocaleString();
-  const sugg = suggestTests(posts, store.experiments, insightMetric);
-  const dims = Object.entries(DIMENSIONS).map(([k, d]) => ({ k, d, rows: breakdown(posts, k, insightMetric) })).filter(x => x.rows.length);
-  const same = sameCreative(posts, insightMetric), boost = boostEffect(posts, insightMetric), accts = accountBreakdown(posts, insightMetric), cnm = commentsNoMeetings(posts);
-  const liftTag = l => l == null ? '' : `<span class="tag ${l >= 0.15 ? 'good' : l <= -0.15 ? 'bad' : ''}">${l >= 0 ? '+' : ''}${Math.round(l * 100)}%</span>`;
-  const maxOf = rows => Math.max(1e-9, ...rows.map(r => r.median || 0));
-
-  body.innerHTML = `<div class="row" style="margin-bottom:16px"><div class="grow s muted">Format, post time and boosts (reshares) are detected automatically. ${tagged} of ${posts.length} posts have creative and caption tags (${posts.filter(p => p.aiTagged).length} tagged by Claude). Findings on fewer than 4 posts are marked anecdotal: treat them as hypotheses to test.</div>
-    <label class="row s">Measure by <select class="select sm" id="iMetric" style="width:auto">${opts(Object.entries(METRIC_DEFS).map(([k, d]) => [k, d.label]), insightMetric)}</select></label></div>
-  <div class="stack">
-    <section class="card" id="iReport"><div class="empty">Loading the weekly analysis…</div></section>
-    <section class="card"><header><div><h2>Suggested A/B tests</h2><p>Ranked by how much each could teach you, based on the gaps in your data.</p></div></header>
-      <div class="body flush">${sugg.length ? sugg.map((s, i) => `<div class="insight"><h4>${esc(s.title)} <span class="tag ${s.confidence === 'solid' ? 'good' : s.confidence === 'early' ? 'warn' : ''}">${confidenceLabel[s.confidence]}</span></h4><p>${esc(s.why)}</p><p class="muted">${esc(s.how)}</p><div><button class="btn sm" data-sugg="${i}">Start this test</button></div></div>`).join('') : '<div class="empty">Tag at least a handful of posts (format, hook, creative, CTA, boosts) and suggestions will appear here.</div>'}</div></section>
-${Object.entries(GROUPS).map(([g, gl]) => { const ds = dims.filter(x => x.d.group === g); return ds.length ? `<h3 class="grpH">${gl} factors</h3><div class="cols">${ds.map(({ k, d, rows }) => `<section class="card"><header><div><h2>${d.label}</h2><p>Median ${md.label.toLowerCase()} per post</p></div></header><div class="body flush"><table class="tbl"><tbody>${rows.map(r => `<tr><td>${esc(r.value)}<div class="s muted">${r.n} post${r.n === 1 ? '' : 's'}</div></td><td style="width:34%"><div class="bar"><i style="width:${(r.median || 0) / maxOf(rows) * 100}%"></i></div></td><td class="n strong">${fmtV(r.median)}</td><td class="n">${liftTag(r.lift)}</td></tr>`).join('')}</tbody></table></div></section>`).join('')}</div>` : ''; }).join('')}
-    <h3 class="grpH">Accounts, boosts and conversion</h3>
-    <div class="cols">
-      <section class="card"><header><div><h2>Accounts</h2><p>Median ${md.label.toLowerCase()} per post</p></div></header><div class="body flush">${accts.length ? `<table class="tbl"><tbody>${accts.map(r => `<tr><td>${esc(r.account)}<div class="s muted">${r.n} posts</div></td><td style="width:34%"><div class="bar"><i style="width:${(r.median || 0) / maxOf(accts) * 100}%"></i></div></td><td class="n strong">${fmtV(r.median)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No posts yet.</div>'}</div></section>
-      <section class="card"><header><div><h2>Boost effect</h2><p>Posts with vs without an early boost from each account</p></div></header><div class="body flush">${boost.length ? `<table class="tbl"><thead><tr><th>Booster</th><th class="n">With</th><th class="n">Without</th><th class="n">Lift</th></tr></thead><tbody>${boost.map(b => `<tr><td>${esc(b.booster)}<div class="s muted">${b.nWith} vs ${b.nWithout} posts</div></td><td class="n strong">${fmtV(b.medWith)}</td><td class="n">${fmtV(b.medWithout)}</td><td class="n">${liftTag(b.lift)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Tick “Boosted by” when tagging posts to measure this.</div>'}</div></section>
-      <section class="card"><header><div><h2>Same creative, different account</h2><p>Isolates the audience effect from the creative</p></div></header><div class="body flush">${same.length ? same.map(g => `<div class="insight"><h4>${esc(g.group)}</h4>${g.posts.map(p => `<p class="row"><span class="grow">${esc(p.account)}${p.boostedBy.length ? ` <span class="s muted">· boosted by ${esc(p.boostedBy.join(', '))}</span>` : ''}</span><b>${fmtV(p.value)}</b></p>`).join('')}</div>`).join('') : '<div class="empty">Give posts the same Creative ID when the same creative + copy runs on more than one account.</div>'}</div></section>
-      <section class="card"><header><div><h2>Comments, no meetings</h2><p>Loud posts that didn't convert</p></div></header><div class="body flush">${cnm.length ? `<table class="tbl"><tbody>${cnm.slice(0, 8).map(p => `<tr><td>${esc(p.name)}<div class="s muted">${esc(p.account)} · ${esc(p.tags.cta ? 'CTA: ' + p.tags.cta : 'CTA not tagged')}</div></td><td class="n strong">${fmt(p.m.comments)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Log meetings in the Meetings tab and pick the post they came from. Then this shows which loud posts didn\'t convert.</div>'}</div></section>
-    </div>
-  </div>`;
-  $('#iMetric', body).onchange = e => { insightMetric = e.target.value; insightsView(body); };
-  reportCard($('#iReport', body));
-  $$('[data-sugg]', body).forEach(b => b.onclick = () => { const s = sugg[+b.dataset.sugg]; editExperiment(null, { name: s.title.replace(/[“”]/g, '"'), variable: VARIABLES.includes(s.dim) ? s.dim : 'Other', hypothesis: s.why, primary_metric: insightMetric === 'meetings' ? 'meetings' : 'comments' }); });
 }
 
 // ---------------- Meetings ----------------

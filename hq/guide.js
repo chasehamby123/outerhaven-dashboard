@@ -66,8 +66,10 @@ export async function renderGuide(root, sub) {
 
   <section class="card gSec" id="g-learn"><header><div><h2>6. Finding what works</h2><p>Everyone who plans content.</p></div>${go('#/growth/playbook', 'Playbook')}</header><div class="body"><ol class="gSteps">
     ${step(1, 'Every post is split into elements.', 'The format (measured), the caption counts (length, hook words, emojis, list lines… counted automatically), and Claude\'s breakdown of the creative and copy (cover promise, number on the cover, face, text on cover, page count, structure, hook type, reading grade, CTA size…) every Monday.')}
-    ${step(2, 'Growth → Playbook → Elements, ranked.', '▲ goes with better posts, ▼ with worse ones, each against the account\'s usual post. n = how many posts have it. Under 4 = anecdote.')}
-    ${step(3, 'Turn the strongest ▲ into a test.', 'Elements travel together (long captions often have lists too). A test that changes only that one element is the proof.')}
+    ${step(2, 'Growth → Playbook → Do this week.', '▲ Keep doing and ▼ Stop doing = the strongest element on each side across 4+ posts, each post against its own account\'s usual post. ? Test next = Claude\'s weekly suggestion; Book this test sets it up.')}
+    ${step(3, 'Archetypes = the recipe a post copies.', 'Fake doc viewer, contents cover, framework diagram… Each card shows how ours did and what we saved from others. "Not tried yet" with a strong saved example is the next format to try.')}
+    ${step(4, 'Swipe file: save posts that worked for others.', 'Break down a post → drop the phone screenshots, paste the caption, type the followers and comments. Claude names the archetype, says why it works and writes the GPT image prompt (a few minutes). Open → Copy GPT image prompt.')}
+    ${step(5, 'Evidence (folded) is the full list.', 'Every element ranked, plus our best and worst posts. Correlation, not proof: turn the strongest into a test that changes one thing.')}
   </ol></div></section>
 
   <section class="card gSec" id="g-gpt"><header><div><h2>7. Rebuilding a post in GPT image</h2><p>When a post worked and you want another like it.</p></div>${go('#/growth/posts', 'Posts')}</header><div class="body"><ol class="gSteps">
@@ -75,7 +77,7 @@ export async function renderGuide(root, sub) {
     ${step(2, 'Copy JSON for GPT image (whole post) or Copy page N prompt (one page).', 'The JSON is the literal copy: canvas size, colours (hex), fonts, every text block word for word with its position, images, shapes, and a ready prompt per page.')}
     ${step(3, 'Paste into ChatGPT.', 'With the JSON: <code>Render page 1 exactly as specified in this JSON.</code> Change the text in the JSON first if you want a new version. Then page 2, and so on.')}
     ${step(4, 'Touch up only what it lists under ⚠ Watch for.', 'Usually: paste the real logo or face back in, and check long or small text.')}
-  </ol><p class="s muted">The JSON is written by the Monday analysis (or Growth → Insights → Run analysis now). New posts get it the Monday after.</p></div></section>
+  </ol><p class="s muted">The JSON is written by the Monday analysis (or Growth → Playbook → Run Claude's analysis). New posts get it the Monday after.</p></div></section>
 
   <section class="card gSec" id="g-fix"><header><div><h2>8. When something looks wrong</h2></div></header><div class="body"><dl class="gFaq">
     <dt>${sym('mismatch')} but I posted it right</dt><dd>Check how it was uploaded: slides added as images become Multi-image, not a document. A 16:9 deck counts as Presentation, a 4:5 one as PDF carousel.</dd>

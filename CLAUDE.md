@@ -500,6 +500,16 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   (measured); archetype = what the creative pretends to be (`fake_doc_viewer` = one image dressed as an open PDF with a contents page and a
   "Comment WORD" button; first seen on Felizitas Grein Groth's ROOM post, ~1K followers, 279 comments). List in the skill; ranked as the
   "Archetype" element in Playbook. Never add an archetype as a post_formats row: formats must be tellable apart by the scraper.
+- **Playbook rebuilt + swipe file (14 Oct 2026; Tengku: Insights "too messy, can't derive anything", Playbook "useless metrics")**:
+  Insights tab removed (`#/growth/insights` opens Playbook; its raw-median factor cards contradicted the account-normalised numbers).
+  `hq/playbook.js` = one decision page: Do this week (▲ Keep / ▼ Stop = strongest element each side with 4+ posts, "No" values skipped;
+  ? Test next = `growth_reports.next_tests[0]`, Book this test → `editExperiment`), Archetypes (ours from `breakdown.archetype` vs saved),
+  Swipe file, Evidence folded (elements ranked + best/worst posts). Score-a-draft, recipe and the factor table were dropped.
+  Swipe file (`hq/swipe.js`, `supabase/2026-10-14-swipe-file.sql`): `swipe_posts` + private bucket `swipe`; "Break down a post" uploads
+  screenshots + caption + numbers, then resource-request action `breakdown` (admin; counts toward the daily Claude cap) fires the routine →
+  `routines/breakdown.md` (skill redirect) writes `breakdown` / `recreate` / `archetype` / status. HQ polls every 20 s while queued.
+  `ARCHETYPES` in swipe.js mirrors the skill list. The ROOM post is seeded (no screenshot: the sandbox can't upload to storage).
+  Weekly analysis re-does our breakdowns without an archetype (v1). Only 8 of 51 own posts had a breakdown on 14 Oct.
 - **Elements, ranked** (Growth → Playbook; `elementsOf()` / `elementEffects()` in scoring.js, tested in `node hq/scoring-test.mjs`): flattens
   measured format + `text_features` (bucketed) + `breakdown` into element values and scores each like a factor (lift vs own account,
   shrunk K=3). ▲/▼ symbols carry direction.

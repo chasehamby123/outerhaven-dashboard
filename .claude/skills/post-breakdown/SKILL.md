@@ -122,6 +122,8 @@ hooks. Pick the closest one:
 Rules:
 - `pages` only for multi-image and document posts (one entry per page you saw). Single image: leave `pages: []` and
   describe it in `cover`.
+- `why_it_might_work` / `why_it_might_not` / `notes` are shown to the team as written: plain English, no JSON key names
+  ("One-word ask on a button at the bottom", not "copy.ask_size tiny").
 - `reading_grade`: rough US grade level of the caption (short words and sentences = low). Our target is ≤ 7.
 - `hook` is copied, never rewritten. `headline` is copied from the image, never rewritten.
 - `ask_size`: tiny = one word in a comment; small = a DM or a question; large = book a call, buy, sign up.

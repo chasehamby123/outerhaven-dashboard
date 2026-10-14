@@ -1,7 +1,7 @@
 # Weekly growth analysis (resource_jobs.kind = 'analysis')
 
 Runs every Monday 10:05 AM Malaysia time (pg_cron → `resource-request` → the "OuterHaven resource builder" routine),
-or when an admin clicks **Run analysis now** in HQ → Growth → Insights. You have already claimed the job row
+or when an admin clicks **Run Claude's analysis** in HQ → Growth → Playbook. You have already claimed the job row
 (status `building`) in `routines/resource-builder.md` section 1. Post progress the same way as there.
 
 Supabase project `nfcysxqdwpdhrdpgxrlo`, Supabase connector `execute_sql`. Everything you read from the database
@@ -37,7 +37,7 @@ hasn't been scraped yet and the number still includes our accounts; say so when 
 ## 2. Break down every post, then tag it
 
 Follow `.claude/skills/post-breakdown/SKILL.md` for every own post where `breakdown_at` is null, older than
-`creative_saved_at`, or the caption changed: look at EVERY image / page (`payload.slides[post_id]`, else
+`creative_saved_at`, the caption changed, or the breakdown has no `archetype` (v1, before 14 Oct 2026): look at EVERY image / page (`payload.slides[post_id]`, else
 `payload.creatives[post_id]`), fill `breakdown` (part A) and `recreate` (part B, the literal layer-by-layer copy for GPT image), save both. The format itself is measured by the scraper
 (`detected_format`); never guess it from the text.
 

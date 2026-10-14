@@ -155,6 +155,31 @@ Deno.serve(async (req) => {
     return json(await fireAndRecord(ins.id));
   }
 
+  // Swipe file breakdown (14 Oct 2026): someone else's post, saved in Growth → Playbook. Same routine; the skill hands it to
+  // routines/breakdown.md, which writes breakdown / recreate / archetype onto the swipe_posts row.
+  if (body.action === "breakdown") {
+    if (who.role !== "admin") return json({ ok: false, error: "Only admins can break down posts." }, 403);
+    const { data: sw } = await sb.from("swipe_posts").select("*").eq("id", text(body.swipe_id, 64)).maybeSingle();
+    if (!sw) return json({ ok: false, error: "Saved post not found." }, 404);
+    const paths = (Array.isArray(sw.image_paths) ? sw.image_paths : []).filter((p: unknown) => typeof p === "string");
+    if (!paths.length && !sw.caption) return json({ ok: false, error: "Add a screenshot or the caption first." }, 400);
+    if (!(await underCap())) return json({ ok: false, error: `Today's limit of ${cap} Claude jobs is reached. An admin can raise it in Resources → Settings.` }, 429);
+    // The routine can't read the private bucket: week-long signed links, in order.
+    const signed = paths.length ? ((await sb.storage.from("swipe").createSignedUrls(paths, 7 * 86400)).data || []).map((x: any) => x.signedUrl).filter(Boolean) : [];
+    const row = {
+      created_by: who.id, requested_by: who.email, kind: "resource", format: "other", poster: "Tengku Harris",
+      topic: `Breakdown: ${sw.author || "saved post"}`, caption: sw.caption || "", fired_at: new Date().toISOString(),
+      payload: { type: "breakdown", swipe_id: sw.id, images: signed, author: sw.author, author_followers: sw.author_followers,
+        reactions: sw.reactions, comments: sw.comments, reposts: sw.reposts, hours_live: sw.hours_live, url: sw.url, note: sw.note },
+    };
+    const { data: ins, error: e3 } = await sb.from("resource_jobs").insert(row).select("id").single();
+    if (e3) return json({ ok: false, error: e3.message }, 500);
+    await sb.from("swipe_posts").update({ status: "queued", job_id: ins.id, error: null }).eq("id", sw.id);
+    const r = await fireAndRecord(ins.id);
+    if (!r.ok) await sb.from("swipe_posts").update({ status: "failed", error: r.error }).eq("id", sw.id);
+    return json(r);
+  }
+
   if (body.action !== "create") return json({ ok: false, error: "unknown action" }, 400);
   const j = body.job || {};
   const job: Record<string, unknown> = {

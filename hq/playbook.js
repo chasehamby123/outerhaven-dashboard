@@ -1,107 +1,104 @@
-// Growth → Playbook: which creative / caption factors move results, a predictor for the next draft, and a library of
-// winners and flops with the reason each one worked. Engine and method: hq/scoring.js (read its header first).
-import { esc, fmt, fmtDate, opts, modal, $, $$, acctName } from './core.js';
+// Growth → Playbook (rebuilt 14 Oct 2026; Tengku: Insights "too messy", Playbook "doesn't tell me what to do").
+// One page, top to bottom: what to do this week → archetypes (ours + saved) → swipe file → the evidence, folded.
+// Every number is each post vs ITS OWN account's usual post (hq/scoring.js), so Sara's big audience can't crown a factor.
+import { sb, esc, fmt, fmtDate, $, $$, acctName, state } from './core.js';
 import { store } from './data.js';
-import { DIMENSIONS, GROUPS, METRIC_DEFS } from './insights.js';
-import { scorePosts, factorEffects, explain, predict, recipe, CONF_TEXT, elementEffects, ELEMENT_GROUPS } from './scoring.js';
+import { scorePosts, elementEffects, CONF_TEXT, ELEMENT_GROUPS } from './scoring.js';
+import { ARCHETYPES, archLabel, loadSwipe, swipeRows, swipeTable, bindSwipe, addSwipeModal, per1k } from './swipe.js';
 
-const view = { egroup: '', metric: 'engagement', group: '', showWeak: false, outcome: 'winner', account: '', draft: {} };
-const OUT = { converted: ['Booked a meeting', 'good'], winner: ['Winner', 'good'], typical: ['Typical', ''], flop: ['Flop', 'bad'], too_early: ['Too early', 'warn'] };
+const view = { arch: '', egroup: '', libOut: 'best' };
 const signed = x => (x >= 0 ? '+' : '') + Math.round(x * 100) + '%';
-const conf = c => `<span class="tag ${c === 'solid' ? 'good' : c === 'early' ? 'warn' : ''}" title="${esc(CONF_TEXT[c])}">${c === 'solid' ? 'Solid' : c === 'early' ? 'Early' : 'Anecdote'}</span>`;
+const confWord = c => c === 'solid' ? 'solid' : c === 'early' ? 'early signal' : 'anecdote';
+let report = null, editExperiment = null;
 
-function bar(effect) {
-  const w = Math.min(50, Math.abs(effect) / 0.6 * 50); // 0.6 = about +82%: full half-bar
-  return `<span class="pbBar" aria-hidden="true"><i class="${effect >= 0 ? 'up' : 'down'}" style="width:${w.toFixed(0)}%;${effect >= 0 ? 'left:50%' : 'right:50%'}"></i></span>`;
+// Keep / stop: the strongest element on each side with 4+ posts. "No" values are skipped: their "Yes" twin says it better.
+function decisions(scored) {
+  const fx = elementEffects(scored).filter(e => e.n >= 4 && e.value !== 'No' && e.label !== 'Format');
+  return { keep: fx.filter(e => e.effect > 0.05).slice(0, 2), stop: fx.filter(e => e.effect < -0.05).sort((a, b) => a.effect - b.effect).slice(0, 2) };
 }
 
-function factorChip(e) {
-  return `<span class="pbF ${e.effect >= 0 ? 'up' : 'down'}" title="${esc(e.dimLabel)}: ${esc(e.value)} · ${e.n} posts · ${esc(CONF_TEXT[e.confidence])}">${esc(e.value)} <b>${signed(e.lift)}</b><small>n=${e.n}</small></span>`;
-}
-
-export function playbookView(body) {
+export function playbookView(body, deps = {}) {
+  editExperiment = deps.editExperiment || editExperiment;
   const draw = () => {
-    const posts = store.posts, scored = scorePosts(posts, view.metric), fx = factorEffects(scored);
-    const tagged = posts.filter(p => Object.keys(DIMENSIONS).some(d => p.tags[d] && d !== 'format' && d !== 'timeslot')).length;
-    const meetings = posts.reduce((n, p) => n + (p.meetings || 0), 0);
-    const accounts = [...new Set(scored.map(s => s.account))].sort();
-    const rec = recipe(fx, 2);
+    const posts = store.posts, scored = scorePosts(posts, 'engagement'), sw = swipeRows();
+    const broken = posts.filter(p => p.breakdown).length, meetings = posts.reduce((n, p) => n + (p.meetings || 0), 0);
+    const { keep, stop } = decisions(scored);
+    const test = report?.next_tests?.[0];
+    const eff = e => `${signed(e.lift)} vs the account's usual post · ${e.n} posts · ${confWord(e.confidence)}`;
+    const dcard = (sym, word, cls, list, empty) => `<div class="pdCol ${cls}"><h3><span aria-hidden="true">${sym}</span> ${word}</h3>${list.length ? list.map(e => `<p><b>${esc(e.label)}: ${esc(e.value)}</b><span class="s muted">${esc(eff(e))}</span></p>`).join('') : `<p class="s muted">${empty}</p>`}</div>`;
 
-    const shown = fx.filter(e => (!view.group || e.group === view.group) && (view.showWeak || e.n >= 2));
-    const table = shown.length ? `<table class="tbl"><thead><tr><th>Factor</th><th>Value</th><th class="n">Posts</th><th class="n">Effect on ${esc(METRIC_DEFS[view.metric].label.toLowerCase())}</th><th></th><th>Confidence</th></tr></thead><tbody>${shown.map(e => `<tr><td class="muted">${esc(e.dimLabel)}</td><td><b>${esc(e.value)}</b></td><td class="n">${e.n}</td><td class="n ${e.effect >= 0 ? 'up' : 'down'}" title="Shrunk toward zero because of small samples. Raw average: ${signed(e.raw)}"><b>${signed(e.lift)}</b></td><td>${bar(e.effect)}</td><td>${conf(e.confidence)}</td></tr>`).join('')}</tbody></table>`
-      : '<div class="empty">Nothing to show yet. Tag posts (Posts → Tag) or run Claude\'s weekly analysis so factors exist to compare.</div>';
-
-    const sel = Object.entries(DIMENSIONS).map(([d, def]) => `<label class="field">${esc(def.label)}<select class="select sm" data-d="${d}"><option value="">—</option>${opts(def.values, view.draft[d])}</select></label>`).join('');
-    const chosen = Object.fromEntries(Object.entries(view.draft).filter(([, v]) => v));
-    const pred = Object.keys(chosen).length ? predict(chosen, fx) : null;
-
-    const lib = scored.filter(s => (view.outcome === 'all' || (view.outcome === 'winner' ? ['winner', 'converted'].includes(s.outcome) : s.outcome === view.outcome)) && (!view.account || s.account === view.account))
-      .sort((a, b) => view.outcome === 'flop' ? a.lift - b.lift : b.lift - a.lift).slice(0, 40);
+    // Archetypes: our posts (Claude's breakdown) and saved posts side by side, so an untried recipe with proof stands out.
+    const ours = {}; for (const s of scored) { const a = s.post.breakdown?.archetype; if (a) (ours[a] ||= []).push(s); }
+    const saved = {}; for (const s of sw) if (s.archetype) (saved[s.archetype] ||= []).push(s);
+    const keys = Object.keys(ARCHETYPES).filter(k => ours[k] || saved[k]);
+    const archCard = k => {
+      const o = ours[k] || [], v = saved[k] || [], lift = o.length ? Math.exp(o.reduce((t, s) => t + s.logLift, 0) / o.length) : null;
+      const best = v.filter(s => per1k(s) != null).sort((a, b) => per1k(b) - per1k(a))[0];
+      return `<button type="button" class="paCard ${view.arch === k ? 'on' : ''}" data-arch="${k}">
+        <b>${esc(archLabel(k))}</b><span class="s muted">${esc(ARCHETYPES[k][1])}</span>
+        <span class="paStat">${o.length ? `<span><em>Ours</em> ${o.length} post${o.length === 1 ? '' : 's'} · ${lift >= 1 ? '▲' : '▼'} ${lift.toFixed(1)}× usual</span>` : '<span><em>Ours</em> not tried yet</span>'}
+        ${v.length ? `<span><em>Saved</em> ${v.length}${best ? ` · best ${Math.round(per1k(best))} comments per 1K followers` : ''}</span>` : ''}</span></button>`;
+    };
+    const list = view.arch ? sw.filter(s => s.archetype === view.arch) : sw;
 
     body.innerHTML = `
-    <section class="card pbNote"><div class="body s"><b>Read this as a direction, not a verdict.</b> ${posts.length} original posts, ${tagged} with creative or caption tags, ${meetings} meeting${meetings === 1 ? '' : 's'} linked to a post. Each post is compared with <i>its own account's</i> median (Sara's posts get 4–10× the engagement of the others, so raw numbers would crown whatever Sara posted). Effects are pulled toward zero when the sample is small. Expect it to get sharp at roughly 100 tagged posts. ${meetings ? '' : '<b>Link meetings to the post that caused them</b> (Growth → Meetings) so "converted" can outrank "popular".'}</div></section>
+    <p class="s muted pbStatus">${posts.length} of our posts · ${broken} broken down by Claude · ${meetings} meeting${meetings === 1 ? '' : 's'} linked to a post. Each post is compared with its own account's usual post. Under 4 posts = anecdote.</p>
 
-    <section class="card"><header><div><h2>What moves results</h2><p>Average lift against the account's usual post, per factor. Needs 2+ posts to show.</p></div>
-      <div class="row"><select class="select sm" id="pbMetric" style="width:auto">${opts(Object.entries(METRIC_DEFS).filter(([k]) => k !== 'meetings').map(([k, v]) => [k, v.label]), view.metric)}</select>
-      <select class="select sm" id="pbGroup" style="width:auto"><option value="">All factors</option>${opts(Object.entries(GROUPS), view.group)}</select>
-      <label class="s muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="pbWeak" ${view.showWeak ? 'checked' : ''}> show single posts</label></div></header>
-      <div class="body flush scroll">${table}</div></section>
+    <section class="card"><header><div><h2>Do this week</h2><p>${report ? `From the posts so far and Claude's analysis of ${fmtDate(report.week_start)}.` : 'From the posts so far.'}</p></div>
+      ${state.role === 'admin' ? `<button class="btn sm" id="pbRun">Run Claude's analysis</button>` : ''}</header>
+      <div class="body pdGrid">
+        ${dcard('▲', 'Keep doing', 'keep', keep, 'Nothing has helped across 4+ posts yet.')}
+        ${dcard('▼', 'Stop doing', 'stop', stop, 'Nothing has hurt across 4+ posts yet.')}
+        <div class="pdCol test"><h3><span aria-hidden="true">?</span> Test next</h3>${test ? `<p><b>${esc(test.title)}</b><span class="s muted">${esc([test.account, test.a && `A: ${test.a}`, test.b && `B: ${test.b}`].filter(Boolean).join(' · '))}</span>${test.why ? `<span class="s muted">${esc(test.why)}</span>` : ''}</p>${editExperiment ? '<button class="btn sm" id="pbBook">Book this test</button>' : ''}`
+          : keys.some(k => !ours[k] && saved[k]) ? `<p><b>Try a ${esc(archLabel(keys.find(k => !ours[k] && saved[k])))} post</b><span class="s muted">It works for others (see the swipe file) and we haven't posted one.</span></p>` : '<p class="s muted">Run Claude\'s analysis for a test suggestion.</p>'}</div>
+      </div>
+      ${report?.summary ? `<details class="pdMore"><summary class="s">Claude's full weekly note</summary><div class="body s">${esc(report.summary).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split(/\n+/).filter(Boolean).map(l => `<p>${l.replace(/^\s*[-*]\s*/, '')}</p>`).join('')}</div></details>` : ''}
+    </section>
 
-    ${elementsCard(scored)}
+    <section class="card"><header><div><h2>Archetypes</h2><p>The recipe a post copies (a fake PDF, a contents cover, a framework…), from Claude's breakdown. Click one to filter the swipe file.</p></div></header>
+      <div class="body">${keys.length ? `<div class="paGrid">${keys.map(archCard).join('')}</div>` : '<div class="empty">No archetypes yet. Break down a post below, or run Claude\'s analysis to tag ours.</div>'}</div></section>
 
-    <div class="pbTwo">
-    <section class="card"><header><div><h2>Score a draft</h2><p>Pick what the next post will be. Compared with the account's usual post.</p></div><button class="btn sm" id="pbClear" ${pred ? '' : 'disabled'}>Clear</button></header>
-      <div class="body"><div class="pbSel">${sel}</div>
-      <div class="pbPred" id="pbPred">${!pred ? '<span class="muted s">Choose a few factors to see the prediction.</span>' : `<div class="pbBig ${pred.multiplier >= 1 ? 'up' : 'down'}">${pred.multiplier.toFixed(2)}×</div><div><b>${pred.multiplier >= 1 ? 'Expected above' : 'Expected below'} this account's usual post</b><div class="s muted">${esc(CONF_TEXT[pred.confidence])} · weakest factor has ${pred.n} post${pred.n === 1 ? '' : 's'}. Assumes factors add up independently, which is only roughly true.</div></div>`}</div>
-      ${pred ? `<div class="pbWhy">${pred.factors.helps.length ? `<div><h4>Helps</h4>${pred.factors.helps.map(factorChip).join('')}</div>` : ''}${pred.factors.hurts.length ? `<div><h4>Hurts</h4>${pred.factors.hurts.map(factorChip).join('')}</div>` : ''}${pred.factors.neutral.length ? `<div><h4>No clear effect</h4>${pred.factors.neutral.map(e => `<span class="pbF">${esc(e.value)}<small>n=${e.n}</small></span>`).join('')}</div>` : ''}</div>` : ''}</div></section>
+    <section class="card"><header><div><h2>Swipe file</h2><p>Posts from other people worth copying. Drop the screenshots; Claude names the recipe, says why it works and writes the GPT image prompt.</p></div>
+      <div class="row">${view.arch ? `<button class="btn sm ghost" id="pbAll">Show all</button>` : ''}<button class="btn primary sm" id="pbAdd">Break down a post</button></div></header>
+      <div class="body flush scroll">${swipeTable(list)}</div></section>
 
-    <section class="card"><header><div><h2>The winning recipe</h2><p>Best-performing value of each factor (2+ posts, positive effect).</p></div></header>
-      <div class="body">${rec.length ? `<div class="pbWhy">${rec.map(e => `<div class="pbRec"><span class="muted s">${esc(e.dimLabel)}</span>${factorChip(e)}</div>`).join('')}</div><p class="s muted" style="margin:12px 0 0">Use the recipe as the brief for the next creative. Change one factor at a time to find out which one is doing the work (Post experiments).</p>` : '<div class="empty">No factor has a positive effect with 2+ posts yet.</div>'}</div></section>
-    </div>
+    <details class="card pbEvidence"><summary><h2>Evidence</h2><span class="s muted">Every element ranked, and our best and worst posts</span></summary>
+      ${elementsBlock(scored)}
+      ${libraryBlock(scored)}
+    </details>`;
 
-    <section class="card"><header><div><h2>Library</h2><p>Posts ranked against their own account. Click one to see why.</p></div>
-      <div class="row"><select class="select sm" id="pbOut" style="width:auto">${opts([['winner', 'Winners & meetings'], ['converted', 'Booked a meeting'], ['flop', 'Flops'], ['typical', 'Typical'], ['all', 'All']], view.outcome)}</select>
-      <select class="select sm" id="pbAcct" style="width:auto"><option value="">All accounts</option>${opts(accounts, view.account)}</select></div></header>
-      <div class="body flush scroll">${lib.length ? `<table class="tbl"><thead><tr><th>Post</th><th>Account</th><th>Date</th><th class="n">${esc(METRIC_DEFS[view.metric].label)}</th><th class="n">vs account median</th><th>Result</th><th>Factors</th></tr></thead><tbody>${lib.map(s => {
-        const o = OUT[s.outcome], tg = Object.keys(DIMENSIONS).map(d => s.post.tags[d]).filter(Boolean).slice(0, 5);
-        return `<tr class="pbRow" data-id="${esc(s.post.id)}" tabindex="0"><td style="max-width:260px"><b>${esc(s.post.name)}</b><div class="s muted pbCap">${esc(String(s.post.text || '').slice(0, 110))}</div></td><td style="white-space:nowrap">${acctName(s.account)}</td><td class="muted" style="white-space:nowrap">${fmtDate(s.post.date)}</td><td class="n">${fmt(s.value)}</td><td class="n ${s.lift >= 1 ? 'up' : 'down'}">${s.lift.toFixed(1)}×</td><td><span class="tag ${o[1]}">${o[0]}</span></td><td>${tg.length ? tg.map(t => `<span class="tag">${esc(t)}</span>`).join(' ') : '<span class="s muted">Untagged</span>'}</td></tr>`;
-      }).join('')}</tbody></table>` : '<div class="empty">No posts match.</div>'}</div></section>`;
-
-    $('#pbMetric', body).onchange = e => { view.metric = e.target.value; draw(); };
-    $('#pbGroup', body).onchange = e => { view.group = e.target.value; draw(); };
-    $('#pbWeak', body).onchange = e => { view.showWeak = e.target.checked; draw(); };
-    $('#pbOut', body).onchange = e => { view.outcome = e.target.value; draw(); };
-    $('#pbAcct', body).onchange = e => { view.account = e.target.value; draw(); };
-    $$('[data-eg]', body).forEach(b => b.onclick = () => { view.egroup = b.dataset.eg; draw(); });
-    $('#pbClear', body).onclick = () => { view.draft = {}; draw(); };
-    $$('[data-d]', body).forEach(s => s.onchange = () => { view.draft[s.dataset.d] = s.value; draw(); });
-    $$('.pbRow', body).forEach(r => { const open = () => detail(scored.find(s => String(s.post.id) === r.dataset.id), fx); r.onclick = open; r.onkeydown = e => { if (e.key === 'Enter') open(); }; });
+    $('#pbAdd', body).onclick = () => addSwipeModal(refresh);
+    $('#pbAll', body)?.addEventListener('click', () => { view.arch = ''; draw(); });
+    $$('[data-arch]', body).forEach(b => b.onclick = () => { view.arch = view.arch === b.dataset.arch ? '' : b.dataset.arch; draw(); });
+    $$('[data-eg]', body).forEach(b => b.onclick = e => { e.preventDefault(); view.egroup = b.dataset.eg; draw(); body.querySelector('.pbEvidence').open = true; });
+    $$('[data-lib]', body).forEach(b => b.onclick = e => { e.preventDefault(); view.libOut = b.dataset.lib; draw(); body.querySelector('.pbEvidence').open = true; });
+    $('#pbBook', body)?.addEventListener('click', () => editExperiment(null, { name: test.title, hypothesis: test.why || '', primary_metric: 'comments' }));
+    $('#pbRun', body)?.addEventListener('click', async e => {
+      e.target.disabled = true; e.target.textContent = 'Starting…';
+      const { data, error } = await sb.functions.invoke('resource-request', { body: { action: 'analysis' } });
+      let msg = data?.error; if (error) { try { msg = (await error.context?.json?.())?.error; } catch { } msg = msg || error.message; }
+      e.target.textContent = msg ? 'Run Claude\'s analysis' : 'Running (10–20 min)'; if (msg) e.target.disabled = false;
+      (await import('./core.js')).toast(msg || 'Claude is analysing. Results land here in 10–20 minutes.');
+    });
+    bindSwipe(body, draw);
   };
-  draw();
+  const refresh = async () => { await loadSwipe(); draw(); };
+  body.innerHTML = '<div class="empty">Loading…</div>';
+  Promise.all([loadSwipe(), sb.from('growth_reports').select('*').order('created_at', { ascending: false }).limit(1)]).then(([, r]) => { report = r.data?.[0] || null; if (body.isConnected) draw(); });
 }
 
-// Every element of the posts (format, cover, pages, caption parts from Claude's breakdown, caption counts from the scraper),
-// ranked by effect against each account's usual post. ▲ / ▼ carry the direction (never colour alone).
-function elementsCard(scored) {
+function elementsBlock(scored) {
   const all = elementEffects(scored).filter(e => e.n >= 2 && (!view.egroup || e.group === view.egroup));
-  const broken = scored.filter(s => s.post.breakdown).length;
-  const up = all.filter(e => e.effect > 0.02).slice(0, 12), down = all.filter(e => e.effect < -0.02).sort((a, b) => a.effect - b.effect).slice(0, 12);
-  const row = e => `<li title="${esc(CONF_TEXT[e.confidence])} · raw average ${signed(e.raw)} before shrinking"><b aria-hidden="true">${e.effect >= 0 ? '▲' : '▼'}</b><span><span class="muted">${esc(e.label)}:</span> ${esc(e.value)}</span><em>${signed(e.lift)}</em><small>n=${e.n}</small>${conf(e.confidence)}</li>`;
-  return `<section class="card"><header><div><h2>Elements, ranked</h2><p>Every part of a post scored against its account's usual post. ${broken} of ${scored.length} posts have Claude's creative breakdown (weekly analysis); caption counts and format cover every post. Two posts minimum.</p></div>
-    <div class="row pbEg"><button class="btn sm ${view.egroup ? 'ghost' : ''}" data-eg="">All</button>${Object.entries(ELEMENT_GROUPS).map(([k, l]) => `<button class="btn sm ${view.egroup === k ? '' : 'ghost'}" data-eg="${k}">${esc(l)}</button>`).join('')}</div></header>
-    <div class="body">${all.length ? `<div class="pbEls"><div><h4>Goes with better posts</h4><ul>${up.map(row).join('') || '<li class="muted">Nothing clearly positive yet</li>'}</ul></div><div><h4>Goes with worse posts</h4><ul>${down.map(row).join('') || '<li class="muted">Nothing clearly negative yet</li>'}</ul></div></div>
-      <p class="s muted" style="margin:12px 0 0">Correlation, not proof: elements travel together (a long caption often also has a list). Turn the strongest one into a format or creative test that changes only that element.</p>` : '<div class="empty">No elements with 2+ posts yet.</div>'}</div></section>`;
+  const up = all.filter(e => e.effect > 0.02).slice(0, 10), down = all.filter(e => e.effect < -0.02).sort((a, b) => a.effect - b.effect).slice(0, 10);
+  const row = e => `<li title="${esc(CONF_TEXT[e.confidence])}"><b aria-hidden="true">${e.effect >= 0 ? '▲' : '▼'}</b><span><span class="muted">${esc(e.label)}:</span> ${esc(e.value)}</span><em>${signed(e.lift)}</em><small>${e.n} posts</small></li>`;
+  return `<div class="body"><div class="row pbEg" style="margin-bottom:12px"><button class="btn sm ${view.egroup ? 'ghost' : ''}" data-eg="">All</button>${Object.entries(ELEMENT_GROUPS).map(([k, l]) => `<button class="btn sm ${view.egroup === k ? '' : 'ghost'}" data-eg="${k}">${esc(l)}</button>`).join('')}</div>
+    ${all.length ? `<div class="pbEls"><div><h4>Goes with better posts</h4><ul>${up.map(row).join('') || '<li class="muted">Nothing yet</li>'}</ul></div><div><h4>Goes with worse posts</h4><ul>${down.map(row).join('') || '<li class="muted">Nothing yet</li>'}</ul></div></div>
+    <p class="s muted" style="margin:12px 0 0">Correlation, not proof: elements travel together. Turn the strongest into a test that changes only that element.</p>` : '<div class="empty">No elements with 2+ posts yet.</div>'}</div>`;
 }
 
-function detail(s, fx) {
-  if (!s) return;
-  const ex = explain(s.post.tags, fx), o = OUT[s.outcome];
-  const sect = (t, list) => list.length ? `<h4>${t}</h4><div class="pbWhy">${list.map(factorChip).join('')}</div>` : '';
-  modal({
-    title: s.post.name, submit: null, wide: true,
-    body: `<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">${acctName(s.account)}<span class="tag ${o[1]}">${o[0]}</span><span class="tag">${fmt(s.value)} vs median ${fmt(s.base)} → ${s.lift.toFixed(1)}×</span>${s.post.meetings ? `<span class="tag good">${s.post.meetings} meeting${s.post.meetings === 1 ? '' : 's'}</span>` : ''}${s.post.url ? `<a href="${esc(s.post.url)}" target="_blank" rel="noopener" class="s">Open post ↗</a>` : ''}</div>
-    ${s.post.text ? `<blockquote class="pbQuote">${esc(String(s.post.text).slice(0, 700))}</blockquote>` : ''}
-    ${Object.values(s.post.tags).some(Boolean) ? `${sect('What probably helped', ex.helps)}${sect('What probably hurt', ex.hurts)}${sect('No clear effect so far', ex.neutral)}` : '<p class="s muted">This post has no tags yet, so there is nothing to explain. Tag it in Posts, or wait for the weekly Claude analysis.</p>'}
-    <p class="s muted" style="margin:14px 0 0">Factor numbers are the average effect across every post that shares the factor, not just this one. They suggest a reason; only a controlled test (Post experiments) proves it.</p>`,
-  });
+function libraryBlock(scored) {
+  const ok = scored.filter(s => s.outcome !== 'too_early');
+  const list = [...ok].sort((a, b) => view.libOut === 'worst' ? a.lift - b.lift : b.lift - a.lift).slice(0, 10);
+  return `<div class="body flush"><div class="row" style="padding:0 20px 10px;gap:6px"><b class="s grow">Our posts, ranked against their own account</b><button class="btn sm ${view.libOut === 'best' ? '' : 'ghost'}" data-lib="best">Best</button><button class="btn sm ${view.libOut === 'worst' ? '' : 'ghost'}" data-lib="worst">Worst</button></div>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Post</th><th>Account</th><th>Archetype</th><th class="n">vs usual</th></tr></thead><tbody>${list.map(s => `<tr><td style="max-width:320px">${s.post.url ? `<a href="${esc(s.post.url)}" target="_blank" rel="noopener">${esc(s.post.name)}</a>` : esc(s.post.name)}<div class="s muted">${fmtDate(s.post.date)} · ${fmt(s.value)} engagement</div></td><td style="white-space:nowrap">${acctName(s.account)}</td><td class="s">${s.post.breakdown?.archetype ? esc(archLabel(s.post.breakdown.archetype)) : '<span class="muted">—</span>'}</td><td class="n"><b>${s.lift >= 1 ? '▲' : '▼'} ${s.lift.toFixed(1)}×</b></td></tr>`).join('') || '<tr><td colspan="4" class="muted">No posts yet.</td></tr>'}</tbody></table></div></div>`;
 }
