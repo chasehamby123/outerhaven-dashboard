@@ -61,6 +61,7 @@ Use exactly these keys. Enum values are listed after the key; pick one. `null` w
     "palette": "brand | mono | colourful | dark",
     "branding": "logo | name_or_handle | both | none",
     "swipe_cue": false,
+    "layout": "title_top_visual_below | full_bleed_art_text_over | document_viewer | split_left_right | text_only | photo_with_caption | other",
     "looks_like": "slide_deck | report | document_viewer | infographic | tweet_screenshot | magazine | meme | photo | ad",
     "mobile_readable": "good | ok | poor"
   },
@@ -120,9 +121,16 @@ hooks. Pick the closest one:
   part (`copy.hook_type` = timely), not part of the recipe. (Remo Duzkale: Opus 5 post 104 reactions / 132 comments at 2 months;
   Fable 5 post 66 / 65 at 3 months.)
 - `contents_cover`: a real document / carousel whose cover is a numbered table of contents.
+- `screenshot_proof` (HQ: "Proof screenshot"): the visual IS the evidence: a real notification, DM, booked call or dashboard,
+  names blurred, the key lines boxed in red. Often under a "Tool + Tool" logo header and one big number headline
+  ("Claude + LinkedIn → 97+ Off-Market Mandates" over a "New Booked Deal in Motion" app alert). (Remo Duzkale, 65 reactions /
+  82 comments / 12 reposts at 3 months.)
+- `cover.layout` is the arrangement, separate from the recipe: the same Presentation slide can be `title_top_visual_below` (title block
+  on top, art in a panel under it: Remo's Opus 5) or `full_bleed_art_text_over` (art fills the frame, text sits over it near the middle:
+  his Fable 5).
 - `listicle_slides`: one item per slide. `framework_diagram`: one model drawn as boxes / arrows. `data_chart`: the chart is
   the post. `directory_table`: a list of named firms / people. `template_preview`: a partial look at a tool or sheet.
-  `screenshot_proof`: a screenshot of a result, DM or dashboard. `quote_card`, `photo_story`, `meme` as named.
+  `quote_card`, `photo_story`, `meme` as named.
 - `other`: say the recipe in `notes` in five words; if it keeps coming back, add it to this list.
 
 Rules:

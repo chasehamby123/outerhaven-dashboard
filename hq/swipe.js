@@ -14,12 +14,13 @@ export const ARCHETYPES = {
   data_chart: ['Data chart', 'The chart is the post.'],
   directory_table: ['Directory table', 'A list of named firms or people.'],
   template_preview: ['Template preview', 'A partial look at a tool, sheet or prompt pack.'],
-  screenshot_proof: ['Screenshot proof', 'A screenshot of a result, DM or dashboard.'],
+  screenshot_proof: ['Proof screenshot', 'The visual is the evidence: a real notification, DM, booked call or dashboard, names blurred, key lines boxed.'],
   quote_card: ['Quote card', 'One line of text on a plain card.'],
   photo_story: ['Photo story', 'A photo of a person with a story caption.'],
   meme: ['Meme', 'A meme format.'],
   other: ['Other', 'Recipe named in the notes.'],
 };
+export const LAYOUTS = { title_top_visual_below: 'Title on top, visual below', full_bleed_art_text_over: 'Art fills the frame, text over it', document_viewer: 'Document viewer', split_left_right: 'Split left / right', text_only: 'Text only', photo_with_caption: 'Photo with caption' };
 export const archLabel = k => ARCHETYPES[k]?.[0] || (k ? String(k).replace(/_/g, ' ') : 'Not broken down');
 
 let rows = null, poll = null;
@@ -73,7 +74,7 @@ export function swipeTable(list, onChange) {
     return `<tr class="${s.breakdown ? 'swRow' : ''}" ${s.breakdown ? `data-swview="${s.id}" tabindex="0"` : ''}><td>${img ? `<span class="cthumb" data-swthumb="${esc(img)}" title="Open"></span>` : '<span class="cthumb none">Text</span>'}</td>
       <td style="max-width:300px"><b>${esc(s.author || 'Unknown author')}</b>${s.author_followers ? `<span class="s muted"> · ${fmt(s.author_followers)} followers</span>` : ''}
         <div class="s muted swCap">${esc(s.breakdown?.copy?.hook || (s.caption || '').slice(0, 120))}</div></td>
-      <td>${s.archetype ? `<b>${esc(archLabel(s.archetype))}</b>` : '<span class="muted s">—</span>'}</td>
+      <td>${s.archetype ? `<b>${esc(archLabel(s.archetype))}</b>${s.breakdown?.cover?.layout ? `<div class="s muted">${esc(LAYOUTS[s.breakdown.cover.layout] || s.breakdown.cover.layout.replace(/_/g, ' '))}</div>` : ''}` : '<span class="muted s">—</span>'}</td>
       <td class="n">${p == null ? '<span class="muted">—</span>' : `<b>${p >= 10 ? Math.round(p) : p.toFixed(1)}</b><div class="s muted">${traj ? `${traj} comments` : `${fmt(s.comments)} comments${gr.at(-1)?.h ? ` in ${hrs(gr.at(-1).h)}` : ''}`}</div>`}</td>
       <td class="n">${g == null ? '<span class="muted">—</span>' : `${g.toFixed(1)}${g > 2 ? '<div class="s muted">comment gate</div>' : ''}`}</td>
       <td class="s">${STATUS[s.status] || esc(s.status)}${s.status === 'failed' && s.error ? `<div class="muted">${esc(s.error.slice(0, 80))}</div>` : ''}</td>
@@ -167,6 +168,7 @@ export function openSwipe(s, onChange = () => {}) {
         ${line('Results', [s.comments != null && `${fmt(s.comments)} comments`, s.reactions != null && `${fmt(s.reactions)} reactions`, s.author_followers && `${fmt(s.author_followers)} followers`].filter(Boolean).map(esc).join(' · '))}
         ${growth(s).length ? `<h4 class="swH">Growth</h4><table class="tbl swGrowth"><thead><tr><th>After</th><th class="n">Comments</th><th class="n">Likes</th><th class="n">Reposts</th><th class="n">Comments per hour</th></tr></thead><tbody>${growth(s).map(g => `<tr><td>${g.h != null ? hrs(g.h) : esc(String(g.at).slice(0, 10))}</td><td class="n"><b>${fmt(g.comments)}</b></td><td class="n">${fmt(g.reactions)}</td><td class="n">${fmt(g.reposts)}</td><td class="n">${g.perHour != null ? (g.perHour >= 10 ? Math.round(g.perHour) : g.perHour.toFixed(1)) : '—'}</td></tr>`).join('')}</tbody></table>` : ''}
         ${s.caption ? `<h4 class="swH">What the feed shows before "…see more"</h4><p class="swFeed">${esc(feedHook(s.caption))}</p>` : ''}
+        ${line('Layout', esc(LAYOUTS[c.layout] || (c.layout || '').replace(/_/g, ' ')))}
         ${line('Cover headline', esc(c.headline || ''))}
         ${line('Hook', esc(cp.hook || ''))}
         ${line('Ask', esc([cp.cta && cp.cta.replace(/_/g, ' '), cp.cta_keyword && `"${cp.cta_keyword}"`, cp.lead_magnet].filter(Boolean).join(' · ')))}

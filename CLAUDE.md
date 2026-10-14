@@ -518,6 +518,9 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   Rows open on click (image included); the table shows the comment trajectory (279 (16 h) → 638 (35 h)).
   Second swipe post (14 Oct): Remo Duzkale's Claude Opus 5 + Fable 5 posts → archetype `launch_slide`, labelled "Presentation slide" (Tengku's "presentation format"; NOT the
   Presentation post_format, which is a landscape PDF document) (image `supabase/seed/swipe-opus5-remo.png`).
+  Third: his "97+ Off-Market Mandates" post → `screenshot_proof` ("Proof screenshot"). Breakdown cover has `layout` (title_top_visual_below /
+  full_bleed_art_text_over / document_viewer / …), ranked as "Cover layout" and shown under the archetype. Layouts were added by re-inserting
+  the three earlier rows (UPDATE is blocked); newest copy wins the dedupe, old copies are hidden.
   `feedHook` = first 3 lines (blank counts) or ~210 chars; matches both saved posts' real "…more" cut.
   Weekly analysis re-does our breakdowns without an archetype (v1). Only 8 of 51 own posts had a breakdown on 14 Oct.
 - **Elements, ranked** (Growth → Playbook; `elementsOf()` / `elementEffects()` in scoring.js, tested in `node hq/scoring-test.mjs`): flattens

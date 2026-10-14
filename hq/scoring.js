@@ -97,7 +97,7 @@ export function elementsOf(post) {
   add('cover', 'Text on cover', pretty(c.text_density)); add('cover', 'Cover words', bucket(c.words_on_cover, [5, 15, 30], ['0-5', '6-15', '16-30', '31+']));
   add('cover', 'Headline words', bucket(c.headline_words, [6, 10], ['1-6', '7-10', '11+'])); add('cover', 'Names an audience', c.specific_audience === undefined ? null : yn(!!c.specific_audience));
   add('cover', 'Contrast', pretty(c.contrast)); add('cover', 'Background', pretty(c.background)); add('cover', 'Palette', pretty(c.palette));
-  add('cover', 'Branding', pretty(c.branding)); add('cover', 'Swipe cue', yn(c.swipe_cue)); add('cover', 'Looks like', pretty(c.looks_like)); add('cover', 'Readable on phone', pretty(c.mobile_readable));
+  add('cover', 'Branding', pretty(c.branding)); add('cover', 'Swipe cue', yn(c.swipe_cue)); add('cover', 'Looks like', pretty(c.looks_like)); add('cover', 'Cover layout', pretty(c.layout)); add('cover', 'Readable on phone', pretty(c.mobile_readable));
   // Pages (multi-image / documents)
   const pages = Array.isArray(b.pages) ? b.pages.length : 0;
   if (pages) add('pages', 'Page count', bucket(pages, [1, 5, 10], ['1', '2-5', '6-10', '11+']));
@@ -158,9 +158,9 @@ export function selfTest() {
   assert(predict({}, fx).multiplier === 1, 'no factors = 1x');
   assert(recipe(fx).every(r => r.effect > 0), 'recipe positive only');
   const ex = explain({ hook: 'Story' }, fx); assert(ex.helps.length + ex.hurts.length + ex.neutral.length === 1, 'explain buckets');
-  const el = elementsOf({ tags: { format: 'Presentation' }, breakdown: { archetype: 'fake_doc_viewer', cover: { has_number: true, promise: 'number_list' }, pages: [{}, {}, {}], copy: { reading_grade: 6 } }, features: { chars: 900, hook_words: 5, emojis: 0 } });
+  const el = elementsOf({ tags: { format: 'Presentation' }, breakdown: { archetype: 'fake_doc_viewer', cover: { layout: 'full_bleed_art_text_over', has_number: true, promise: 'number_list' }, pages: [{}, {}, {}], copy: { reading_grade: 6 } }, features: { chars: 900, hook_words: 5, emojis: 0 } });
   const has = (l, v) => el.some(e => e.label === l && e.value === v);
-  assert(has('Number on cover', 'Yes') && has('Cover promise', 'Number list') && has('Page count', '2-5') && has('Reading grade', '≤6') && has('Caption length', 'Medium (400-1,200)') && has('Emojis', '0') && has('Format', 'Presentation') && has('Archetype', 'Fake doc viewer'), 'elementsOf flattens breakdown + counts');
+  assert(has('Number on cover', 'Yes') && has('Cover promise', 'Number list') && has('Page count', '2-5') && has('Reading grade', '≤6') && has('Caption length', 'Medium (400-1,200)') && has('Emojis', '0') && has('Format', 'Presentation') && has('Archetype', 'Fake doc viewer') && has('Cover layout', 'Full bleed art text over'), 'elementsOf flattens breakdown + counts');
   const ee = elementEffects(scorePosts([1, 2, 3, 4].map(i => ({ id: 'e' + i, account: 'A', meetings: 0, tags: {}, features: { chars: i > 2 ? 1500 : 100 }, m: { comments: i > 2 ? 30 : 5, reactions: 0, reposts: 0 } }))));
   const longC = ee.find(e => e.label === 'Caption length' && e.value === 'Long (1,200+)'), shortC = ee.find(e => e.label === 'Caption length' && e.value === 'Short (<400)');
   assert(longC.effect > 0 && shortC.effect < 0 && longC.n === 2, 'elementEffects ranks within account');
