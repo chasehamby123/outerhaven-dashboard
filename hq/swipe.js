@@ -21,9 +21,16 @@ export const ARCHETYPES = {
 export const archLabel = k => ARCHETYPES[k]?.[0] || (k ? String(k).replace(/_/g, ' ') : 'Not broken down');
 
 let rows = null, poll = null;
+// Same post = same author + same first 60 letters of the caption. Saved twice shows as ONE row: the copy with the most
+// readings and an image wins, the others are listed as extra copies (removable from Open).
+export const postKey = s => `${String(s.author || '').toLowerCase().replace(/[^a-z]/g, '')}|${String(s.caption || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 60)}`;
+const rank = s => (s.snapshots?.length || 0) * 10 + ((s.image_paths || []).length ? 5 : 0) + (s.breakdown ? 1 : 0);
 export async function loadSwipe() {
   const r = await sb.from('swipe_posts').select('*').order('created_at', { ascending: false }).limit(300);
-  rows = r.error ? [] : r.data || [];
+  const all = r.error ? [] : r.data || [], groups = new Map();
+  for (const x of all) { const k = x.caption || x.author ? postKey(x) : x.id; (groups.get(k) || groups.set(k, []).get(k)).push(x); }
+  rows = [...groups.values()].map(g => { const [best, ...rest] = [...g].sort((a, b) => rank(b) - rank(a)); return { ...best, dupes: rest }; })
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
   return rows;
 }
 export const swipeRows = () => rows || [];
@@ -59,20 +66,22 @@ export function swipeTable(list, onChange) {
   if (!list.length) return '<div class="empty">Nothing saved yet. Click "Break down a post", drop the screenshots, paste the caption.</div>';
   return `<table class="tbl swTbl"><thead><tr><th></th><th>Post</th><th>Archetype</th><th class="n">Comments / 1K followers</th><th class="n">Comments ÷ likes</th><th>Status</th><th></th></tr></thead><tbody>
   ${list.map(s => { const p = per1k(s), g = gate(s), img = (s.image_paths || [])[0];
-    return `<tr><td>${img ? `<span class="cthumb" data-swthumb="${esc(img)}"></span>` : '<span class="cthumb none">Text</span>'}</td>
+    const gr = growth(s), traj = gr.length > 1 ? gr.map(x => `${fmt(x.comments)}${x.h != null ? ` <small>(${hrs(x.h)})</small>` : ''}`).join(' → ') : '';
+    return `<tr class="${s.breakdown ? 'swRow' : ''}" ${s.breakdown ? `data-swview="${s.id}" tabindex="0"` : ''}><td>${img ? `<span class="cthumb" data-swthumb="${esc(img)}" title="Open"></span>` : '<span class="cthumb none">Text</span>'}</td>
       <td style="max-width:300px"><b>${esc(s.author || 'Unknown author')}</b>${s.author_followers ? `<span class="s muted"> · ${fmt(s.author_followers)} followers</span>` : ''}
         <div class="s muted swCap">${esc(s.breakdown?.copy?.hook || (s.caption || '').slice(0, 120))}</div></td>
       <td>${s.archetype ? `<b>${esc(archLabel(s.archetype))}</b>` : '<span class="muted s">—</span>'}</td>
-      <td class="n">${p == null ? '<span class="muted">—</span>' : `<b>${p >= 10 ? Math.round(p) : p.toFixed(1)}</b><div class="s muted">${fmt(s.comments)} comments${(() => { const g = growth(s).at(-1); return g?.h ? ` in ${hrs(g.h)}` : ''; })()}</div>`}</td>
+      <td class="n">${p == null ? '<span class="muted">—</span>' : `<b>${p >= 10 ? Math.round(p) : p.toFixed(1)}</b><div class="s muted">${traj ? `${traj} comments` : `${fmt(s.comments)} comments${gr.at(-1)?.h ? ` in ${hrs(gr.at(-1).h)}` : ''}`}</div>`}</td>
       <td class="n">${g == null ? '<span class="muted">—</span>' : `${g.toFixed(1)}${g > 2 ? '<div class="s muted">comment gate</div>' : ''}`}</td>
       <td class="s">${STATUS[s.status] || esc(s.status)}${s.status === 'failed' && s.error ? `<div class="muted">${esc(s.error.slice(0, 80))}</div>` : ''}</td>
-      <td style="white-space:nowrap">${s.breakdown ? `<button class="btn sm" data-swview="${s.id}">Open</button>` : s.status === 'queued' ? '' : `<button class="btn sm" data-swrun="${s.id}">${s.status === 'failed' ? 'Retry' : 'Break down'}</button>`}</td></tr>`; }).join('')}
+      <td style="white-space:nowrap">${s.breakdown ? `<button class="btn sm" type="button">Open</button>` : s.status === 'queued' ? '' : `<button class="btn sm" data-swrun="${s.id}">${s.status === 'failed' ? 'Retry' : 'Break down'}</button>`}</td></tr>`; }).join('')}
   </tbody></table>`;
 }
 
 export function bindSwipe(root, onChange) {
   thumbs(root);
-  $$('[data-swview]', root).forEach(b => b.onclick = () => openSwipe(swipeRows().find(s => s.id === b.dataset.swview), onChange));
+  // Click anywhere on a broken-down row (image included) to open it.
+  $$('[data-swview]', root).forEach(r => { const open = () => openSwipe(swipeRows().find(s => s.id === r.dataset.swview), onChange); r.onclick = open; r.onkeydown = e => { if (e.key === 'Enter') open(); }; });
   $$('[data-swrun]', root).forEach(b => b.onclick = async () => { b.disabled = true; b.textContent = 'Starting…'; await runBreakdown(b.dataset.swrun); onChange(); });
   // While Claude works (a few minutes), check back every 20 s.
   clearInterval(poll);
@@ -107,6 +116,17 @@ export function addSwipeModal(onChange) {
       if (!files.length && !caption) { toast('Add the screenshots or the caption'); return false; }
       const n = k => { const v = String(fd.get(k) || '').trim(); return v === '' ? null : Number(v); };
       const { data: { session } } = await sb.auth.getSession();
+      const author = String(fd.get('author') || '').trim(), same = (caption || author) && swipeRows().find(x => postKey(x) === postKey({ author, caption }));
+      if (same) {
+        const now = new Date(), h = n('hours_live'), posted = same.posted_at || (h != null ? new Date(now - h * 36e5).toISOString() : null);
+        const snap = { at: now.toISOString(), reactions: n('reactions'), comments: n('comments'), reposts: n('reposts') };
+        const upd = { posted_at: posted, ...(snap.comments != null || snap.reactions != null ? { snapshots: [...(same.snapshots || []), snap], reactions: snap.reactions ?? same.reactions, comments: snap.comments ?? same.comments, reposts: snap.reposts ?? same.reposts } : {}) };
+        const paths = [];
+        if (!(same.image_paths || []).length) for (const [i, f] of files.entries()) { const path = `${same.id}/${i + 1}-${f.name.replace(/[^\w.-]+/g, '_')}`; if (!(await sb.storage.from('swipe').upload(path, f, { contentType: f.type, upsert: true })).error) paths.push(path); }
+        if (paths.length) upd.image_paths = paths;
+        const r = await sb.from('swipe_posts').update(upd).eq('id', same.id); if (r.error) { toast(r.error.message); return false; }
+        toast('Already saved: added as a new reading of the same post'); await loadSwipe(); onChange(); return;
+      }
       const ins = await sb.from('swipe_posts').insert({ caption: caption || null, author: String(fd.get('author') || '').trim() || null, author_followers: n('author_followers'),
         reactions: n('reactions'), comments: n('comments'), reposts: n('reposts'), hours_live: n('hours_live'), url: String(fd.get('url') || '').trim() || null,
         note: String(fd.get('note') || '').trim() || null, added_by: (session?.user?.email || '').split('@')[0] || null }).select('id').single();
@@ -156,6 +176,7 @@ export function openSwipe(s, onChange = () => {}) {
           <button class="btn sm" type="button" data-swnums>Update numbers</button>
           ${s.url ? `<a class="btn sm ghost" href="${esc(s.url)}" target="_blank" rel="noopener">Open on LinkedIn ↗</a>` : ''}
           <button class="btn sm ghost" type="button" data-swdel>Remove</button>
+          ${s.dupes?.length ? `<button class="btn sm ghost" type="button" data-swdupes>Remove ${s.dupes.length} extra cop${s.dupes.length === 1 ? 'y' : 'ies'} of this post</button>` : ''}
         </div>
         ${s.caption ? `<details class="swPit"><summary class="s">Full caption, line breaks as posted</summary><pre class="swCaption">${esc(s.caption)}</pre></details>` : ''}
         ${s.recreate?.gpt_image_pitfalls?.length ? `<details class="swPit"><summary class="s">What GPT image gets wrong here</summary><ul class="swList s">${li(s.recreate.gpt_image_pitfalls)}</ul></details>` : ''}
@@ -166,6 +187,10 @@ export function openSwipe(s, onChange = () => {}) {
   $('[data-copy=prompt]', m.el)?.addEventListener('click', () => copy(pages.map((p, i) => (pages.length > 1 ? `Page ${i + 1}:\n` : '') + p.prompt).join('\n\n')));
   $('[data-copy=json]', m.el)?.addEventListener('click', () => copy(JSON.stringify({ breakdown: s.breakdown, recreate: s.recreate }, null, 2)));
   $('[data-swnums]', m.el)?.addEventListener('click', () => { m.close(); updateNumbers(s, onChange); });
+  $('[data-swdupes]', m.el)?.addEventListener('click', async () => {
+    const r = await sb.from('swipe_posts').delete().in('id', s.dupes.map(d => d.id)); if (r.error) return toast(r.error.message);
+    toast('Extra copies removed'); m.close(); await loadSwipe(); onChange();
+  });
   $('[data-swdel]', m.el)?.addEventListener('click', async () => {
     if (!confirm(`Remove ${s.author || 'this post'} from the swipe file?`)) return;
     const r = await sb.from('swipe_posts').delete().eq('id', s.id); if (r.error) return toast(r.error.message);

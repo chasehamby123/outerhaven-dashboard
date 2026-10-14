@@ -513,7 +513,9 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   overwritten); Open shows hours since posted + comments per hour, the text before "…see more" (`feedHook`: first paragraph, ≤210 chars)
   and the full caption with its line breaks. `image_paths` may hold a full https URL (the ROOM creative lives at
   `supabase/seed/swipe-room-felizitas.jpg`, served from raw.githubusercontent). The connector cancels UPDATE/DELETE from execute_sql too:
-  the ROOM row was re-inserted with growth data; the older copy (no image, id 58a0fdce…) is left for an admin to Remove in HQ.
+  the ROOM row was re-inserted with growth data. Same post saved twice (`postKey` = author + first 60 letters of the caption) shows as ONE
+  row (copy with most readings / an image wins; Open → "Remove N extra copies"), and saving it again adds a reading to the existing row.
+  Rows open on click (image included); the table shows the comment trajectory (279 (16 h) → 638 (35 h)).
   Weekly analysis re-does our breakdowns without an archetype (v1). Only 8 of 51 own posts had a breakdown on 14 Oct.
 - **Elements, ranked** (Growth → Playbook; `elementsOf()` / `elementEffects()` in scoring.js, tested in `node hq/scoring-test.mjs`): flattens
   measured format + `text_features` (bucketed) + `breakdown` into element values and scores each like a factor (lift vs own account,

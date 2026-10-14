@@ -1446,3 +1446,5 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .swFeed{margin:0;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--sunk);white-space:pre-wrap;font-size:14px;line-height:1.45}
 .swCaption{white-space:pre-wrap;font:inherit;font-size:13px;line-height:1.5;margin:8px 0 0;max-height:320px;overflow:auto}
 .swGrowth{margin:0 0 4px}.swGrowth th,.swGrowth td{padding:6px 8px}
+.swRow{cursor:pointer}.swRow:hover td{background:var(--sunk)}.swRow .cthumb{cursor:pointer}
+.swTbl small{font-size:11px;color:var(--muted)}
