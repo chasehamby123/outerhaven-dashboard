@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 16;
+export const RULES_VERSION = 17;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -155,7 +155,16 @@ export function classify(s, now = Date.now()) {
     const reset = full != null && Math.abs(s.sold - s.offering) < 1;
     // still_raising is stored at check time: it only counts while that filing is under 13 months old.
     stage = s.still_raising && sinceAct != null && sinceAct <= 13 ? 'raising' : full != null && full >= 0.95 ? 'closed' : known && sinceAct != null && sinceAct > 13 ? 'closed' : 'unclear';
-    if (stage === 'raising') add('maybe', `Still raising ${nm} (${s.still_raising}): too early to pitch ${nextNm}. Revisit after it closes`);
+    // 14 Oct 2026 (Tengku): still open 12+ months after the first sale = placement target for THIS fund, not a next-fund
+    // pitch. Most Fund Is take 18-24 months; by month 12 the GP's own network is spent. Best with a first close, no agent.
+    if (stage === 'raising' && months >= 12) stage = 'stuck';
+    if (stage === 'stuck') {
+      add('good', `Still raising ${nm} ${Math.round(months)} months after the first sale: pitch placement on this fund`, 15);
+      if (!(s.sold > 0)) add('maybe', `No money reported raised after ${Math.round(months)} months: no first close, investors have likely passed`, -10);
+      else if (full != null && full >= 0.6) add('info', `Already ${pctTxt(full)} raised: little left to place`, -10);
+      else if (full != null) add('good', `First close done: ${money(s.sold)} in (${pctTxt(full)}), ${money(s.offering - s.sold)} still to raise`, 10);
+      if (months > 24 && !(full >= 0.3)) add('maybe', `Open over 2 years with under 30% raised: likely a stalled raise`, -10);
+    } else if (stage === 'raising') add('maybe', `Still raising ${nm} (${s.still_raising}), under 12 months in: too early to pitch. Revisit at 12 months for placement, or after it closes for ${nextNm}`);
     else if (stage === 'closed' && full != null && full >= 0.95) add('good', `${nm} closed at ${money(s.sold)}${reset ? ' (the filing sets the target to the final size, so this proves it closed, not that it hit its first goal)' : ''}`, 12);
     else if (stage === 'closed') add('good', `${nm} raise has ended: no filing for ${Math.round(sinceAct)} months (open raises must re-file every year)`, 12);
     else add('info', `Not sure ${nm} has closed yet (last filing ${lastAct || 'unknown'}): confirm on the first call`);
@@ -173,7 +182,7 @@ export function classify(s, now = Date.now()) {
     const useOwn = ownGap != null && ownGap >= 9 && ownGap <= 72;
     const expM = useOwn ? (ownGap + W.med) / 2 : W.med;
     const when = m => new Date(Date.parse(myStart) + m * 30.44 * 864e5).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
-    if (months != null && myStart) {
+    if (months != null && myStart && stage !== 'stuck') {
       expected = new Date(Date.parse(myStart) + expM * 30.44 * 864e5).toISOString().slice(0, 10);
       const basis = `${useOwn ? `their own pace: ${romanOf(n - 1) ? `Fund ${romanOf(n - 1)}` : 'last fund'} to ${nm} took ${Math.round(ownGap)} months; ` : ''}market median ${W.med} months, middle half ${W.q}`;
       const toGo = expM - months, est = `${nextNm} expected around ${when(expM)} (${basis})`;
@@ -185,7 +194,7 @@ export function classify(s, now = Date.now()) {
 
     // Track record we can see in public filings (real returns are never public at this size: ask on the first call).
     // Peter: a weak fund is a weak story, hard to place with new investors. So a miss counts against, never for.
-    if (stage !== 'raising' && full != null && s.sold > 0 && !reset) {
+    if (stage !== 'raising' && stage !== 'stuck' && full != null && s.sold > 0 && !reset) {
       if (full >= 1) add('good', `Raised ${pctTxt(full)} of its ${nm} target: oversubscribed`, 12);
       else if (full >= 0.8) add('good', `Raised ${pctTxt(full)} of the ${nm} target`, 5);
       else if (full < 0.6 && stage === 'closed') add('maybe', `${nm} closed at only ${pctTxt(full)} of target: a weak story for new investors`, -10);
@@ -212,7 +221,7 @@ export function classify(s, now = Date.now()) {
       if (fee < 400e3) add('info', `Fee income about ${money(fee)} a year: tight budget for a $25-50K retainer`, -8);
       else add('good', `Fee income about ${money(fee)} a year: can afford a retainer`, 5);
       // The ask for the next fund: managers usually aim 1.5-2x bigger; existing investors re-up roughly 60% of what they put in.
-      if (stage !== 'raising') add('info', `Likely ${nextNm}: ${money(size * 1.5)}-${money(size * 2)}, of which roughly ${money(size * 0.9)}-${money(size * 1.4)} has to come from new investors`);
+      if (stage !== 'raising' && stage !== 'stuck') add('info', `Likely ${nextNm}: ${money(size * 1.5)}-${money(size * 2)}, of which roughly ${money(size * 0.9)}-${money(size * 1.4)} has to come from new investors`);
     }
     if (n === 2 && earnedTrack) add('good', 'Fund II manager: has a Fund I track record to show for Fund III', 5);
     if (s.check_status === 'clear' && !(s.sold > 0)) add('maybe', `No money reported raised, even in later filings: ${nm} may never have closed`);

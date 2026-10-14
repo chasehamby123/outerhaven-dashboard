@@ -8,7 +8,7 @@ import { markBtns, markLine, bindMarks, MARK_VIEWS, inMarkView } from './marks.j
 
 let el = null, rows = [], runs = [], cfg = null, list = 'live', view = 'target', timer = null, onCount = () => {};
 let stageF = '', stratF = ''; // filters: '' = all
-const STAGE = { closed: ['Closed', 'good', 'Current fund has finished raising: the next-fund pitch fits'], raising: ['Still raising', 'warn', 'Current fund is still open: too early for a next-fund pitch'], unclear: ['Close unclear', '', 'No proof yet that the current fund has closed: confirm on the first call'] };
+const STAGE = { closed: ['Closed', 'good', 'Current fund has finished raising: the next-fund pitch fits'], stuck: ['Stuck raising', 'good', 'Current fund still open 12+ months in: pitch placement on this fund'], raising: ['Still raising', 'warn', 'Current fund open under 12 months: too early to pitch'], unclear: ['Close unclear', '', 'No proof yet that the current fund has closed: confirm on the first call'] };
 const STRAT = { credit: 'Private credit', real_estate: 'Real estate', infra: 'Infra / energy', venture: 'Venture', buyout: 'Buyout / PE', other: 'Other' };
 const DAY = 864e5;
 const GH_RUN = 'https://github.com/chasehamby123/outerhaven-dashboard/actions/workflows/fund-signals.yml';
@@ -128,7 +128,7 @@ function draw() {
     ${gh ? '' : `<div class="fsBulk fsSetup"><span>Finish setup: add two secrets to GitHub so the daily scan can run.</span><button class="btn sm primary" id="fsSetup">Show me how</button></div>`}
     <div class="fsFilt">${list === 'fund1' ? `<label>Fund status<select class="select sm" id="fsStage"><option value="">Any</option>${Object.entries(STAGE).map(([k, [l]]) => `<option value="${k}" ${stageF === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}
       <label>Strategy<select class="select sm" id="fsStrat"><option value="">Any</option>${Object.entries(STRAT).map(([k, l]) => `<option value="${k}" ${stratF === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-      ${list === 'fund1' ? '<span class="muted s">Targets = the current fund has finished raising (or may have). Still-raising funds sit in Maybe: too early for a next-fund pitch.</span>' : ''}</div>
+      ${list === 'fund1' ? '<span class="muted s">Targets = the current fund has finished raising (next-fund pitch), or is still raising 12+ months in (placement on this fund). Raising under 12 months sits in Maybe.</span>' : ''}</div>
     <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed'], ...MARK_VIEWS].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
     ${list === 'fund1' && view === 'target' && shown.some(s => !s.check_status) ? `<div class="fsBulk"><span>${shown.filter(s => !s.check_status).length} not yet checked for a next fund.</span><button class="btn sm" id="fsCheckAll">Queue them all (free, runs within the hour)</button></div>` : ''}
     <div class="fsList">${shown.length ? shown.map(rowHtml).join('') : `<div class="empty">${view === 'target' ? (all.length ? 'No targets in this list right now.' : 'Nothing scanned yet. Run a scan above; results arrive in a few minutes.') : 'Nothing here.'}</div>`}</div>
@@ -189,7 +189,7 @@ function opener(s) {
   const pct = s.offering && s.sold ? Math.round(s.sold / s.offering * 100) : null;
   if (s.list === 'fund1') {
     const cur = s.fund_no === 2 ? 'Fund II' : 'Fund I', nxt = s.fund_no === 2 ? 'Fund III' : 'Fund II';
-    if (s.stage === 'raising') return `Hi ${who}, congrats on the progress with ${s.check_keyword} ${cur}${s.sold ? ` (${money(s.sold)} in so far)` : ''}. If it would help to widen the LP list before your final close, we introduce family offices to emerging managers. Happy to share who's active in your space right now.`;
+    if (s.stage === 'raising' || s.stage === 'stuck') return `Hi ${who}, congrats on the progress with ${s.check_keyword} ${cur}${s.sold ? ` (${money(s.sold)} in so far)` : ''}. If it would help to widen the LP list before your final close, we introduce family offices to emerging managers. Happy to share who's active in your space right now.`;
     return `Hi ${who}, congrats on ${s.check_keyword} ${cur}${s.sold ? ` at ${money(s.sold)}` : ''}. Most managers find re-ups cover about half of the next fund, so the rest has to come from new LPs. We introduce family offices to managers at exactly this point, before ${nxt} launches, not after. Worth comparing notes on who's on your list?`;
   }
   const where = s.sold && s.offering ? `${money(s.sold)} toward ${money(s.offering)}${pct != null ? ` (${pct}%)` : ''}` : 'the raise';
@@ -203,7 +203,7 @@ function prep(s) {
   const cur = `Fund ${ROMAN[s.fund_no] || 'I'}`, nxt = `Fund ${ROMAN[(s.fund_no || 1) + 1]}`;
   if (s.list === 'fund1') {
     q.push(`${cur} returns so far: net IRR, TVPI and DPI (how much cash is back), and how much of that is realised vs marked.`);
-    if (s.stage === 'raising') q.push(`What's holding up the final close of ${cur}? Which investor types passed, and why?`);
+    if (s.stage === 'raising' || s.stage === 'stuck') q.push(`What's holding up the final close of ${cur}? Which investor types passed, and why?`);
     else if (s.stage === 'unclear') q.push(`Has ${cur} held its final close? At what size?`);
     q.push(`How much of ${cur} do they expect to re-up in ${nxt}, and from whom? (The gap is our job.)`);
     const prior = (s.history || []).filter(h => h.fund_no === (s.fund_no || 1) - 1).sort((a, b) => b.sold - a.sold)[0];
@@ -346,7 +346,7 @@ function howModal() {
       <li>Fund I list: Fund I under $10M or over $75M, or a later fund already filed.</li></ul>
       <h4>4. "Maybe" (needs a human look)</h4>
       <ul><li>Target size "Indefinite", so % raised can't be worked out.</li><li>Non-US manager, or no named people on the filing.</li>
-      <li>Due for next fund: the current fund is <b>still raising</b> (too early for a next-fund pitch), it closed under 60% of target, or 5 or fewer investors carry a $15M+ fund.</li></ul>
+      <li>Due for next fund: the current fund is <b>still raising</b> under 12 months in (too early to pitch; at 12+ months it becomes a placement target), it closed under 60% of target, or 5 or fewer investors carry a $15M+ fund.</li></ul>
       <h4>5. Score (higher = call first)</h4>
       <p><b>Raising now:</b> +20 stuck (under 30% raised 6+ months in), +20 Fund II, +12 Fund III, +15 filed before taking money or under 30% raised, +12 started in the last 6 weeks.</p>
       <p><b>Due for next fund:</b> +12 closed (raised the target, or no filing for 13+ months; a target equal to the amount raised only proves it closed, since managers reset the target at close), +12 oversubscribed, +15 in the pre-launch window (next fund expected from a 50/50 blend of their own pace between funds and the market median), +8 the fund is 1.3x+ the size of the last one (−5 if smaller), +6 average cheque $1M+ (family-office-sized), +15 checked with no next fund, +5 fee income $400K+ a year (−8 under).</p>

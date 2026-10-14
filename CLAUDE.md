@@ -151,6 +151,10 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   hardest to get paid), credit +8. Weights recalibrated so targets spread (window 15, clear 15, emerging 12 on fund1 / 20 on live).
   HQ: Fund status + Strategy filters, status/strategy chips, "Call prep" questions per card (`prep()`), openers by stage.
   The cron re-judges stale rows best-score first. Migration `supabase/2026-10-08-fund-lanes-marks.sql`.
+- **Stuck raising (14 Oct 2026, Tengku; RULES_VERSION 17):** stage 'stuck' = 'raising' and 12+ months since the first sale. Lane =
+  placement on the CURRENT fund (+15), not a next-fund pitch (timing, track record and next-fund ask are skipped). First close done
+  and under 60% raised +10; >=60% raised -10 info; nothing raised = maybe -10; open 2+ years under 30% = maybe -10. Raising under
+  12 months stays maybe. HQ chip "Stuck raising". Test: `node scripts/tests/test_fund_rules.mjs`.
 - **Rules audit (8 Oct 2026, RULES_VERSION 15 / CREDIT_RULES_VERSION 4):** judge() attaches `history` = `managerHistory(s, peers)` (stored rows
   with the same manager_key + `prior_funds`, the earlier funds `scripts/adviser_aum.py` found on EDGAR; now fetched for every Fund II on
   the next-fund list, `adviser_todo` returns `prior_checked`). Timing: next fund expected at a 50/50 blend of the manager's own gap
