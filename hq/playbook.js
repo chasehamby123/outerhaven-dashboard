@@ -9,7 +9,7 @@ import { ARCHETYPES, archLabel, loadSwipe, swipeRows, swipeTable, bindSwipe, add
 const view = { arch: '', egroup: '', libOut: 'best' };
 const signed = x => (x >= 0 ? '+' : '') + Math.round(x * 100) + '%';
 const confWord = c => c === 'solid' ? 'solid' : c === 'early' ? 'early signal' : 'anecdote';
-let report = null, editExperiment = null;
+let report = null, editExperiment = null, loaded = false;
 
 // Keep / stop: the strongest element on each side with 4+ posts. "No" values are skipped: their "Yes" twin says it better.
 function decisions(scored) {
@@ -83,8 +83,10 @@ export function playbookView(body, deps = {}) {
     bindSwipe(body, draw);
   };
   const refresh = async () => { await loadSwipe(); draw(); };
-  body.innerHTML = '<div class="empty">Loading…</div>';
-  Promise.all([loadSwipe(), sb.from('growth_reports').select('*').order('created_at', { ascending: false }).limit(1)]).then(([, r]) => { report = r.data?.[0] || null; if (body.isConnected) draw(); });
+  // HQ re-renders the page every time a modal closes: draw from what's already loaded straight away (a "Loading…" placeholder
+  // collapsed the page while scrolled down = blank screen), then refresh in the background.
+  if (loaded) draw(); else body.innerHTML = '<div class="empty">Loading…</div>';
+  Promise.all([loadSwipe(), sb.from('growth_reports').select('*').order('created_at', { ascending: false }).limit(1)]).then(([, r]) => { report = r.data?.[0] || null; loaded = true; if (body.isConnected) draw(); });
 }
 
 function elementsBlock(scored) {

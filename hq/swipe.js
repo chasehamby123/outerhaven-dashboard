@@ -14,6 +14,7 @@ export const ARCHETYPES = {
   data_chart: ['Data chart', 'The chart is the post.'],
   directory_table: ['Directory table', 'A list of named firms or people.'],
   template_preview: ['Template preview', 'A partial look at a tool, sheet or prompt pack.'],
+  tool_in_action: ['Tool in action', 'A mock-up of the tool doing the job (chat on one side, the finished deliverable on the other) under a "Tool + Tool" headline.'],
   screenshot_proof: ['Proof screenshot', 'The visual is the evidence: a real notification, DM, booked call or dashboard, names blurred, key lines boxed.'],
   quote_card: ['Quote card', 'One line of text on a plain card.'],
   photo_story: ['Photo story', 'A photo of a person with a story caption.'],

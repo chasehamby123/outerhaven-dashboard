@@ -43,7 +43,7 @@ Use exactly these keys. Enum values are listed after the key; pick one. `null` w
   "v": 2,
   "creative_seen": true,
   "pages_seen": 9,
-  "archetype": "fake_doc_viewer | launch_slide | contents_cover | listicle_slides | framework_diagram | data_chart | directory_table | template_preview | screenshot_proof | quote_card | photo_story | meme | other",
+  "archetype": "fake_doc_viewer | launch_slide | tool_in_action | contents_cover | listicle_slides | framework_diagram | data_chart | directory_table | template_preview | screenshot_proof | quote_card | photo_story | meme | other",
 
   "cover": {
     "headline": "exact words of the biggest text on the cover / single image",
@@ -121,6 +121,10 @@ hooks. Pick the closest one:
   part (`copy.hook_type` = timely), not part of the recipe. (Remo Duzkale: Opus 5 post 104 reactions / 132 comments at 2 months;
   Fable 5 post 66 / 65 at 3 months.)
 - `contents_cover`: a real document / carousel whose cover is a numbered table of contents.
+- `tool_in_action`: a mock-up of the tool DOING the job: an app window with the chat on the left (prompt, files attached, the
+  assistant's steps) and the finished deliverable on the right (deck slides, a model), under a "Claude for X" title and a
+  "Claude + PowerPoint" logo line, with a "Comment WORD" button at the bottom. Shows the output, so the free file feels concrete.
+  (Felizitas Grein Groth, DECK post: 133 reactions / 414 comments / 7 reposts at 1 week.)
 - `screenshot_proof` (HQ: "Proof screenshot"): the visual IS the evidence: a real notification, DM, booked call or dashboard,
   names blurred, the key lines boxed in red. Often under a "Tool + Tool" logo header and one big number headline
   ("Claude + LinkedIn → 97+ Off-Market Mandates" over a "New Booked Deal in Motion" app alert). (Remo Duzkale, 65 reactions /
