@@ -36,14 +36,23 @@ export const RECIPES = {
     'The "Comment WORD" button is drawn inside the image; the word is short and on-topic.',
   ], swap: 'the document title, the contents lines, the keyword' },
   tool_in_action: { keep: [
-    'The headline names a tool everyone knows ("Claude for Investor Pitch Decks", "Claude + PowerPoint"): the big name is the headline, our use case follows it.',
-    'Input and finished output side by side, so the result is visible before anyone asks for it.',
-    'The "Comment WORD" button is drawn inside the image.',
-  ], swap: 'the deliverable, the input files, the keyword' },
+    'Top ~30% is clean and huge: a serif title that starts with a tool everyone knows ("Claude for Investor Pitch Decks", the audience word in the one accent colour), then a logo line ("Claude + PowerPoint"). It must read at thumbnail size on its own.',
+    'The middle ~60% is deliberately messy: a full, real-looking app window, chat on the left with the input files attached, the finished deliverable on the right running off the bottom ("1 / 12"). Dense and tiny on purpose: it looks real, looks like a lot of work done for you, and people zoom in.',
+    'Everything inside the window is on-topic: ~20 sidebar chat names that are each a fundraising task, real-sounding file names, slides with real section titles. That is a second list of value hidden in the screenshot.',
+    'One accent colour (blue) on the audience word and on the full-width "Comment WORD for free access" button at the bottom, the only solid block. Black on white / faint grid otherwise; the tool logos bring their own colour.',
+    '4:5 portrait.',
+  ], swap: 'the deliverable, the input files, the sidebar task names, the keyword (all from our topic)' },
   screenshot_proof: { keep: [
     'The visual is real evidence: OUR own screenshot (booked call, reply, dashboard), names blurred, the one line that proves the claim boxed in red. Never a generated screenshot.',
     'A number headline ("97+ Off-Market Mandates") and the logos of the tools that made it.',
   ], swap: 'the screenshot (ours), the number, the logos' },
+};
+const anat = s => {
+  const a = s.breakdown?.anatomy; if (!a) return '';
+  return `How the original is built and why (keep the reasons, change the subject):
+${(a.zones || []).map(z => `- ${z.box}: ${z.what}. Why: ${z.why}`).join('\n')}
+${a.colour ? `- Colour: ${a.colour.base}; accent ${a.colour.accent}. Why: ${a.colour.why}\n` : ''}${a.finish ? `- Finish: polished ${a.finish.where_polished}; raw ${a.finish.where_raw}. Why: ${a.finish.why}\n` : ''}
+`;
 };
 export function remixPrompt(s) {
   const r = RECIPES[s.archetype], pages = s.recreate?.pages || [];
@@ -55,7 +64,7 @@ ${r.keep.map(k => `- ${k}`).join('\n')}
 
 Change only: ${r.swap}. Keep the canvas size, layout, palette and type style of the original.
 
-The original, for look and layout only:
+${anat(s)}The original, for look and layout only:
 ${pages.map(p => p.prompt).join('\n\n')}
 
 Render every text exactly as you write it; no extra text, no watermark.`;
@@ -193,6 +202,21 @@ export function addSwipeModal(onChange) {
   });
 }
 
+// Where each part sits and the job it does. The why is the point: a remix that copies the look without it fails.
+function anatomyBlock(a) {
+  if (!a) return '';
+  const row = (k, w, y) => `<tr><td><b>${esc(k)}</b></td><td>${esc(w || '')}</td><td>${esc(y || '')}</td></tr>`, h = a.hierarchy || {}, c = a.colour || {}, f = a.finish || {};
+  return `<h4 class="swH">How it's built</h4><table class="tbl swAnat"><thead><tr><th>Where</th><th>What</th><th>Why</th></tr></thead><tbody>
+    ${(a.zones || []).map(z => row(z.box, z.what, z.why)).join('')}
+    ${h.title ? row('Read first', h.title, h.subtitle ? `Then: ${h.subtitle}` : '') : ''}
+    ${h.accent_words ? row('Accent', h.accent_words, '') : ''}
+    ${c.base ? row('Colour', [c.base, c.accent && `accent: ${c.accent}`, c.borrowed && `borrowed: ${c.borrowed}`].filter(Boolean).join(' · '), c.why) : ''}
+    ${f.level ? row(`Finish: ${f.level}`, [f.where_polished && `polished: ${f.where_polished}`, f.where_raw && `raw: ${f.where_raw}`].filter(Boolean).join(' · '), f.why) : ''}
+    ${a.inner_images ? row('Inside the images', a.inner_images, '') : ''}
+    ${a.thumbnail_test ? row('At thumbnail size', a.thumbnail_test, '') : ''}
+  </tbody></table>`;
+}
+
 // One saved post, read like a brief: what it is, why it works, what to copy. JSON only behind the copy buttons.
 export function openSwipe(s, onChange = () => {}) {
   if (!s) return;
@@ -213,6 +237,7 @@ export function openSwipe(s, onChange = () => {}) {
         ${line('Hook', esc(cp.hook || ''))}
         ${line('Ask', esc([cp.cta && cp.cta.replace(/_/g, ' '), cp.cta_keyword && `"${cp.cta_keyword}"`, cp.lead_magnet].filter(Boolean).join(' · ')))}
         ${b.why_it_might_work?.length ? `<h4 class="swH">▲ Why it works</h4><ul class="swList">${li(b.why_it_might_work)}</ul>` : ''}
+        ${anatomyBlock(b.anatomy)}
         ${RECIPES[s.archetype] ? `<h4 class="swH">✓ Must keep when we copy it</h4><ul class="swList">${li(RECIPES[s.archetype].keep)}</ul><p class="s muted" style="margin:0 0 8px">Change only: ${esc(RECIPES[s.archetype].swap)}.</p>` : ''}
         ${b.why_it_might_not?.length ? `<h4 class="swH">⚠ Watch out</h4><ul class="swList">${li(b.why_it_might_not)}</ul>` : ''}
         ${b.notes ? `<p class="s muted">${esc(b.notes)}</p>` : ''}

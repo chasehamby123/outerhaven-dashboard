@@ -102,6 +102,18 @@ Use exactly these keys. Enum values are listed after the key; pick one. `null` w
     "caption_vs_creative": "repeats | complements | unrelated"
   },
 
+  "anatomy": {
+    "zones": [{"zone": "top | middle | bottom | left | right | full", "box": "% of the frame, e.g. top 0-30%",
+               "what": "exactly what is there (text, art, screenshot, button)", "why": "the job it does for the reader"}],
+    "hierarchy": {"title": "the words read first, and why those", "subtitle": "the words read second, and why",
+                  "accent_words": "which words get the accent colour or weight, and why those"},
+    "colour": {"base": "background + text colours", "accent": "the one accent and what it marks",
+               "borrowed": "brand colours borrowed from a tool or launch, or null", "why": "what the palette signals"},
+    "finish": {"level": "polished | mixed | raw", "where_polished": "...", "where_raw": "...",
+               "why": "why that split works (e.g. raw = looks real, dense = value + zoom)"},
+    "inner_images": "what sits inside screenshots / panels / art and why each was chosen (topic-matched sidebar items, file icons, cut-off slides)",
+    "thumbnail_test": "what still reads at feed thumbnail size, which is the only part that has to"
+  },
   "why_it_might_work": ["one line each, max 3, tied to a part above"],
   "why_it_might_not": ["max 3"],
   "notes": "one line, anything the keys miss"
@@ -139,6 +151,26 @@ hooks. Pick the closest one:
   the post. `directory_table`: a list of named firms / people. `template_preview`: a partial look at a tool or sheet.
   `quote_card`, `photo_story`, `meme` as named.
 - `other`: say the recipe in `notes` in five words; if it keeps coming back, add it to this list.
+
+### `anatomy`: why each part is where it is (the part a remix needs most)
+The look is easy to copy; the reasons are not. For every zone say what is there AND the job it does; a zone without a "why"
+is unfinished. Compare against these patterns from the saved posts (14 Oct 2026) and say which ones the post follows or breaks:
+- **Big name on top, audience under it.** The title carries a name the feed already knows (Claude, a model launch, a tool logo);
+  the audience and a dollar result come second ("Claude for **Investor** Pitch Decks", "$145M Deal Flow Agent for PE/VCs").
+  Every saved post names Claude. Our industry is the subtitle, never the title.
+- **The top ~30% carries the whole message.** At thumbnail size only the title reads; everything below is proof and texture.
+- **Polished title + raw proof.** Clean, large, serif or bold title and button; the middle is deliberately dense or raw (a full app
+  screenshot with ~20 on-topic sidebar chats, a 30-line contents list, a tool log with a raw timestamp). Density = "a lot of work done
+  for you", rawness = "this is real", tiny text = people zoom and stay (dwell). A clean middle reads as an ad.
+- **Inner images are on-topic all the way down.** Sidebar chat names, attached file names (Business_Plan.pdf, Financial_Model.xlsx),
+  thumbnails and cut-off slides all repeat the topic; cut-off content (a slide running off the bottom, "1 / 12") says "there is more".
+- **One accent.** Felizitas: black on white/grid + one blue on the words that matter (the tool name and the audience), the button the
+  only solid block. Remo: borrows Anthropic's own launch look (cream #FAF9F5, sand panel, natural-history art) so his slide reads as the
+  official announcement; proof posts use the tools' brand colours (Claude orange, LinkedIn blue) + red only to point (arrow, boxes).
+- **Art that means something.** The Opus eggs form the numeral 5; the Fable butterflies echo the name. Decorative icons (a clipboard,
+  a checklist) carry nothing.
+- **Button at the bottom, after the proof** (comment-gated posts), filling the width; the keyword is the only other emphasis.
+- **4:5 portrait** (800×1000) takes the most feed space on a phone; Remo's landscape slides get ~half the height.
 
 Rules:
 - `pages` only for multi-image and document posts (one entry per page you saw). Single image: leave `pages: []` and
