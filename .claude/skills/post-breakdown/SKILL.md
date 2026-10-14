@@ -43,7 +43,7 @@ Use exactly these keys. Enum values are listed after the key; pick one. `null` w
   "v": 2,
   "creative_seen": true,
   "pages_seen": 9,
-  "archetype": "fake_doc_viewer | contents_cover | listicle_slides | framework_diagram | data_chart | directory_table | template_preview | screenshot_proof | quote_card | photo_story | meme | other",
+  "archetype": "fake_doc_viewer | launch_slide | contents_cover | listicle_slides | framework_diagram | data_chart | directory_table | template_preview | screenshot_proof | quote_card | photo_story | meme | other",
 
   "cover": {
     "headline": "exact words of the biggest text on the cover / single image",
@@ -79,7 +79,7 @@ Use exactly these keys. Enum values are listed after the key; pick one. `null` w
 
   "copy": {
     "hook": "first line, exact",
-    "hook_visible": "everything shown before \"…see more\", exact, line breaks as \\n (usually the first paragraph, ~210 characters)",
+    "hook_visible": "everything shown before \"…see more\", exact, line breaks as \\n (about 3 lines, a blank line counts as one, or ~210 characters)",
     "hook_type": "contrarian | data_point | story | question | pain_point | list_how_to | timely | social_proof | bold_claim | callout",
     "hook_specificity": "generic | specific",
     "curiosity_gap": true,
@@ -114,6 +114,10 @@ hooks. Pick the closest one:
   down the side, the guide's cover + a numbered contents list, and a "Comment WORD for free access" button drawn on the
   image. LinkedIn sees a single image; the reader thinks it's a document they get by commenting. (Felizitas Grein Groth,
   13 Oct 2026, ~1K followers: 63 reactions / 279 comments in 16 h, 4.4 comments per reaction = the comment gate worked.)
+- `launch_slide`: rides a big launch everyone is talking about (a new AI model, a product event). A keynote-style slide:
+  "Introducing X" title, one line of result ("$145M Deal Flow Agent for PE/VCs"), one piece of art in the launch's own look,
+  lots of empty space. Timely: it works in the first days after the launch. (Remo Duzkale, Claude Opus 5 post, 104 reactions /
+  132 comments / 8 reposts at 2 months.)
 - `contents_cover`: a real document / carousel whose cover is a numbered table of contents.
 - `listicle_slides`: one item per slide. `framework_diagram`: one model drawn as boxes / arrows. `data_chart`: the chart is
   the post. `directory_table`: a list of named firms / people. `template_preview`: a partial look at a tool or sheet.

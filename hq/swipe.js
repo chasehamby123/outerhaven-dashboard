@@ -8,6 +8,7 @@ export const ARCHETYPES = {
   fake_doc_viewer: ['Fake doc viewer', 'One image dressed as an open PDF: file bar, page thumbnails, a contents page and a "Comment WORD" button.'],
   contents_cover: ['Contents cover', 'A real document or carousel whose cover is a numbered table of contents.'],
   listicle_slides: ['Listicle slides', 'One item per slide.'],
+  launch_slide: ['Launch slide', 'Rides a big launch: a keynote-style "Introducing X" slide with one line of result and one piece of art.'],
   framework_diagram: ['Framework diagram', 'One model drawn as boxes and arrows.'],
   data_chart: ['Data chart', 'The chart is the post.'],
   directory_table: ['Directory table', 'A list of named firms or people.'],
@@ -56,10 +57,11 @@ export function growth(s) {
     return { ...x, h, perHour: h != null && h - ph >= 1 && x.comments != null ? (x.comments - (pc || 0)) / (h - ph) : null }; });
 }
 const hrs = h => h == null ? '' : h < 48 ? `${Math.round(h)} h` : `${(h / 24).toFixed(1)} days`;
-// What the feed shows before "…see more": the first paragraph, at most ~210 characters (LinkedIn's cut). Approximate.
+// What the feed shows before "…see more". Approximate.
 export function feedHook(caption) {
-  const t = String(caption || ''), para = t.split(/\n\s*\n/)[0];
-  return para.length > 210 ? para.slice(0, 210).replace(/\s+\S*$/, '') + '…' : para;
+  // LinkedIn shows about 3 lines (a blank line counts as one) or ~210 characters, whichever comes first.
+  const t = String(caption || '').split('\n').slice(0, 3).join('\n').trimEnd();
+  return t.length > 210 ? t.slice(0, 210).replace(/\s+\S*$/, '') + '…' : t;
 }
 
 export function swipeTable(list, onChange) {

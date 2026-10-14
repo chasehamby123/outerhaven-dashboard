@@ -516,6 +516,8 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   the ROOM row was re-inserted with growth data. Same post saved twice (`postKey` = author + first 60 letters of the caption) shows as ONE
   row (copy with most readings / an image wins; Open → "Remove N extra copies"), and saving it again adds a reading to the existing row.
   Rows open on click (image included); the table shows the comment trajectory (279 (16 h) → 638 (35 h)).
+  Second swipe post (14 Oct): Remo Duzkale's Claude Opus 5 launch slide → archetype `launch_slide` (image `supabase/seed/swipe-opus5-remo.png`).
+  `feedHook` = first 3 lines (blank counts) or ~210 chars; matches both saved posts' real "…more" cut.
   Weekly analysis re-does our breakdowns without an archetype (v1). Only 8 of 51 own posts had a breakdown on 14 Oct.
 - **Elements, ranked** (Growth → Playbook; `elementsOf()` / `elementEffects()` in scoring.js, tested in `node hq/scoring-test.mjs`): flattens
   measured format + `text_features` (bucketed) + `breakdown` into element values and scores each like a factor (lift vs own account,
