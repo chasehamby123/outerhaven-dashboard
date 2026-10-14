@@ -8,7 +8,8 @@ export const ARCHETYPES = {
   fake_doc_viewer: ['Fake doc viewer', 'One image dressed as an open PDF: file bar, page thumbnails, a contents page and a "Comment WORD" button.'],
   contents_cover: ['Contents cover', 'A real document or carousel whose cover is a numbered table of contents.'],
   listicle_slides: ['Listicle slides', 'One item per slide.'],
-  launch_slide: ['Launch slide', 'Rides a big launch: a keynote-style "Introducing X" slide with one line of result and one piece of art.'],
+  // key kept as launch_slide (rows already saved with it); Tengku's name for it is "presentation".
+  launch_slide: ['Presentation slide', 'A landscape keynote-style title slide: big title ("Introducing X"), one line of result, one piece of art, lots of empty space.'],
   framework_diagram: ['Framework diagram', 'One model drawn as boxes and arrows.'],
   data_chart: ['Data chart', 'The chart is the post.'],
   directory_table: ['Directory table', 'A list of named firms or people.'],

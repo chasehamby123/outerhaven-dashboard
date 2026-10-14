@@ -114,10 +114,11 @@ hooks. Pick the closest one:
   down the side, the guide's cover + a numbered contents list, and a "Comment WORD for free access" button drawn on the
   image. LinkedIn sees a single image; the reader thinks it's a document they get by commenting. (Felizitas Grein Groth,
   13 Oct 2026, ~1K followers: 63 reactions / 279 comments in 16 h, 4.4 comments per reaction = the comment gate worked.)
-- `launch_slide`: rides a big launch everyone is talking about (a new AI model, a product event). A keynote-style slide:
-  "Introducing X" title, one line of result ("$145M Deal Flow Agent for PE/VCs"), one piece of art in the launch's own look,
-  lots of empty space. Timely: it works in the first days after the launch. (Remo Duzkale, Claude Opus 5 post, 104 reactions /
-  132 comments / 8 reposts at 2 months.)
+- `launch_slide` (shown in HQ as "Presentation slide"; the team calls it the presentation format): ONE landscape image made
+  like a keynote title slide: a big title ("Introducing Claude Opus 5"), one line of result ("$145M Deal Flow Agent for PE/VCs"),
+  one piece of art, lots of empty space. Not a document post: LinkedIn sees a single image. Whether it rides news is a separate
+  part (`copy.hook_type` = timely), not part of the recipe. (Remo Duzkale: Opus 5 post 104 reactions / 132 comments at 2 months;
+  Fable 5 post 66 / 65 at 3 months.)
 - `contents_cover`: a real document / carousel whose cover is a numbered table of contents.
 - `listicle_slides`: one item per slide. `framework_diagram`: one model drawn as boxes / arrows. `data_chart`: the chart is
   the post. `directory_table`: a list of named firms / people. `template_preview`: a partial look at a tool or sheet.
