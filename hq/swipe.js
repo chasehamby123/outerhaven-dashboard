@@ -21,6 +21,45 @@ export const ARCHETYPES = {
   meme: ['Meme', 'A meme format.'],
   other: ['Other', 'Recipe named in the notes.'],
 };
+// Why each recipe works, as rules a remix must keep (14 Oct 2026: a friend's GPT turned the Opus 5 slide into a beige clipboard
+// checklist: it copied the look and dropped the launch, the number and the audience). Goes into every copied prompt / JSON.
+export const RECIPES = {
+  launch_slide: { keep: [
+    'Line 1 of the title is the name of a big launch the whole feed already knows THIS WEEK ("Introducing Claude Opus 5"). The borrowed attention is the hook; without it this is just a beige slide.',
+    'Line 2 turns the launch into a dollar result for one named audience ("$145M Deal Flow Agent for PE/VCs"). Our industry is the subtitle, never the title.',
+    'One calm, crafted piece of art (engraving, natural-history illustration) and lots of empty space. No icons, no UI, no checklist, no "Comment X" text on the slide.',
+    'The caption opens with the news ("🚨 X just launched & it now…") so the first visible line matches the slide.',
+  ], swap: 'the launch (this week\'s), the dollar number, the audience, the art subject' },
+  fake_doc_viewer: { keep: [
+    'It must look like a document already open in a viewer (file bar, page thumbnails, page counter), so the reader feels they are one click from having it.',
+    'The visible page is a numbered contents list that promises specific deliverables.',
+    'The "Comment WORD" button is drawn inside the image; the word is short and on-topic.',
+  ], swap: 'the document title, the contents lines, the keyword' },
+  tool_in_action: { keep: [
+    'The headline names a tool everyone knows ("Claude for Investor Pitch Decks", "Claude + PowerPoint"): the big name is the headline, our use case follows it.',
+    'Input and finished output side by side, so the result is visible before anyone asks for it.',
+    'The "Comment WORD" button is drawn inside the image.',
+  ], swap: 'the deliverable, the input files, the keyword' },
+  screenshot_proof: { keep: [
+    'The visual is real evidence: OUR own screenshot (booked call, reply, dashboard), names blurred, the one line that proves the claim boxed in red. Never a generated screenshot.',
+    'A number headline ("97+ Off-Market Mandates") and the logos of the tools that made it.',
+  ], swap: 'the screenshot (ours), the number, the logos' },
+};
+export function remixPrompt(s) {
+  const r = RECIPES[s.archetype], pages = s.recreate?.pages || [];
+  if (!r) return '';
+  return `Make OUR version of this LinkedIn image for our audience (private credit / M&A: founders, PE, family offices, lenders).
+
+Keep all of these. They are why the original went viral; a version without them fails:
+${r.keep.map(k => `- ${k}`).join('\n')}
+
+Change only: ${r.swap}. Keep the canvas size, layout, palette and type style of the original.
+
+The original, for look and layout only:
+${pages.map(p => p.prompt).join('\n\n')}
+
+Render every text exactly as you write it; no extra text, no watermark.`;
+}
 export const LAYOUTS = { title_top_visual_below: 'Title on top, visual below', full_bleed_art_text_over: 'Art fills the frame, text over it', document_viewer: 'Document viewer', split_left_right: 'Split left / right', text_only: 'Text only', photo_with_caption: 'Photo with caption' };
 export const archLabel = k => ARCHETYPES[k]?.[0] || (k ? String(k).replace(/_/g, ' ') : 'Not broken down');
 
@@ -174,10 +213,12 @@ export function openSwipe(s, onChange = () => {}) {
         ${line('Hook', esc(cp.hook || ''))}
         ${line('Ask', esc([cp.cta && cp.cta.replace(/_/g, ' '), cp.cta_keyword && `"${cp.cta_keyword}"`, cp.lead_magnet].filter(Boolean).join(' · ')))}
         ${b.why_it_might_work?.length ? `<h4 class="swH">▲ Why it works</h4><ul class="swList">${li(b.why_it_might_work)}</ul>` : ''}
+        ${RECIPES[s.archetype] ? `<h4 class="swH">✓ Must keep when we copy it</h4><ul class="swList">${li(RECIPES[s.archetype].keep)}</ul><p class="s muted" style="margin:0 0 8px">Change only: ${esc(RECIPES[s.archetype].swap)}.</p>` : ''}
         ${b.why_it_might_not?.length ? `<h4 class="swH">⚠ Watch out</h4><ul class="swList">${li(b.why_it_might_not)}</ul>` : ''}
         ${b.notes ? `<p class="s muted">${esc(b.notes)}</p>` : ''}
         <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:14px">
-          ${pages.length ? `<button class="btn primary sm" type="button" data-copy="prompt">Copy GPT image prompt${pages.length > 1 ? 's' : ''}</button>` : ''}
+          ${RECIPES[s.archetype] && pages.length ? `<button class="btn primary sm" type="button" data-copy="remix">Copy prompt for our version</button>` : ''}
+          ${pages.length ? `<button class="btn ${RECIPES[s.archetype] ? '' : 'primary '}sm" type="button" data-copy="prompt">Copy exact-copy prompt${pages.length > 1 ? 's' : ''}</button>` : ''}
           <button class="btn sm" type="button" data-copy="json">Copy breakdown JSON</button>
           <button class="btn sm" type="button" data-swnums>Update numbers</button>
           ${s.url ? `<a class="btn sm ghost" href="${esc(s.url)}" target="_blank" rel="noopener">Open on LinkedIn ↗</a>` : ''}
@@ -191,7 +232,8 @@ export function openSwipe(s, onChange = () => {}) {
   thumbs(m.el);
   const copy = async t => { try { await navigator.clipboard.writeText(t); toast('Copied'); } catch { toast('Copy failed'); } };
   $('[data-copy=prompt]', m.el)?.addEventListener('click', () => copy(pages.map((p, i) => (pages.length > 1 ? `Page ${i + 1}:\n` : '') + p.prompt).join('\n\n')));
-  $('[data-copy=json]', m.el)?.addEventListener('click', () => copy(JSON.stringify({ breakdown: s.breakdown, recreate: s.recreate }, null, 2)));
+  $('[data-copy=json]', m.el)?.addEventListener('click', () => copy(JSON.stringify({ must_keep: RECIPES[s.archetype] || null, breakdown: s.breakdown, recreate: s.recreate }, null, 2)));
+  $('[data-copy=remix]', m.el)?.addEventListener('click', () => copy(remixPrompt(s)));
   $('[data-swnums]', m.el)?.addEventListener('click', () => { m.close(); updateNumbers(s, onChange); });
   $('[data-swdupes]', m.el)?.addEventListener('click', async () => {
     const r = await sb.from('swipe_posts').delete().in('id', s.dupes.map(d => d.id)); if (r.error) return toast(r.error.message);

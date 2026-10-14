@@ -117,8 +117,9 @@ hooks. Pick the closest one:
   13 Oct 2026, ~1K followers: 63 reactions / 279 comments in 16 h, 4.4 comments per reaction = the comment gate worked.)
 - `launch_slide` (shown in HQ as "Presentation slide"; the team calls it the presentation format): ONE landscape image made
   like a keynote title slide: a big title ("Introducing Claude Opus 5"), one line of result ("$145M Deal Flow Agent for PE/VCs"),
-  one piece of art, lots of empty space. Not a document post: LinkedIn sees a single image. Whether it rides news is a separate
-  part (`copy.hook_type` = timely), not part of the recipe. (Remo Duzkale: Opus 5 post 104 reactions / 132 comments at 2 months;
+  one piece of art, lots of empty space. Not a document post: LinkedIn sees a single image. Riding a big launch IS the recipe:
+  the famous name is the title, the audience + dollar result is the subtitle. Without the launch it is just a beige slide (a remix
+  that dropped it came out as a generic clipboard checklist, 14 Oct 2026). (Remo Duzkale: Opus 5 post 104 reactions / 132 comments at 2 months;
   Fable 5 post 66 / 65 at 3 months.)
 - `contents_cover`: a real document / carousel whose cover is a numbered table of contents.
 - `tool_in_action`: a mock-up of the tool DOING the job: an app window with the chat on the left (prompt, files attached, the
@@ -129,6 +130,8 @@ hooks. Pick the closest one:
   names blurred, the key lines boxed in red. Often under a "Tool + Tool" logo header and one big number headline
   ("Claude + LinkedIn → 97+ Off-Market Mandates" over a "New Booked Deal in Motion" app alert). (Remo Duzkale, 65 reactions /
   82 comments / 12 reposts at 3 months.)
+- Every archetype that gets copied needs its "must keep" rules (the psychology, not the look) in `RECIPES` in `hq/swipe.js`;
+  HQ puts them into "Copy prompt for our version" and the copied JSON. A new archetype = a new RECIPES entry.
 - `cover.layout` is the arrangement, separate from the recipe: the same Presentation slide can be `title_top_visual_below` (title block
   on top, art in a panel under it: Remo's Opus 5) or `full_bleed_art_text_over` (art fills the frame, text sits over it near the middle:
   his Fable 5).

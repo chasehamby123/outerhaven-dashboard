@@ -522,7 +522,10 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   full_bleed_art_text_over / document_viewer / …), ranked as "Cover layout" and shown under the archetype. Layouts were added by re-inserting
   the three earlier rows (UPDATE is blocked); newest copy wins the dedupe, old copies are hidden.
   `feedHook` = first 3 lines (blank counts) or ~210 chars; matches both saved posts' real "…more" cut.
-  Weekly analysis re-does our breakdowns without an archetype (v1). Only 8 of 51 own posts had a breakdown on 14 Oct.
+  Weekly analysis re-does our breakdowns without an archetype (v1).
+  **Must keep** (14 Oct, after a remix of the Opus 5 slide came out as a beige clipboard checklist with no launch, number or audience):
+  `RECIPES` in swipe.js = per archetype, the rules that make it work + what may change. Open shows "✓ Must keep"; "Copy prompt for our
+  version" (`remixPrompt`) = rules + swap slots + the original prompt as look reference; "Copy exact-copy prompt" = the literal original. Only 8 of 51 own posts had a breakdown on 14 Oct.
 - **Elements, ranked** (Growth → Playbook; `elementsOf()` / `elementEffects()` in scoring.js, tested in `node hq/scoring-test.mjs`): flattens
   measured format + `text_features` (bucketed) + `breakdown` into element values and scores each like a factor (lift vs own account,
   shrunk K=3). ▲/▼ symbols carry direction.
