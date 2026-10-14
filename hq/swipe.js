@@ -46,7 +46,7 @@ const hoursAt = (s, at) => s.posted_at ? (Date.parse(at) - Date.parse(s.posted_a
 export function growth(s) {
   const snaps = [...(s.snapshots || [])].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   return snaps.map((x, i) => { const h = hoursAt(s, x.at), prev = snaps[i - 1], ph = prev ? hoursAt(s, prev.at) : 0, pc = prev ? prev.comments : 0;
-    return { ...x, h, perHour: h != null && h > ph && x.comments != null ? (x.comments - (pc || 0)) / (h - ph) : null }; });
+    return { ...x, h, perHour: h != null && h - ph >= 1 && x.comments != null ? (x.comments - (pc || 0)) / (h - ph) : null }; });
 }
 const hrs = h => h == null ? '' : h < 48 ? `${Math.round(h)} h` : `${(h / 24).toFixed(1)} days`;
 // What the feed shows before "…see more": the first paragraph, at most ~210 characters (LinkedIn's cut). Approximate.
@@ -141,7 +141,7 @@ export function openSwipe(s, onChange = () => {}) {
       <div class="swShots">${(s.image_paths || []).map(p => `<span class="swShot" data-swthumb="${esc(p)}"></span>`).join('')}</div>
       <div>
         <p class="s muted" style="margin:0 0 12px">${esc(ARCHETYPES[s.archetype]?.[1] || '')}</p>
-        ${line('Results', [s.comments != null && `${fmt(s.comments)} comments`, s.reactions != null && `${fmt(s.reactions)} reactions`, s.author_followers && `${fmt(s.author_followers)} followers`, s.hours_live && `${s.hours_live} h live`].filter(Boolean).map(esc).join(' · '))}
+        ${line('Results', [s.comments != null && `${fmt(s.comments)} comments`, s.reactions != null && `${fmt(s.reactions)} reactions`, s.author_followers && `${fmt(s.author_followers)} followers`].filter(Boolean).map(esc).join(' · '))}
         ${growth(s).length ? `<h4 class="swH">Growth</h4><table class="tbl swGrowth"><thead><tr><th>After</th><th class="n">Comments</th><th class="n">Likes</th><th class="n">Reposts</th><th class="n">Comments per hour</th></tr></thead><tbody>${growth(s).map(g => `<tr><td>${g.h != null ? hrs(g.h) : esc(String(g.at).slice(0, 10))}</td><td class="n"><b>${fmt(g.comments)}</b></td><td class="n">${fmt(g.reactions)}</td><td class="n">${fmt(g.reposts)}</td><td class="n">${g.perHour != null ? (g.perHour >= 10 ? Math.round(g.perHour) : g.perHour.toFixed(1)) : '—'}</td></tr>`).join('')}</tbody></table>` : ''}
         ${s.caption ? `<h4 class="swH">What the feed shows before "…see more"</h4><p class="swFeed">${esc(feedHook(s.caption))}</p>` : ''}
         ${line('Cover headline', esc(c.headline || ''))}

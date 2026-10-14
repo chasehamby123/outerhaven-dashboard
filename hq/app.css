@@ -1435,7 +1435,7 @@ body,.card,.kpi,.checklist,.side{transition:background-color .2s,border-color .2
 .swCap{max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .swOpen{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:20px}
 .swShots{display:grid;gap:8px;align-content:start;max-height:70vh;overflow:auto}
-.swShot{display:block;aspect-ratio:9/16;border:1px solid var(--line);border-radius:6px;background:var(--sunk) top center/cover no-repeat}
+.swShot{display:block;aspect-ratio:4/5;border:1px solid var(--line);border-radius:6px;background:var(--sunk) center/contain no-repeat}
 .swKV{display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:var(--fs-s)}
 .swH{margin:14px 0 4px;font-size:13px}.swList{margin:0;padding-left:18px;font-size:var(--fs-s);display:grid;gap:4px}
 .swPit{margin-top:12px}.swPit summary{cursor:pointer;color:var(--ink-2)}
