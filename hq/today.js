@@ -190,6 +190,7 @@ function draw() {
   bindDmCard(root, draw);
   $$('[data-late]', root).forEach(b => b.onclick = () => settle(b.dataset.late, 'done'));
   $$('[data-skip]', root).forEach(b => b.onclick = () => settle(b.dataset.skip, 'skipped'));
+  $$('[data-skipall]', root).forEach(b => b.onclick = () => { b.disabled = true; settle(b.dataset.skipall.split(','), 'skipped'); });
   { const m = mineOnly(rows), md = m.filter(r => r.status === 'done').length; setBadge(m.length - md, lateToday(m).length, m.length); }
 }
 
@@ -199,6 +200,7 @@ function unfinishedHtml() {
   const W = viewing(), open = past.filter(r => OPEN(r) && (W === 'Everyone' || assigneeOf(r) === W)); if (!open.length) return '';
   const days = [...new Set(open.map(r => dayLabel(r.work_date)))];
   return `<details class="overdue"><summary><b>You didn't finish ${open.length} task${open.length === 1 ? '' : 's'} earlier this week</b><span class="muted" style="color:inherit;opacity:.8">${esc(days.join(', '))}</span><span class="s">Sort them out</span></summary>
+    <div class="row" style="gap:8px;padding:10px 16px 0"><button class="btn sm" data-skipall="${open.map(r => r.id).join(',')}">Skip all ${open.length}</button><span class="s muted">Won't do them: they stay on the track record as skipped.</span></div>
     <ul class="odList">${open.slice().reverse().map(r => `<li><span class="s muted">${esc(dayLabel(r.work_date))} · ${fmtTime(r.start_time)}</span><b>${esc(r.task)}</b>
       <span class="row" style="gap:6px"><button class="btn sm primary" data-late="${r.id}">Done now</button><button class="btn sm ghost" data-skip="${r.id}">Skip</button></span></li>`).join('')}</ul></details>`;
 }
@@ -265,9 +267,10 @@ export async function renderWeekHistory(el) {
 }
 
 async function settle(id, status) {
-  const res = await sb.from('daily_ops_schedule').update({ status, updated_at: new Date().toISOString(), updated_by: state.user?.id || null }).eq('id', id);
+  const ids = [].concat(id); // one id or many (Skip all)
+  const res = await sb.from('daily_ops_schedule').update({ status, updated_at: new Date().toISOString(), updated_by: state.user?.id || null }).in('id', ids);
   if (fail(res, 'Update task')) return;
-  toast(status === 'done' ? 'Marked done (late)' : 'Marked skipped'); await load();
+  toast(status === 'done' ? 'Marked done (late)' : ids.length > 1 ? `Skipped ${ids.length} tasks` : 'Marked skipped'); await load();
 }
 
 async function toggle(id, checked, cb) {
