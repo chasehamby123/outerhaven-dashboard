@@ -32,6 +32,7 @@ export const RECIPES = {
   ], swap: 'the launch (this week\'s), the dollar number, the audience, the art subject' },
   fake_doc_viewer: { keep: [
     'It must look like a document already open in a viewer (file bar, page thumbnails, page counter), so the reader feels they are one click from having it.',
+    'Title in 4 short lines alternating black / accent colour / black / accent colour (black "The Ultimate", blue "Claude Guide", black "to Every Document", blue "Investors Ask For"). The black lines frame the colour so it looks brighter, the stripe rhythm makes the title feel designed, and reading only the coloured lines still gives the message (big name + audience).',
     'The visible page is a numbered contents list that promises specific deliverables.',
     'The "Comment WORD" button is drawn inside the image; the word is short and on-topic.',
   ], swap: 'the document title, the contents lines, the keyword' },

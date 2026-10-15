@@ -167,6 +167,9 @@ is unfinished. Compare against these patterns from the saved posts (14 Oct 2026)
 - **One accent.** Felizitas: black on white/grid + one blue on the words that matter (the tool name and the audience), the button the
   only solid block. Remo: borrows Anthropic's own launch look (cream #FAF9F5, sand panel, natural-history art) so his slide reads as the
   official announcement; proof posts use the tools' brand colours (Claude orange, LinkedIn blue) + red only to point (arrow, boxes).
+- **Alternating colour lines** (Felizitas ROOM): a 4-line title split black / accent / black / accent. The black lines make the accent
+  look more vivid than a fully coloured title would, the stripes give rhythm, and the accent lines alone read as the message (the big
+  name + the audience). Record the colour of EVERY title line in `recreate` (`emphasis`) and the reason in `anatomy.hierarchy.accent_words`.
 - **Art that means something.** The Opus eggs form the numeral 5; the Fable butterflies echo the name. Decorative icons (a clipboard,
   a checklist) carry nothing.
 - **Button at the bottom, after the proof** (comment-gated posts), filling the width; the keyword is the only other emphasis.
