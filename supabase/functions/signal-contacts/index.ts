@@ -158,7 +158,7 @@ async function hunterEmail(domain: string, first: string, last: string, hk: stri
 }
 
 // Work email for one named person at the company's domain (on demand). Apify first; Hunter only when Apify has no valid mailbox.
-async function email(kind: string, key: string, name: string) {
+async function email(kind: string, key: string, name: string, role = "") {
   const row = await getRow(kind, key);
   if (!row?.domain) throw new Error("No company website found yet. Run Find contacts first.");
   const parts = String(name).replace(/[,.]/g, " ").trim().split(/\s+/).filter(w => !/^(jr|sr|ii|iii|iv)$/i.test(w));
@@ -167,7 +167,11 @@ async function email(kind: string, key: string, name: string) {
   const hk = await secret("HUNTER_API_KEY");
   if (d?.status !== "valid" && hk) d = await hunterEmail(row.domain, first, last, hk).then(h => h.email || !d ? h : d, e => d || Promise.reject(e));
   if (!d) throw new Error("No Apify token or Hunter key saved.");
-  const people = (row.people || []).map((p: any) => p.name === name ? { ...p, email: d.email || null, email_score: d.score ?? null, email_status: d.status || null, email_src: d.src, email_checked: new Date().toISOString() } : p);
+  const found = { email: d.email || null, email_score: d.score ?? null, email_status: d.status || null, email_src: d.src, email_checked: new Date().toISOString() };
+  // A name the team typed in ("Someone else") is added first, marked confirmed: a person chose it.
+  const known = (row.people || []).some((p: any) => p.name === name);
+  const people = known ? (row.people || []).map((p: any) => p.name === name ? { ...p, ...found } : p)
+    : [{ name, role: role || "other", title: null, source: "manual", status: "confirmed", ...found }, ...(row.people || [])];
   await save(kind, key, { people });
   return { ok: true, email: d.email || null, score: d.score ?? null, status: d.status || null, src: d.src };
 }
@@ -247,7 +251,7 @@ Deno.serve(async (req) => {
     const kind = String(body.kind || ""), key = String(body.key || "");
     if (!TABLE[kind] || !key) return json({ ok: false, error: "kind and key needed" }, 400);
     if (body.action === "lookup") return json(await lookup(kind, key));
-    if (body.action === "email") return json(await email(kind, key, String(body.name || "")));
+    if (body.action === "email") return json(await email(kind, key, String(body.name || "").trim(), String(body.role || "")));
     if (body.action === "mark") {
       const row = await getRow(kind, key); if (!row) return json({ ok: false, error: "No contacts stored" }, 404);
       const who = (user.email || "").split("@")[0];

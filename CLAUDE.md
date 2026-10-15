@@ -426,6 +426,8 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   let into the batch when the company has a domain; the window runs `findEmail()` (contacts.js) 4 at a time, Send stays disabled until
   done, and a row that would go email-only with no confirmed email is unticked and locked. Cards and the batch window always state
   LinkedIn ✓ found / ✕ not found / … not searched yet, and email ✓ confirmed / ? unconfirmed (never emailed) / ✕ none found.
+- **"+ Email for someone else"** (15 Oct 2026, Tengku wanted to test with a name not in the filing): on any card with a domain; type a
+  name + role → action `email` with a name not on the card adds them first (`source: 'manual'`, status confirmed) with the result.
 - Keys pasted by an admin in any signal tab → "Contacts setup" (RPC `set_contact_key`, write-only; never enter them for the user).
 - "Add to pipeline" pre-fills name, title and LinkedIn from the best person.
 
