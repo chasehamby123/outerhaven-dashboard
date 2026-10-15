@@ -2,6 +2,9 @@
 // Filled daily by the GitHub edgartools job (scripts/credit_signals.py) from SEC data; judged on the server
 // (classifyCredit in supabase/functions/fund-signals/rules.js). Every verdict shows its reasons.
 import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
+import { messageFor } from './outreach.js';
+import { whyBlock } from './kinds.js';
+import { loadContacts, contactHtml, bindContacts, bestPerson, contactsSetup } from './contacts.js';
 import { markBtns, markLine, bindMarks, MARK_VIEWS, inMarkView } from './marks.js';
 import { me } from './tasks.js';
 
@@ -20,6 +23,7 @@ async function load() {
   ]);
   if (c.error) { rows = null; return; }
   rows = c.data || []; runs = r.data || [];
+  await loadContacts('credit', true).catch(() => null);
 }
 export function creditTargetCount() { return rows ? rows.filter(s => bucket(s) === 'target').length : 0; }
 
@@ -39,7 +43,7 @@ function draw() {
   onCount(counts.target);
   el.innerHTML = `<div class="fs">
     <div class="fsTop"><p class="pHint" style="padding:0;margin:0;max-width:640px">Small US public companies with debt they must refinance, a lender losing patience, or a going-concern warning. For Peter: private credit is their natural next lender.</p>
-      <div class="row fsBtns"><a class="btn sm primary" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a><button class="btn sm ghost" id="crHow">How it works</button></div></div>
+      <div class="row fsBtns"><a class="btn sm ghost" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a><button class="btn sm ghost" id="crHow">How it works</button><a class="btn sm ghost" href="#/rules">How we qualify</a><button class="btn sm ghost" id="ctSetup">Contacts setup</button></div></div>
     <p class="pHint">Source: SEC XBRL financials and full-text search (edgartools), refreshed daily on GitHub, free.${last ? ` Last run <b>${new Date(last.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>${last.params?.period ? ` · balance sheets ${esc(last.params.period)}` : ''}.` : ' Not run yet: on GitHub choose Run workflow, mode <b>credit</b>.'}</p>
     <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed'], ...MARK_VIEWS].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
     <div class="fsList">${shown.length ? shown.slice(0, 200).map(rowHtml).join('') : `<div class="empty">${rows.length ? 'Nothing here.' : 'No companies yet. Run the credit scan on GitHub (mode credit); it takes about 5–10 minutes.'}</div>`}</div>
@@ -69,37 +73,33 @@ function rowHtml(s) {
       <h4>${esc(s.company_name)}${s.tickers ? ` <span class="fsVeh">${esc(s.tickers)}${s.exchange ? ' · ' + esc(s.exchange) : ''}</span>` : ''}</h4>
       ${markLine(s)}
       <div class="fsFacts">${facts.map(x => `<span>${x}</span>`).join('')}</div>
-      <ul class="fsWhy">${(s.reasons || []).map(r => `<li data-tone="${toneOf(r.tone)}">${esc(r.text)}</li>`).join('')}</ul>
+      ${contactHtml('credit', String(Number(s.cik)), s)}
+      ${whyBlock(s.reasons, esc)}
       <div class="fsPeople"><a href="${cfoSearch(s)}" target="_blank" rel="noopener">Find the CFO on LinkedIn ↗</a>${ev.join('')}</div>
     </div>
     <div class="fsAct">
       ${markBtns(s)}
       ${s.status !== 'added' ? `<button class="btn sm ${s.verdict === 'target' ? 'primary' : ''}" data-add="${s.id}">Add to pipeline</button>` : '<span class="pFlag good">In pipeline</span>'}
-      <button class="btn sm" data-copy="${s.id}">Copy opener</button>
+      <button class="btn sm" data-copy="${s.id}">Copy message</button>
       ${s.status === 'dismissed' ? `<button class="btn sm ghost" data-undo="${s.id}">Restore</button>` : s.status !== 'added' ? `<button class="btn sm ghost" data-dismiss="${s.id}">Dismiss</button>` : ''}
     </div></article>`;
 }
 
 // First message from Peter's side, using the numbers from their own filing. Personalise before sending.
-function opener(s, name = '') {
-  const who = firstName(name) || 'there', f = s.flags || {}, co0 = s.company_name.replace(/,?\s+(inc|corp|corporation|co|ltd|llc|plc|holdings)\.?$/i, ''), co = co0 === co0.toUpperCase() ? co0.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase()) : co0;
-  // Lead with the date, never the distress: no "going concern" / "forbearance" in a first message (the CFO knows; naming it
-  // reads as an accusation). Sent from Peter's account, CFO to a credit peer.
-  const by = s.period_end ? new Date(Date.parse(s.period_end) + 365 * 864e5).toLocaleString('en-US', { month: 'long', year: 'numeric' }) : '';
-  const due = s.debt_current != null && s.debt_current >= 10e6 && (s.cash == null || s.debt_current > s.cash)
-    ? `${money(s.debt_current)} of ${co}'s debt comes due${by ? ` before ${by}` : ' in the next 12 months'}`
-    : f.forbearance || f.going_concern ? `${co} will likely be lining up its next facility in the coming months` : `${co} may be looking at its next facility`;
-  return `Hi ${who}, I've spent 35 years in private credit. Saw that ${due}. Banks have pulled back from deals your size, but private lenders haven't, and the terms are sharper than most CFOs expect. Happy to tell you who's actively writing for a company like yours, no pitch. Worth 15 minutes before the process starts?`;
-}
+// The first message = the Prosp template (hq/outreach.js messageFor): one dated fact about their company, a small ask.
+// No pitch paragraph, no "no pitch" (saying it makes people think of a pitch). Distress (marks, liens, going concern) is never named.
+export function opener(s, name = '') { return messageFor('credit', s, name); }
 
 function bind(shown) {
   const find = id => shown.find(s => s.id === id) || rows.find(s => s.id === id);
   bindMarks(el, { table: 'credit_signals', find, redraw: draw });
+  bindContacts(el, 'credit', draw);
+  $('#ctSetup', el)?.addEventListener('click', contactsSetup);
   $$('[data-view]', el).forEach(b => b.onclick = () => { view = b.dataset.view; draw(); });
   $('#crHow', el).onclick = howModal;
   $$('[data-copy]', el).forEach(b => b.onclick = async () => {
     const t = opener(find(b.dataset.copy));
-    try { await navigator.clipboard.writeText(t); toast('Opener copied. Put the CFO\'s name in before sending.'); } catch { modal({ title: 'Opener', submit: '', body: `<textarea class="input" rows="6" style="width:100%">${esc(t)}</textarea>` }); }
+    try { await navigator.clipboard.writeText(t); toast('Message copied. Put the CFO\'s name in before sending.'); } catch { modal({ title: 'Message', submit: '', body: `<textarea class="input" rows="6" style="width:100%">${esc(t)}</textarea>` }); }
   });
   $$('[data-dismiss],[data-undo]', el).forEach(b => b.onclick = async () => {
     const id = b.dataset.dismiss || b.dataset.undo, st = b.dataset.dismiss ? 'dismissed' : 'new';
@@ -111,12 +111,13 @@ function bind(shown) {
 
 // The company becomes a sell-side relationship (a borrower is a client with something to place with lenders).
 function addModal(s) {
+  const cp = bestPerson('credit', String(Number(s.cik)));
   modal({
     title: 'Add to pipeline', submit: 'Add',
     body: `<div class="form pForm"><p class="s muted" style="grid-column:1/-1;margin:0"><b>${esc(s.company_name)}</b>. Find the CFO first: <a href="${cfoSearch(s)}" target="_blank" rel="noopener">LinkedIn search ↗</a></p>
-      <label class="field">CFO name<input class="input" name="name" required placeholder="Jane Smith"></label>
-      <label class="field">LinkedIn URL (optional)<input class="input" name="li"></label>
-      <label class="field" style="grid-column:1/-1">First step<input class="input" name="next" value="Connect with the CFO and send the opener (Peter's private credit angle)"></label>
+      <label class="field">CFO name<input class="input" name="name" required placeholder="Jane Smith" value="${esc(cp?.name || '')}"></label>
+      <label class="field">LinkedIn URL (optional)<input class="input" name="li" value="${esc(cp?.linkedin || '')}"></label>
+      <label class="field" style="grid-column:1/-1">First step<input class="input" name="next" value="Connect with the CFO and send the message (Peter's private credit angle)"></label>
       <label class="field">Owner<select class="select" name="owner">${opts(['Peter', 'Tengku', 'Chase', 'Anaz', 'Razeen'], 'Peter')}</select></label></div>`,
     async onSubmit(fd) {
       const now = new Date().toISOString(), name = String(fd.get('name')).trim(), li = String(fd.get('li') || '').trim() || null;
@@ -126,7 +127,7 @@ function addModal(s) {
       await sb.from('tasks').insert({ person_id: r.data.id, action: String(fd.get('next') || '').trim() || 'Connect with the CFO', owner_name: fd.get('owner'), due_date: now.slice(0, 10), created_by: state.user?.id });
       await sb.from('credit_signals').update({ status: 'added', person_id: r.data.id, updated_at: now }).eq('id', s.id);
       s.status = 'added'; s.person_id = r.data.id;
-      try { await navigator.clipboard.writeText(opener(s, name)); toast(`${name} added. Opener copied with their name.`); } catch { toast(`${name} added to Pipeline → Sell side`); }
+      try { await navigator.clipboard.writeText(opener(s, name)); toast(`${name} added. Message copied with their name.`); } catch { toast(`${name} added to Pipeline → Sell side`); }
       draw();
     },
   });

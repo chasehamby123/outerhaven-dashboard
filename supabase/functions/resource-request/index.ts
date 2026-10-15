@@ -85,10 +85,18 @@ async function startAnalysis(by: string) {
   if (open.data?.length) return { ok: false, error: "An analysis is already running." };
   // The routine can't read the private bucket: hand it week-long signed links to the saved creatives (last 8 weeks).
   const since = new Date(Date.now() - 56 * 864e5).toISOString();
-  const { data: posts } = await sb.from("daily_ops_posts").select("id,creative_path").eq("is_repost", false).gte("posted_at", since).not("creative_path", "is", null).neq("creative_path", "unavailable").limit(200);
-  const creatives: Record<string, string> = {};
-  for (const p of posts || []) { const { data } = await sb.storage.from("growth-assets").createSignedUrl(p.creative_path, 7 * 86400); if (data?.signedUrl) creatives[p.id] = data.signedUrl; }
-  const { data: row, error } = await sb.from("resource_jobs").insert({ kind: "analysis", format: "analysis", topic: `Weekly growth analysis · week of ${monday}`, requested_by: by, fired_at: new Date().toISOString(), payload: { week_start: monday, creatives } }).select("id").single();
+  const { data: posts } = await sb.from("daily_ops_posts").select("id,creative_path,creative_paths").eq("is_repost", false).gte("posted_at", since).not("creative_path", "is", null).neq("creative_path", "unavailable").limit(200);
+  const creatives: Record<string, string> = {}, slides: Record<string, string[]> = {};
+  for (const p of posts || []) {
+    const { data } = await sb.storage.from("growth-assets").createSignedUrl(p.creative_path, 7 * 86400); if (data?.signedUrl) creatives[p.id] = data.signedUrl;
+    // Every saved image / slide / PDF of the post (scraper v11), in order, so the breakdown sees the whole creative.
+    const all = (Array.isArray(p.creative_paths) ? p.creative_paths : []).map((x: any) => x?.path).filter(Boolean);
+    if (all.length > 1 || all.some((x: string) => x.endsWith(".pdf"))) {
+      const s = await sb.storage.from("growth-assets").createSignedUrls(all, 7 * 86400);
+      slides[p.id] = (s.data || []).map((x: any) => x.signedUrl).filter(Boolean);
+    }
+  }
+  const { data: row, error } = await sb.from("resource_jobs").insert({ kind: "analysis", format: "analysis", topic: `Weekly growth analysis · week of ${monday}`, requested_by: by, fired_at: new Date().toISOString(), payload: { week_start: monday, creatives, slides } }).select("id").single();
   if (error) return { ok: false, error: error.message };
   return await fireAndRecord(row.id);
 }
@@ -145,6 +153,33 @@ Deno.serve(async (req) => {
     const { data: ins, error: e2 } = await sb.from("resource_jobs").insert(row).select("id").single();
     if (e2) return json({ ok: false, error: e2.message }, 500);
     return json(await fireAndRecord(ins.id));
+  }
+
+  // Swipe file breakdown (14 Oct 2026): someone else's post, saved in Growth → Playbook. Same routine; the skill hands it to
+  // routines/breakdown.md, which writes breakdown / recreate / archetype onto the swipe_posts row.
+  if (body.action === "breakdown") {
+    if (who.role !== "admin") return json({ ok: false, error: "Only admins can break down posts." }, 403);
+    const { data: sw } = await sb.from("swipe_posts").select("*").eq("id", text(body.swipe_id, 64)).maybeSingle();
+    if (!sw) return json({ ok: false, error: "Saved post not found." }, 404);
+    const paths = (Array.isArray(sw.image_paths) ? sw.image_paths : []).filter((p: unknown) => typeof p === "string");
+    if (!paths.length && !sw.caption) return json({ ok: false, error: "Add a screenshot or the caption first." }, 400);
+    if (!(await underCap())) return json({ ok: false, error: `Today's limit of ${cap} Claude jobs is reached. An admin can raise it in Resources → Settings.` }, 429);
+    // The routine can't read the private bucket: week-long signed links, in order.
+    // A full https path is a public image (seeded rows): passed as is.
+    const signed: string[] = [];
+    for (const p of paths) { const u = /^https:\/\//.test(p) ? p : (await sb.storage.from("swipe").createSignedUrl(p, 7 * 86400)).data?.signedUrl; if (u) signed.push(u); }
+    const row = {
+      created_by: who.id, requested_by: who.email, kind: "resource", format: "other", poster: "Tengku Harris",
+      topic: `Breakdown: ${sw.author || "saved post"}`, caption: sw.caption || "", fired_at: new Date().toISOString(),
+      payload: { type: "breakdown", swipe_id: sw.id, images: signed, author: sw.author, author_followers: sw.author_followers,
+        reactions: sw.reactions, comments: sw.comments, reposts: sw.reposts, hours_live: sw.hours_live, posted_at: sw.posted_at, snapshots: sw.snapshots, url: sw.url, note: sw.note },
+    };
+    const { data: ins, error: e3 } = await sb.from("resource_jobs").insert(row).select("id").single();
+    if (e3) return json({ ok: false, error: e3.message }, 500);
+    await sb.from("swipe_posts").update({ status: "queued", job_id: ins.id, error: null }).eq("id", sw.id);
+    const r = await fireAndRecord(ins.id);
+    if (!r.ok) await sb.from("swipe_posts").update({ status: "failed", error: r.error }).eq("id", sw.id);
+    return json(r);
   }
 
   if (body.action !== "create") return json({ ok: false, error: "unknown action" }, 400);

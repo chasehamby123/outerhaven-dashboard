@@ -1,4 +1,4 @@
-// daily-ops-linkedin-auto · v9 (Outerhaven HQ)
+// daily-ops-linkedin-auto · v11 (Outerhaven HQ)
 // Changes from v1:
 //  1. FIX: posts are matched by the same key the database trigger stores (derived from the post URL),
 //     not the scraper's activity id. Reshared posts no longer crash the run with a duplicate-key error
@@ -14,6 +14,9 @@
 // 10. (v8) Comment runs log their real cost (from the Apify run) and stop before the monthly budget: a thread costs ~$0.6-1.3.
 //     Automatic comment passes are paced: at most (remaining budget / days left), minimum one thread, per pass.
 // 11. (v9) Account pool: APIFY_TOKEN + APIFY_TOKEN_2..9 (added in HQ). Each run goes to the account with the most credit left.
+// 12. (v10) Paid Apify plans first; the atomus actors cap FREE plans at 10 results a month and answer with an error row.
+// 13. (v11) Formats: what LinkedIn shows (linkedin_type, image count, PDF pages + page shape), every slide saved, caption
+//     counted into text_features, and each post matched to the posting slot it filled (planned format vs what went out).
 //  5. (v3) Daily mode (default): one scrape a day at scrape_hour Malaysia time: posts, then comment threads.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -64,6 +67,11 @@ async function postKeyFor(url: string): Promise<string> {
   keyCache.set(s, k);
   return k;
 }
+// LinkedIn activity / ugcPost / share ids are snowflakes: the top bits are the creation time in ms.
+function idTime(key: string) {
+  const m = String(key || "").match(/(\d{15,})/); if (!m) return "";
+  try { const ms = Number(BigInt(m[1]) >> 22n); return ms > 1.4e12 && ms < Date.now() + 864e5 ? new Date(ms).toISOString() : ""; } catch { return ""; }
+}
 function sgDate(value?: string) {
   const d = value ? new Date(value) : new Date();
   const p = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Singapore", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
@@ -90,6 +98,37 @@ function contentType(row: any) {
   if (row?.article) return "article";
   return "text";
 }
+// v11: what LinkedIn actually shows for an item. The actor sends doc / article / video_url as null when absent.
+function linkedinType(row: any) {
+  if (clean(row?.video_url) || row?.video) return "video";
+  if (row?.doc && typeof row.doc === "object") return "document";
+  if (row?.poll && typeof row.poll === "object") return "poll";
+  if (row?.article && typeof row.article === "object") return "article";
+  const n = Array.isArray(row?.images) ? row.images.filter(Boolean).length : 0;
+  return n > 1 ? "multi_image" : n === 1 ? "image" : "text";
+}
+// v11: the caption broken into countable parts (the creative is broken down by Claude: see .claude/skills/post-breakdown).
+const EMOJI = /\p{Extended_Pictographic}/gu;
+function textFeatures(text: string) {
+  const t = clean(text); if (!t) return null;
+  const lines = t.split(/\r?\n/), nonEmpty = lines.filter(l => l.trim());
+  const hook = nonEmpty[0] || "", words = t.split(/\s+/).filter(Boolean);
+  const listLines = nonEmpty.filter(l => /^\s*(\d+[.)]|[-•→✅❌▪️►●*]|\p{Extended_Pictographic})/u.test(l)).length;
+  const last = nonEmpty.slice(-3).join(" ").toLowerCase();
+  return {
+    chars: t.length, words: words.length, lines: nonEmpty.length, blank_lines: lines.length - nonEmpty.length,
+    avg_line_words: nonEmpty.length ? Math.round(words.length / nonEmpty.length) : 0,
+    hook: hook.slice(0, 200), hook_words: hook.split(/\s+/).filter(Boolean).length, hook_chars: hook.length,
+    hook_number: /\d/.test(hook), hook_question: /\?/.test(hook), hook_first_person: /^(i|i'm|i've|my|we|our)\b/i.test(hook.trim()),
+    hook_negative: /\b(no|not|never|stop|don't|doesn't|won't|can't|wrong|mistake|fail|dead|kill)/i.test(hook),
+    see_more_cut: t.length > 210, list_lines: listLines, numbers: (t.match(/\d[\d,.%$]*/g) || []).length,
+    emojis: (t.match(EMOJI) || []).length, hashtags: (t.match(/(^|\s)#\w+/g) || []).length, mentions: (t.match(/@\w+/g) || []).length,
+    links: (t.match(/https?:\/\//g) || []).length, questions: (t.match(/\?/g) || []).length,
+    cta_comment: /\bcomment\b/.test(last), cta_dm: /\b(dm|message me|inbox)\b/.test(last), cta_follow: /\bfollow\b/.test(last),
+    cta_keyword: (nonEmpty.slice(-3).join(" ").match(/comment\s+["“']?([A-Za-z0-9-]{2,20})["”']?/i) || [])[1] || null,
+    ps: /\bp\.?s\.?\b/i.test(t),
+  };
+}
 function commentId(row: any) { return clean(row?._metadata?.comment_id) || clean(row?.comment_id) || clean(row?.commentId) || clean(row?.id); }
 function parentId(row: any) { return clean(row?._metadata?.parent_comment_id) || clean(row?.parent_comment_id) || clean(row?.parentCommentId) || null; }
 function commentAuthor(row: any) {
@@ -114,25 +153,30 @@ async function apifyUsage(token: string) {
 }
 // v9: several Apify accounts. Slot 1 is APIFY_TOKEN (capped by the HQ budget); slots 2-9 are APIFY_TOKEN_2.. added in HQ.
 // Every Apify call goes to the account with the most credit left; an account is used up to its own plan limit.
-type Acct = { slot: number; name: string; token: string; used: number; limit: number; remaining: number; primary: boolean; error?: string };
+type Acct = { slot: number; name: string; token: string; used: number; limit: number; remaining: number; primary: boolean; paid: boolean; plan: string; error?: string };
 async function loadPool(budget: number): Promise<Acct[]> {
   const r = await sb.from("integration_secrets").select("key,secret_value").like("key", "APIFY_TOKEN%");
   const rows = (r.data || []).filter((x: any) => /^APIFY_TOKEN(_\d+)?$/.test(x.key) && x.secret_value);
   const out = await Promise.all(rows.map(async (x: any): Promise<Acct> => {
     const slot = x.key === "APIFY_TOKEN" ? 1 : Number(x.key.split("_")[2]), primary = slot === 1, headers = { authorization: `Bearer ${x.secret_value}` };
-    const base = { slot, name: `account ${slot}`, token: x.secret_value as string, used: 0, limit: 0, remaining: 0, primary };
+    const base = { slot, name: `account ${slot}`, token: x.secret_value as string, used: 0, limit: 0, remaining: 0, primary, paid: false, plan: "" };
     try {
       const [lr, mr] = await Promise.all([fetch("https://api.apify.com/v2/users/me/limits", { headers }), fetch("https://api.apify.com/v2/users/me", { headers })]);
       const l: any = (await lr.json().catch(() => null))?.data, m: any = (await mr.json().catch(() => null))?.data;
       if (!lr.ok || !l?.limits) throw new Error(`Apify returned ${lr.status} (bad token?)`);
       const max = Number(l.limits.maxMonthlyUsageUsd) || 0, used = Number(l.current?.monthlyUsageUsd) || 0;
       const limit = primary ? (max ? Math.min(max, budget) : budget) - 0.01 : max - 0.25; // spare change so a run can't overshoot a small plan
-      return { ...base, name: clean(m?.username) || base.name, used, limit, remaining: Math.max(0, limit - used) };
+      const plan = clean(m?.plan?.id) || "";
+      return { ...base, name: clean(m?.username) || base.name, used, limit, remaining: Math.max(0, limit - used), plan, paid: !!plan && plan !== "FREE" };
     } catch (e) { return { ...base, error: e instanceof Error ? e.message : String(e) }; }
   }));
   return out.sort((a, b) => a.slot - b.slot);
 }
-const pick = (pool: Acct[], need: number) => pool.filter(a => !a.error && a.remaining >= need).sort((a, b) => b.remaining - a.remaining)[0] || null;
+// v10 (11 Oct 2026): the atomus actors give FREE Apify plans only 10 results a month, then return a single
+// {type:"error", error_kind:"free_tier_limit"} row. From 6 Oct every run went to a free account (most credit left), got that row,
+// skipped it and logged "ok, 0 posts". Paid accounts go first now; a free-tier answer marks that account and the run moves on.
+const pick = (pool: Acct[], need: number) => pool.filter(a => !a.error && a.remaining >= need).sort((a, b) => Number(b.paid) - Number(a.paid) || b.remaining - a.remaining)[0] || null;
+class ActorRefused extends Error {}
 const charge = (a: Acct, cost: number) => { a.used += cost; a.remaining = Math.max(0, a.remaining - cost); };
 
 // v7: start the actor run, poll it, and abort it if our time budget runs out (a fetch that just gives up leaves the
@@ -157,7 +201,11 @@ async function runApifyBudgeted(token: string, actor: string, input: unknown, de
   const items = await fetch(`https://api.apify.com/v2/datasets/${dataset}/items?clean=true&format=json`, { headers });
   const data: any = await items.json().catch(() => []);
   if (!items.ok) throw new Error(`Apify dataset returned ${items.status}`);
-  return { items: Array.isArray(data) ? data : [], cost };
+  const list = Array.isArray(data) ? data : [];
+  // The actor reports refusals (free-tier cap, bad input) as a row, not a failed run: never treat that as "no posts".
+  const refusal = list.find((r: any) => r?.type === "error");
+  if (refusal && list.every((r: any) => r?.type === "error")) throw new ActorRefused(`Apify ${actor}: ${clean(refusal.error_kind) || "error"}: ${clean(refusal.reason) || clean(refusal.message) || JSON.stringify(refusal).slice(0, 300)}`);
+  return { items: list.filter((r: any) => r?.type !== "error"), cost };
 }
 
 // v7: one Apify run per post (a 4-post batch with replies blew the 95 s limit), inside a shared time budget.
@@ -209,7 +257,10 @@ async function syncComments(pool: Acct[], roomUsd: number) {
       const up = await sb.from("daily_ops_posts").update({ scrape_status: num(post.commenter_count) > 250 ? "comments_capped" : "ok", last_scraped_at: new Date().toISOString(), source_actor: "atomus/linkedin-comments-scraper-pro", updated_at: new Date().toISOString() }).eq("id", post.id);
       if (up.error) throw new Error(`update unreplied: ${up.error.message}`);
       processed++; stored += rowsToStore.length; unrepliedTotal += unreplied;
-    } catch (e) { errors.push(`${post.post_name || post.id}: ${e instanceof Error ? e.message : String(e)}`); if (/time budget/.test(String(e))) break; }
+    } catch (e) {
+      if (e instanceof ActorRefused) { acct.error = e.message; errors.push(`${acct.name} refused: ${e.message.slice(0, 160)}`); continue; } // post stays pending, next account
+      errors.push(`${post.post_name || post.id}: ${e instanceof Error ? e.message : String(e)}`); if (/time budget/.test(String(e))) break;
+    }
   }
   if (!processed && errors.length) throw new Error(errors[0]); // nothing saved: surface the real reason in HQ
   return { mode: "comments", actor_runs_estimate: runs, apify_cost_usd: Number(spent.toFixed(4)), stopped_reason: stopped || null, accounts_used: [...usedAccts], comment_posts_processed: processed, comment_posts_queued: targets.length, comment_records_saved: stored, unreplied_total: unrepliedTotal, errors };
@@ -238,10 +289,15 @@ async function syncPosts(pool: Acct[], _allowDetail: boolean) {
   const profiles = accounts.map((a: any) => a.linkedin_url).filter(Boolean);
   if (!profiles.length) return { mode: "posts", actor_runs_estimate: 0, profiles_checked: 0, posts_saved: 0 };
   const acctByUrl = new Map(accounts.map((a: any) => [canon(a.linkedin_url), a]));
-  const acct = pick(pool, 0.3);
-  if (!acct) throw new Error("No Apify account has credit left for a posts run. Add an account or raise the budget in HQ.");
-  const run = await runApifyBudgeted(acct.token, "atomus/linkedin-posts-scraper-pro", { profiles, maxPosts: RECENT_ITEMS, postedLimit: "month", sortBy: "date", latestPostOnly: false, includeReposts: true, includeSharedPosts: true }, Date.now() + 140000);
-  charge(acct, run.cost); const rows = run.items;
+  let acct: Acct | null = null, run: { items: any[]; cost: number } | null = null; const refused: string[] = [];
+  const deadline = Date.now() + 140000;
+  while (!run) {
+    acct = pick(pool, 0.3);
+    if (!acct) throw new Error(refused.length ? `Every Apify account was refused: ${refused.join(" | ")}` : "No Apify account has credit left for a posts run. Add an account or raise the budget in HQ.");
+    try { run = await runApifyBudgeted(acct.token, "atomus/linkedin-posts-scraper-pro", { profiles, maxPosts: RECENT_ITEMS, postedLimit: "month", sortBy: "date", latestPostOnly: false, includeReposts: true, includeSharedPosts: true }, deadline); }
+    catch (e) { if (!(e instanceof ActorRefused)) throw e; acct.error = e.message; refused.push(`${acct.name}: ${e.message.slice(0, 120)}`); }
+  }
+  charge(acct!, run.cost); const rows = run.items;
 
   const existingRes = await sb.from("daily_ops_posts").select("*").order("posted_at", { ascending: false }).limit(1500);
   if (existingRes.error) throw new Error(`existing posts: ${existingRes.error.message}`);
@@ -259,10 +315,13 @@ async function syncPosts(pool: Acct[], _allowDetail: boolean) {
     if (!account || !sid || !publicUrl) { unmatched++; continue; }
     const authorUrl = clean(r?.author?.linkedinUrl) || clean(r?.author?.linkedin_url);
     const isOwn = sameProfile(authorUrl, account.linkedin_url);
-    const postedAt = clean(r?.posted_at) || new Date().toISOString();
+    const key = await postKeyFor(publicUrl).catch(() => "");
+    // v11 fix: when an account reshares its OWN old post, the actor's posted_at is the reshare time (Sahid's 3-week-old post
+    // showed as "posted last night"). LinkedIn ids carry their creation time, so the post's own id wins.
+    // (Reshares of other people's posts keep the reshare time: that's when the boost happened.)
+    const postedAt = (isOwn && idTime(key)) || clean(r?.posted_at) || new Date().toISOString();
     if (Date.parse(postedAt) < cutoff) { skippedOld++; continue; }
     try {
-      const key = await postKeyFor(publicUrl);
       const old = (key && byKey.get(`${account.id}|${key}`)) || byKey.get(`${account.id}|activity:${sid}`) || null;
       const comments = num(r?.engagement?.comments), reactions = num(r?.engagement?.total_reactions);
       const changed = !old || num(old.commenter_count) !== comments;
@@ -278,6 +337,8 @@ async function syncPosts(pool: Acct[], _allowDetail: boolean) {
         author_name: clean(r?.author?.name) || clean(r?.author_name) || old?.author_name || null,
         author_profile_url: isOwn ? account.linkedin_url : (authorUrl || old?.author_profile_url || null),
         raw_payload: r, updated_at: new Date().toISOString(),
+        linkedin_type: isOwn ? linkedinType(r) : null, image_count: Array.isArray(r?.images) ? r.images.filter(Boolean).length : 0,
+        text_features: isOwn ? textFeatures(clean(r?.content)) : null,
       };
       if (old) {
         const up = await sb.from("daily_ops_posts").update(payload).eq("id", old.id);
@@ -297,32 +358,135 @@ async function syncPosts(pool: Acct[], _allowDetail: boolean) {
   }
   const no_own_post = accounts.filter((a: any) => !ownByAccount.has(a.id)).map((a: any) => a.owner_name);
   const creatives = await saveCreatives();
-  return { mode: "posts", actor_runs_estimate: 1, apify_cost_usd: Number(run.cost.toFixed(4)), accounts_used: [acct.name], ...creatives, profiles_checked: profiles.length, rows_returned: rows.length, posts_saved: saved, original_posts: originals, reposts, skipped_older_than_7d: skippedOld, unmatched_post_rows: unmatched, no_own_post_last_7d: no_own_post, missing_profiles: [], errors };
+  const slots = await matchSlots().catch(e => ({ slot_error: e instanceof Error ? e.message : String(e) }));
+  return { mode: "posts", ...slots, actor_runs_estimate: 1 + refused.length, apify_cost_usd: Number(run.cost.toFixed(4)), accounts_used: [acct!.name], refused_accounts: refused, ...creatives, profiles_checked: profiles.length, rows_returned: rows.length, posts_saved: saved, original_posts: originals, reposts, skipped_older_than_7d: skippedOld, unmatched_post_rows: unmatched, no_own_post_last_7d: no_own_post, missing_profiles: [], errors };
 }
 
 // Creatives: LinkedIn media links expire, so keep our own copy in the private growth-assets bucket.
-// Images (first image of a carousel) and document PDFs are saved; videos are skipped.
-const CREATIVE_MAX_BYTES = 15 * 1024 * 1024;
-async function saveCreatives(limit = 40) {
-  const res = await sb.from("daily_ops_posts").select("id,media_url,content_type").eq("is_repost", false).not("media_url", "is", null).is("creative_path", null).neq("content_type", "video").order("posted_at", { ascending: false }).limit(limit);
+// v11: EVERY image of a multi-image post (creatives/<id>-<n>.<ext>) and the whole PDF of a document post (creatives/<id>.pdf),
+// with its page count and page shape read from the file (landscape = Presentation, portrait/square = PDF carousel).
+// creative_path stays the first one (what HQ shows as the thumbnail); creative_paths lists all of them.
+const CREATIVE_MAX_BYTES = 25 * 1024 * 1024, MAX_SLIDES = 12;
+function pdfFacts(buf: Uint8Array) {
+  const txt = new TextDecoder("latin1").decode(buf);
+  const pages = (txt.match(/\/Type\s*\/Page(?![s\w])/g) || []).length;
+  const mb = txt.match(/\/MediaBox\s*\[\s*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s*\]/);
+  let orientation: string | null = null;
+  if (mb) { const w = Math.abs(+mb[3] - +mb[1]), h = Math.abs(+mb[4] - +mb[2]); if (w && h) orientation = w / h > 1.15 ? "landscape" : w / h < 0.87 ? "portrait" : "square"; }
+  return { pages: pages || null, orientation };
+}
+async function grab(url: string) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`link returned ${r.status} (expired?)`);
+  const type = (r.headers.get("content-type") || "").split(";")[0] || "application/octet-stream";
+  const buf = new Uint8Array(await r.arrayBuffer());
+  if (buf.byteLength > CREATIVE_MAX_BYTES) throw new Error("file too large");
+  return { type, buf };
+}
+const extOf = (type: string) => type.includes("pdf") ? "pdf" : type.includes("png") ? "png" : type.includes("webp") ? "webp" : type.includes("gif") ? "gif" : "jpg";
+async function saveCreatives(limit = 30) {
+  const since = new Date(Date.now() - 30 * 864e5).toISOString();
+  const res = await sb.from("daily_ops_posts").select("id,raw_payload,linkedin_type,content_type,media_url").eq("is_repost", false).eq("creative_paths", "[]").gte("posted_at", since).order("posted_at", { ascending: false }).limit(limit);
   if (res.error) return { creatives_saved: 0, creative_errors: [`creatives: ${res.error.message}`] };
   let saved = 0; const errs: string[] = [];
   for (const p of res.data || []) {
+    const r = p.raw_payload || {}, type = p.linkedin_type || linkedinType(r);
     try {
-      const r = await fetch(p.media_url);
-      if (!r.ok) { errs.push(`${p.id}: image link returned ${r.status} (expired?)`); await sb.from("daily_ops_posts").update({ creative_path: "unavailable" }).eq("id", p.id); continue; }
-      const type = (r.headers.get("content-type") || "").split(";")[0] || "application/octet-stream";
-      const buf = new Uint8Array(await r.arrayBuffer());
-      if (buf.byteLength > CREATIVE_MAX_BYTES) { errs.push(`${p.id}: creative too large`); continue; }
-      const ext = type.includes("pdf") ? "pdf" : type.includes("png") ? "png" : type.includes("webp") ? "webp" : type.includes("gif") ? "gif" : "jpg";
-      const path = `creatives/${p.id}.${ext}`;
-      const up = await sb.storage.from("growth-assets").upload(path, buf, { contentType: type, upsert: true });
-      if (up.error) { errs.push(`${p.id}: ${up.error.message}`); continue; }
-      await sb.from("daily_ops_posts").update({ creative_path: path, creative_type: type, creative_saved_at: new Date().toISOString() }).eq("id", p.id);
+      const paths: any[] = []; const patch: any = {};
+      if (type === "document") {
+        const url = clean(r?.doc?.pdf_url) || clean(r?.doc?.url) || clean(r?.doc?.document_url) || clean(r?.doc?.manifest_url);
+        if (!url) throw new Error("document without a file link");
+        const f = await grab(url), facts = pdfFacts(f.buf), path = `creatives/${p.id}.pdf`;
+        const up = await sb.storage.from("growth-assets").upload(path, f.buf, { contentType: "application/pdf", upsert: true });
+        if (up.error) throw new Error(up.error.message);
+        paths.push({ path, type: "application/pdf" });
+        patch.doc_pages = Number(r?.doc?.page_count || r?.doc?.total_pages || r?.doc?.pages) || facts.pages; patch.doc_orientation = facts.orientation;
+        const cover = clean(r?.doc?.cover) || clean(r?.doc?.thumbnail) || (Array.isArray(r?.images) ? clean(r.images[0]) : "");
+        if (cover) try { const c = await grab(cover), cp = `creatives/${p.id}-cover.${extOf(c.type)}`; const u2 = await sb.storage.from("growth-assets").upload(cp, c.buf, { contentType: c.type, upsert: true }); if (!u2.error) paths.unshift({ path: cp, type: c.type, cover: true }); } catch { }
+      } else if (type === "image" || type === "multi_image") {
+        const imgs = (Array.isArray(r?.images) ? r.images : []).map(clean).filter(Boolean).slice(0, MAX_SLIDES);
+        for (const [n, url] of imgs.entries()) {
+          const f = await grab(url), path = n === 0 ? `creatives/${p.id}.${extOf(f.type)}` : `creatives/${p.id}-${n + 1}.${extOf(f.type)}`;
+          const up = await sb.storage.from("growth-assets").upload(path, f.buf, { contentType: f.type, upsert: true });
+          if (up.error) throw new Error(up.error.message);
+          paths.push({ path, type: f.type });
+        }
+      } else { await sb.from("daily_ops_posts").update({ creative_paths: [{ none: type }] }).eq("id", p.id); continue; } // text / video / poll / article: nothing to keep
+      if (!paths.length) throw new Error("no media");
+      await sb.from("daily_ops_posts").update({ ...patch, creative_paths: paths, creative_path: paths[0].path, creative_type: paths[0].type, creative_saved_at: new Date().toISOString(), linkedin_type: type }).eq("id", p.id);
       saved++;
-    } catch (e) { errs.push(`${p.id}: ${e instanceof Error ? e.message : String(e)}`); }
+    } catch (e) {
+      errs.push(`${p.id}: ${e instanceof Error ? e.message : String(e)}`);
+      if (/expired|too large|without a file/.test(String(e))) await sb.from("daily_ops_posts").update({ creative_paths: [{ unavailable: String(e).slice(0, 120) }] }).eq("id", p.id);
+    }
   }
   return { creatives_saved: saved, creative_errors: errs };
+}
+
+// v11: which posting slot did each post fill, what format was planned for it, and did the post go out in that format?
+// Slots = the post tasks generated on Today (daily_ops_schedule, auto_key "post:<weekly id>"). A slot at 00:00-01:59 belongs
+// to the evening before (the ops day rolls over at 2 AM). Each post takes the nearest free slot of its account within 4 hours.
+// Planned format = a one-off plan for that slot and date (post_plan, also used by experiments), else the slot's weekly default.
+function fits(f: any, type: string, orientation: string | null) {
+  if (!f || f.linkedin_type !== type) return false;
+  if (type !== "document" || f.orientation === "any") return true;
+  if (!orientation) return null; // can't tell yet (PDF not read)
+  return f.orientation === "portrait_or_square" ? orientation !== "landscape" : f.orientation === orientation;
+}
+function detectedFormat(formats: any[], type: string, orientation: string | null) {
+  const c = formats.filter(f => f.linkedin_type === type);
+  return (c.find(f => fits(f, type, orientation) === true) || c.find(f => f.orientation === "any") || c[0] || null)?.key || null;
+}
+// Posts stored before v11 have no type / caption counts yet: fill them from the stored scraper row (no Apify call).
+async function backfillFeatures() {
+  const r = await sb.from("daily_ops_posts").select("id,raw_payload,post_text").eq("is_repost", false).is("text_features", null).limit(300);
+  let n = 0;
+  for (const p of r.data || []) {
+    const raw = p.raw_payload || {};
+    await sb.from("daily_ops_posts").update({ linkedin_type: linkedinType(raw), image_count: Array.isArray(raw?.images) ? raw.images.filter(Boolean).length : 0, text_features: textFeatures(clean(raw?.content) || clean(p.post_text)) || {} }).eq("id", p.id);
+    n++;
+  }
+  return n;
+}
+async function matchSlots(days = 9) {
+  const since = new Date(Date.now() - days * 864e5), sinceDay = since.toISOString().slice(0, 10);
+  const [postsR, schedR, weeklyR, planR, fmtR] = await Promise.all([
+    sb.from("daily_ops_posts").select("id,account_id,posted_at,linkedin_type,doc_orientation,slot_weekly_id,slot_date,planned_format,format_check,detected_format,experiment_id,experiment_arm").eq("is_repost", false).gte("posted_at", since.toISOString()).order("posted_at"),
+    sb.from("daily_ops_schedule").select("work_date,start_time,account_id,auto_key").like("auto_key", "post:%").gte("work_date", sinceDay),
+    sb.from("daily_ops_weekly_posts").select("id,format_key"),
+    sb.from("post_plan").select("weekly_post_id,work_date,format_key,experiment_id,arm").gte("work_date", sinceDay),
+    sb.from("post_formats").select("*"),
+  ]);
+  for (const x of [postsR, schedR, weeklyR, planR, fmtR]) if (x.error) throw new Error(`match: ${x.error.message}`);
+  const formats = fmtR.data || [], fmt = new Map(formats.map((f: any) => [f.key, f]));
+  const weekly = new Map((weeklyR.data || []).map((w: any) => [w.id, w.format_key]));
+  const plan = new Map((planR.data || []).map((p: any) => [`${p.weekly_post_id}|${p.work_date}`, p]));
+  const slots = (schedR.data || []).map((s: any) => {
+    const [h, m] = String(s.start_time).split(":").map(Number), d = new Date(`${s.work_date}T00:00:00+08:00`);
+    const at = d.getTime() + ((h < 2 ? 24 : 0) + h) * 3600e3 + (m || 0) * 60e3;
+    return { ...s, weekly_id: String(s.auto_key).slice(5), at, used: false };
+  });
+  // Closest post-slot pairs first (greedy by post order let a 21:40 post take the 22:30 slot from the 22:31 post).
+  const posts = postsR.data || [], pairs: [number, any, any][] = [];
+  for (const p of posts) { const t = Date.parse(p.posted_at); for (const s of slots) if (s.account_id === p.account_id && Math.abs(s.at - t) <= 4 * 3600e3) pairs.push([Math.abs(s.at - t), p, s]); }
+  const chosen = new Map<string, any>();
+  for (const [, p, s] of pairs.sort((a, b) => a[0] - b[0])) if (!s.used && !chosen.has(p.id)) { s.used = true; chosen.set(p.id, s); }
+  let matched = 0, mismatched = 0, changed = 0;
+  for (const p of posts) {
+    const best = chosen.get(p.id);
+    const type = p.linkedin_type || null;
+    const next: any = { detected_format: type ? detectedFormat(formats, type, p.doc_orientation) : null, slot_weekly_id: null, slot_date: null, planned_format: null, format_check: "unplanned", experiment_id: null, experiment_arm: null };
+    if (best) {
+      const pl: any = plan.get(`${best.weekly_id}|${best.work_date}`);
+      const planned = pl?.format_key || weekly.get(best.weekly_id) || null;
+      Object.assign(next, { slot_weekly_id: best.weekly_id, slot_date: best.work_date, planned_format: planned, experiment_id: pl?.experiment_id || null, experiment_arm: pl?.arm || null });
+      const ok = planned && type ? fits(fmt.get(planned), type, p.doc_orientation) : null;
+      next.format_check = !planned || !type || ok === null ? "unknown" : ok ? "match" : "mismatch";
+      if (ok) matched++; else if (ok === false) mismatched++;
+    }
+    if (Object.keys(next).some(k => (p as any)[k] !== next[k])) { await sb.from("daily_ops_posts").update(next).eq("id", p.id); changed++; }
+  }
+  return { slots_matched_format: matched, slots_wrong_format: mismatched, slot_rows_updated: changed };
 }
 
 async function logRun(payload: any) { try { await sb.from("daily_ops_linkedin_auto_log").insert(payload); } catch { } }
@@ -376,11 +540,12 @@ Deno.serve(async (req) => {
     cycle_progress: Number(progress.toFixed(6)), paced_target_now_usd: Number(targetNow.toFixed(4)), remaining_runs_approx: remainingRunsApprox,
     recommended_average_interval_minutes: remainingRunsApprox > 0 ? Number((remainingMinutes / remainingRunsApprox).toFixed(1)) : null,
     pending_comment_posts: pendingComments, pool_remaining_usd: Number(poolRemaining.toFixed(4)),
-    accounts: pool.map(a => ({ slot: a.slot, name: a.name, used: Number(a.used.toFixed(4)), limit: Number(a.limit.toFixed(2)), remaining: Number(a.remaining.toFixed(4)), error: a.error || null })),
+    accounts: pool.map(a => ({ slot: a.slot, name: a.name, plan: a.plan || null, used: Number(a.used.toFixed(4)), limit: Number(a.limit.toFixed(2)), remaining: Number(a.remaining.toFixed(4)), error: a.error || null })),
     trigger: who.kind, by: who.email, schedule_mode: settings.mode, scrape_hour_myt: settings.hour,
   };
   if (body.status_only === true) return json(status);
-  if (body.action === "save_creatives") return json({ ok: true, ...(await saveCreatives(100)) }); // free: no Apify call
+  if (body.action === "save_creatives") { const backfilled = await backfillFeatures(); return json({ ok: true, backfilled, ...(await saveCreatives(100)), ...(await matchSlots(Number(body.days) || 9)) }); } // free: no Apify call
+  if (body.action === "match_slots") return json({ ok: true, ...(await matchSlots(Number(body.days) || 9)) }); // free: no Apify call
 
   if (!manual && !settings.enabled) {
     // Log at most one "off" row per 6 hours so the switch state is visible without flooding the log.
@@ -391,7 +556,8 @@ Deno.serve(async (req) => {
   // Daily mode: the cron ticks every 30 min, but only does work once a day after scrape_hour (Malaysia time):
   // first the posts pass, then comment passes until no threads are pending (max 3 so a bad day can't run away).
   let dailyMode: string | null = null;
-  if (!manual && settings.mode === "daily") {
+  if (!manual && settings.mode === "daily" && body.force === "posts") dailyMode = "posts"; // cron-key catch-up run (e.g. after a fix)
+  else if (!manual && settings.mode === "daily") {
     const myt = new Date(Date.now() + 8 * 3600e3), day = myt.toISOString().slice(0, 10);
     if (myt.getUTCHours() < settings.hour) return json({ ...status, ran: false, reason: "before_daily_hour" });
     const since = new Date(Date.parse(`${day}T00:00:00Z`) - 8 * 3600e3).toISOString();

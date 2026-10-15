@@ -91,15 +91,19 @@ export async function renderDeals(target, countCb) {
   draw();
   pullClaudeTeasers();
 }
-// A Claude teaser job finished since we asked: copy its JSON onto the deal (once).
+// A Claude teaser job finished since we asked: copy its JSON onto the deal (once). The old teaser stays until then.
+const pending = d => d.teaser_job_id && d.teaser_job_id !== d.teaser_ready_job && !d._teaserFailed;
+// Their own teaser / CIM / deck on file (uploaded PDF or link): that is the teaser people should see first.
+const theirDoc = d => { const ds = d.doc_links || []; return ds.find(x => /teaser|cim|deck|memo|presentation|overview/i.test(x.label || x.path || x.url || '')) || ds.find(x => /\.pdf$/i.test(x.path || '')) || ds[0] || null; };
+const ours = d => !!(d.teaser || d.teaser_html);
 async function pullClaudeTeasers() {
-  const waiting = rows.filter(d => d.teaser_job_id && !d.teaser);
+  const waiting = rows.filter(pending);
   if (!waiting.length) return;
   const j = await sb.from('resource_jobs').select('id,status,payload,error').in('id', waiting.map(d => d.teaser_job_id));
   let changed = false;
   for (const job of j.data || []) {
     const d = waiting.find(x => x.teaser_job_id === job.id);
-    if (job.status === 'ready' && job.payload?.teaser) { if (await save(d.id, { teaser: job.payload.teaser, teaser_html: null }, true)) changed = true; }
+    if (job.status === 'ready' && job.payload?.teaser) { if (await save(d.id, { teaser: job.payload.teaser, teaser_html: null, teaser_ready_job: job.id }, true)) changed = true; }
     else if (job.status === 'failed') { d._teaserFailed = job.error || 'failed'; changed = true; }
   }
   if (changed && el?.isConnected && !document.querySelector('.modal')) draw();
@@ -142,8 +146,10 @@ function rowHtml(d) {
       ${d.summary ? `<p class="dlSum">${esc(d.summary)}</p>` : ''}
       ${d.structure || d.fee_terms ? `<div class="fsFacts dlMeta">${d.structure ? `<span>Structure: ${esc(d.structure)}</span>` : ''}${d.fee_terms ? `<span>Our fee: ${esc(d.fee_terms)}</span>` : ''}</div>` : ''}
       <div class="dlDocs">
-        <button type="button" class="btn sm primary" data-teaser>View teaser</button>
-        ${(d.doc_links || []).map((x, i) => `<button type="button" class="btn sm" data-doc="${i}">${esc(x.label || (x.path ? x.path.split('/').pop().replace(/^\d+-/, '') : 'Document'))}</button>`).join('')}
+        ${theirDoc(d) ? `<button type="button" class="btn sm primary" data-doc="${(d.doc_links || []).indexOf(theirDoc(d))}">Their teaser</button>
+          ${ours(d) ? '<button type="button" class="btn sm" data-teaser>Our anonymised version</button>' : pending(d) ? '' : '<button type="button" class="btn sm" data-write>Make anonymised version</button>'}`
+          : '<button type="button" class="btn sm primary" data-teaser>View teaser</button>'}
+        ${(d.doc_links || []).map((x, i) => x === theirDoc(d) ? '' : `<button type="button" class="btn sm" data-doc="${i}">${esc(x.label || (x.path ? x.path.split('/').pop().replace(/^\d+-/, '') : 'Document'))}</button>`).join('')}
         <span class="pFlag ${teaserTone(d)}">${esc(teaserState(d))}</span>
       </div>
       <div class="dlReview">
@@ -161,12 +167,14 @@ function rowHtml(d) {
 }
 
 function teaserState(d) {
-  if (d.teaser_job_id && !d.teaser) return d._teaserFailed ? 'Claude teaser failed' : 'Claude is writing the teaser…';
+  if (d._teaserFailed && d.teaser_job_id !== d.teaser_ready_job) return 'Claude teaser failed';
+  if (pending(d)) return ours(d) ? 'Claude is rewriting ours…' : 'Claude is writing our anonymised version…';
+  if (theirDoc(d) && !ours(d)) return 'Their teaser on file';
   const miss = missingOf(d);
   const kind = d.teaser_html ? 'Edited teaser' : d.teaser ? 'Claude teaser' : 'Teaser drafted from the deal';
   return miss.length ? `${kind} · ${NEEDS.length - miss.length}/${NEEDS.length} facts, add ${miss.slice(0, 3).join(', ')}${miss.length > 3 ? '…' : ''}` : `${kind} · ready`;
 }
-const teaserTone = d => d.teaser_job_id && !d.teaser ? (d._teaserFailed ? 'bad' : 'warn') : missingOf(d).length ? 'warn' : 'good';
+const teaserTone = d => d._teaserFailed && d.teaser_job_id !== d.teaser_ready_job ? 'bad' : pending(d) ? 'warn' : theirDoc(d) && !ours(d) ? 'good' : missingOf(d).length ? 'warn' : 'good';
 
 async function save(id, patch, quiet) {
   const { error } = await sb.from('deals').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
@@ -193,7 +201,8 @@ function bind() {
     $('[data-next]', card).onchange = e => save(id, { next_step: e.target.value.trim() || null });
     $('[data-status]', card).onchange = async e => { if (await save(id, { status: e.target.value }, true)) { toast(`Status: ${e.target.value}`); draw(); } };
     $('[data-edit]', card).onclick = () => edit(d);
-    $('[data-teaser]', card).onclick = () => showTeaser(d);
+    $('[data-teaser]', card)?.addEventListener('click', () => showTeaser(d));
+    $('[data-write]', card)?.addEventListener('click', () => writeWithClaude(d));
     $$('[data-doc]', card).forEach(b => b.onclick = () => viewDoc(d.doc_links[+b.dataset.doc]));
   });
 }
@@ -262,9 +271,8 @@ function edit(d) {
       }
       toast(d ? 'Saved' : 'Deal added for Peter to review');
       draw();
-      // Imported from a PDF and no teaser yet: Claude writes ours from the full document in the background.
-      const saved = rows.find(r => r.id === id);
-      if (imported && saved && !saved.teaser && !saved.teaser_html && !saved.teaser_job_id) writeWithClaude(saved, imported.text, true);
+      // Their PDF IS the teaser: no automatic rewrite (Tengku, 10 Oct: auto rewrites came out thinner than the original).
+      // "Make anonymised version" on the card asks Claude, from the full PDF text, only when someone wants one.
     },
   });
   const form = m.el, msg = $('[data-msg]', form), input = $('[data-pdf]', form), drop = $('[data-drop]', form);
@@ -315,13 +323,24 @@ function showTeaser(d) {
     t, poster: contactOf(d), html: d.teaser_html || null, note,
     onSave: async html => { if (await save(d.id, { teaser_html: html })) draw(); },
     actions: [
-      ...(d.teaser_html || d.teaser ? [{ label: 'Rebuild from deal fields', onClick: async (m, close) => { if (await save(d.id, { teaser_html: null, teaser: null, teaser_job_id: null }, true)) { close(); draw(); showTeaser(d); } } }] : []),
-      { label: d.teaser ? 'Rewrite with Claude' : 'Write with Claude', onClick: async (m, close) => { if (await writeWithClaude(d)) close(); } },
+      // Rebuilding from the form fields throws away a fuller version, so it isn't offered when their document is on file.
+      ...(ours(d) && !theirDoc(d) ? [{ label: 'Rebuild from deal fields', onClick: async (m, close) => { if (await save(d.id, { teaser_html: null, teaser: null, teaser_job_id: null, teaser_ready_job: null }, true)) { close(); draw(); showTeaser(d); } } }] : []),
+      { label: d.teaser ? 'Rewrite with Claude' : theirDoc(d) ? 'Write from their document' : 'Write with Claude', onClick: async (m, close) => { if (await writeWithClaude(d)) close(); } },
     ],
   });
 }
 // Fires the teaser routine. docText = the uploaded PDF's text (only right after an import).
 async function writeWithClaude(d, docText = '', quiet = false) {
+        // Always work from their full document when there is one, not just the form fields.
+        const doc = theirDoc(d);
+        if (!docText && doc?.path && /\.pdf$/i.test(doc.path)) {
+          try {
+            toast('Reading their PDF…');
+            const { data: u } = await sb.storage.from('deal-docs').createSignedUrl(doc.path, 600);
+            const blob = await (await fetch(u.signedUrl)).blob();
+            docText = (await importDealPdf(new File([blob], doc.path.split('/').pop(), { type: 'application/pdf' }), () => {})).text || '';
+          } catch (e) { console.warn('PDF read for teaser', e); }
+        }
         if (!docText && brief(d).length < 120) { toast('Add a summary and a few facts first (Edit).'); return false; }
         const { data, error } = await sb.functions.invoke('resource-request', { body: { action: 'teaser', teaser: {
           source_text: (brief(d) + (docText ? '\n\nFull text of their teaser/CIM:\n' + docText : '')).slice(0, 20000), notes: [d.fee_terms && `Our fee (do not put on the teaser): ${d.fee_terms}`, d.source_name && `Provided to us by ${d.source_name} (do not name them)`].filter(Boolean).join('\n'),
@@ -329,14 +348,15 @@ async function writeWithClaude(d, docText = '', quiet = false) {
         let msg = data?.error; if (error) { try { msg = (await error.context?.json?.())?.error; } catch { } msg = msg || error.message; }
         if (msg) { if (!quiet) toast(msg); else console.warn('Auto teaser:', msg); return false; }
         const job = data?.id || data?.job_id || null;
-        if (await save(d.id, { teaser_job_id: job, teaser: null, teaser_html: null }, true)) { toast(quiet ? 'Deal added. Claude is writing our teaser from their PDF (a few minutes).' : 'Claude is writing it (a few minutes). The deal shows when it is ready.'); draw(); watch(d.id); return true; }
+        d._teaserFailed = null;
+        if (await save(d.id, { teaser_job_id: job }, true)) { toast(ours(d) ? 'Claude is rewriting it (a few minutes). The current version stays until the new one is ready.' : 'Claude is writing our anonymised version from their document (a few minutes).'); draw(); watch(d.id); return true; }
         return false;
 }
 // Poll a few times for the Claude teaser while the tab is open.
 function watch(id) {
   let n = 0; const t = setInterval(async () => {
     n++; const d = rows.find(r => r.id === id);
-    if (!el?.isConnected || !d || d.teaser || n > 30) { clearInterval(t); return; }
+    if (!el?.isConnected || !d || !pending(d) || n > 30) { clearInterval(t); return; }
     if (!d.teaser_job_id) { const r = await sb.from('deals').select('teaser_job_id').eq('id', id).maybeSingle(); d.teaser_job_id = r.data?.teaser_job_id; }
     await pullClaudeTeasers();
   }, 20000);

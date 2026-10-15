@@ -1,5 +1,6 @@
 // bdc-signals: stores and judges BDC-financed private companies (scripts/bdc_signals.py on GitHub, SEC BDC data sets).
-// Ingest (header x-fund-ingest = FUND_INGEST_SECRET, same as fund-signals): kind 'bdc' {items, run}, kind 'bdc_done' {run, complete, stats}.
+// Ingest (header x-fund-ingest = FUND_INGEST_SECRET, same as fund-signals): kind 'bdc' {items, run}, kind 'bdc_done' {run, complete, stats},
+// kind 'rejudge' {keys} (signal-contacts, after an ownership check).
 // Admin (user JWT): action 'rejudge' re-scores every row with the current rules.js. Rules live in rules.js.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { classifyBdc, BDC_RULES_VERSION } from "./rules.js";
@@ -27,7 +28,7 @@ async function admin(req: Request) {
 async function judge(rows: any[]) {
   for (let i = 0; i < rows.length; i += 25) await Promise.all(rows.slice(i, i + 25).map(s => {
     const c = classifyBdc(s);
-    return sb.from("bdc_signals").update({ verdict: c.verdict, score: c.score, reasons: c.reasons, rules_version: BDC_RULES_VERSION }).eq("id", s.id);
+    return sb.from("bdc_signals").update({ verdict: c.verdict, score: c.score, reasons: c.reasons, lane: c.lane, rules_version: BDC_RULES_VERSION }).eq("id", s.id);
   }));
 }
 async function pageAll(build: (from: number) => any) {
@@ -62,6 +63,11 @@ async function ingest(body: any) {
     if (stale.length) await judge(stale);
     await sb.from("bdc_signal_runs").insert({ run: body.run, items: body.items || 0, stats: { ...(body.stats || {}), complete: !!body.complete, dropped } });
     return { dropped };
+  }
+  if (body.kind === "rejudge") {   // from signal-contacts after an ownership check
+    const keys = (Array.isArray(body.keys) ? body.keys : []).slice(0, 50).map(String);
+    if (keys.length) await judge((await sb.from("bdc_signals").select("*").in("company_key", keys)).data || []);
+    return { judged: keys.length };
   }
   throw new Error("Unknown ingest kind");
 }

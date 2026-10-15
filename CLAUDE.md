@@ -51,6 +51,11 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Scraper (v9: comment threads run one Apify run per post inside a 120 s budget, unfinished runs are aborted and stay pending; a thread costs ~$0.60-1.30 and the log now records real per-run cost; account pool: `APIFY_TOKEN` = slot 1 capped by the HQ budget, extras `APIFY_TOKEN_2..9` added write-only in HQ → Growth → Scraper → Apify accounts via RPC `set_apify_token`, each run goes to the account with most credit left, extras use up to their own plan limit; `monthly_budget` caps slot 1 only; HQ shows spend summed across the whole pool from live `status_only` reads, and the per-run cost in the log is the pool delta between consecutive runs because the run object's `usageTotalUsd` is ~$0.0001 and Apify's account usage trails a finished run by minutes): edge function `daily-ops-linkedin-auto` (Apify actors atomus/linkedin-posts-scraper-pro and
   comments-scraper-pro), pg_cron every 30 min, runs once a day after `scrape_hour` MYT. Log:
   `daily_ops_linkedin_auto_log`. The user turned it off on 28 Sept; only they turn it back on.
+  **v10 (11 Oct 2026):** the atomus actors give FREE Apify plans 10 results a month, then return one row `{type:"error",
+  error_kind:"free_tier_limit"}`. From 6 Oct every run went to a free pool account (most credit left), skipped that row and logged
+  "ok, 0 posts". Now paid plans go first (`pick` sorts by `paid`, from users/me `plan.id`), an all-error dataset throws `ActorRefused`
+  (account marked, next one tried, refusals logged as `refused_accounts`), and the cron accepts `{"force":"posts"}` with the cron key for
+  a catch-up run. Only `chasehamby` (APIFY_TOKEN, STARTER) can actually run these actors; the 8 free accounts are useless for them.
 - Google Sheet "OuterHaven LinkedIn Accounts KPI" (id `1RGhFmIzQDCulzW6EVlFpVl8mmWEn_QU7rbSnzq1I01g`): HQ reads it via
   gviz CSV; `sheets/outerhaven-kpi-autofill.gs` (Apps Script) fills scraped columns from RPC `sheet_post_stats`.
 
@@ -94,6 +99,12 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   stores `teaser_job_id`, and HQ copies `payload.teaser` onto the deal when the job is ready. Uploaded teasers/CIMs go to the private
   bucket `deal-docs` (`<deal id>/<ts>-<file>`, doc_links `{label, path}`) and open in a popup through a 1-hour signed link; Drive/Docs
   links open as /preview.
+- **Their teaser first (10 Oct 2026, Tengku: rewrites came out thinner than their own teaser):** a deal with their document on file
+  (`theirDoc`: label/path like teaser/CIM/deck, else first PDF) shows **Their teaser** as the main button; ours is a secondary
+  "Our anonymised version" or "Make anonymised version". Import no longer auto-fires Claude. A Claude write always reads their full PDF
+  (re-extracted from `deal-docs` with deal-import.js) and never wipes the current teaser: `teaser_job_id` = latest job asked for,
+  `teaser_ready_job` = job the stored teaser came from; HQ copies a finished job only when they differ. "Rebuild from deal fields" is
+  hidden when their document exists. Migration `supabase/2026-10-10-deals-teaser-ready.sql`.
 
 ## Fund signals (Pipeline → Fund signals tab, `hq/funds.js`, admin only)
 - Finds US funds raising now (Form D, II/III in the name, pooled fund, $50–250M, <60% sold, no sales commissions) and Fund I / Fund II
@@ -140,6 +151,11 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   hardest to get paid), credit +8. Weights recalibrated so targets spread (window 15, clear 15, emerging 12 on fund1 / 20 on live).
   HQ: Fund status + Strategy filters, status/strategy chips, "Call prep" questions per card (`prep()`), openers by stage.
   The cron re-judges stale rows best-score first. Migration `supabase/2026-10-08-fund-lanes-marks.sql`.
+- **Stuck raising (14 Oct 2026, Tengku; RULES_VERSION 17-18):** stage 'stuck' = 'raising' and 12+ months since the first sale. Lane =
+  placement on the CURRENT fund (+15), not a next-fund pitch (timing, track record and next-fund ask are skipped). First close done
+  and under 60% raised +10; >=60% raised -10 info; nothing raised = maybe -10; open 2+ years under 30% = maybe -10. Raising under
+  12 months stays maybe. Fund I stuck = maybe (no fund track record; ask for attributable deals), Fund II stuck = target.
+  HQ chip "Stuck raising". Test: `node scripts/tests/test_fund_rules.mjs`.
 - **Rules audit (8 Oct 2026, RULES_VERSION 15 / CREDIT_RULES_VERSION 4):** judge() attaches `history` = `managerHistory(s, peers)` (stored rows
   with the same manager_key + `prior_funds`, the earlier funds `scripts/adviser_aum.py` found on EDGAR; now fetched for every Fund II on
   the next-fund list, `adviser_todo` returns `prior_checked`). Timing: next fund expected at a 50/50 blend of the manager's own gap
@@ -201,10 +217,44 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - Edge function `bdc-signals` (verify_jwt=false; ingest `x-fund-ingest`, kinds `bdc` / `bdc_done`; admin action `rejudge`) → `bdc_signals`
   (one row per company_key; status/person/notes/marks kept) + `bdc_signal_runs`. Rules: `classifyBdc()` in `supabase/functions/bdc-signals/rules.js`
   (`BDC_RULES_VERSION`; deploy index.ts + rules.js together). Size (Tengku): debt held by BDCs < $10M cut, $10–75M core, $75–150M upper end,
-  > $150M cut (it's a floor: lenders also hold pieces off-BDC). Triggers: matures ≤ 18 months, marked < 90¢, marked down 5+ in a quarter,
-  non-accrual, past maturity AND marked down (past maturity at par = probably extended = a check). Lender tiers by BDC name (big platform −10,
-  lower-middle-market only +8, venture = maybe, syndicated-only / controlled / public = cut). Opener never mentions the mark.
+  > $150M cut (it's a floor: lenders also hold pieces off-BDC). Triggers and lanes: see rules v4 below. Lender tiers by BDC name (big
+  platform −10, lower-middle-market only +5, venture = maybe, syndicated-only / controlled / public = cut). Opener never mentions the mark.
   Migration `supabase/2026-10-08-bdc-signals.sql` (also adds `bdc` to `signal_target_counts()`).
+- **Rules v4: two lanes + ownership (12 Oct 2026; Tengku: Global Integrated Flooring was No. 1 at 81, a $13M loan at 73¢ maturing in
+  11 weeks, PE-owned by RFE Investment Partners).** `classifyBdc` returns `lane`, stored in `bdc_signals.lane`:
+  `refi` = performing loan with a deadline, the company hires us (default HQ view; the ONLY lane Daily 3, Send today's batch and the
+  contacts cron use). Distress no longer scores here; matures 4–12 mo +25, 12–18 +20, 18–24 +10, under 4 months = too late (Maybe),
+  marked 85–95¢ or down 3+ this quarter +8, PIK only counts below 95¢ (a PIK option at par is written in at closing).
+  `loan_sale` = marked < 85¢, non-accrual, or past due and marked down: the lender decides, Peter calls the BDC about selling the loan;
+  needs Peter's $20M minimum; < 50¢ or any syndicated-loan holder = Maybe. Ownership: `signal-contacts` lookup runs one Brave query
+  per BDC company (`ownerFrom()` in parse.js: "portfolio company of X", "acquired by X"…) → `bdc_signals.owner/owner_url/owner_checked_at`,
+  then asks `bdc-signals` (ingest kind `rejudge` {keys}) to re-judge; owner found = refi Maybe. The contacts cron re-checks refi targets
+  with no `owner_checked_at`; Send today's batch only takes owner-checked BDC rows. Contact search retries with `searchName()` (distinctive
+  words only) because filings use legal names ("…Systems") that differ from trading names ("…Solutions"). HQ: Lane select in the BDC tab.
+  Tests: `node scripts/tests/test_bdc_rules.mjs` (add every company that ranks where it shouldn't), ownership cases in test_contacts_parse.mjs.
+  Migration `supabase/2026-10-12-bdc-lanes-owner.sql` (`signal_target_counts().bdc` = refi only, `bdc_sale` = loan-sale targets).
+- **Rules v5 (same day; Datalink: $22.7M at 72¢ maturing in 42 days, both lenders BC Partners):** under 4 months to maturity = Maybe in the
+  loan-sale lane too (a sale takes 4–8 weeks); lenders count by manager (`familyOf()`, alias list in rules.js), not by BDC; venture debt and
+  non-US = loan-sale Maybe. Score = points ÷ `MAX[lane]` × 100 (refi 69, loan sale 78); verdicts use the points, so rescaling changes no
+  verdict or order. Update `MAX` whenever a rule's points change (test: best possible row scores 100).
+- **Rules v6 + owner checks (same day; TAUC Management = Total Access Urgent Care, ICV Partners-owned since Feb 2021, the filing uses the
+  acronym so search found nothing):** no owner found scores 0 and shows a Check line (refi max 64). `ownerFrom` also reads owner-first
+  headlines ("ICV Partners Makes Majority Investment in…", "X acquires…"; verbs case-insensitive via `ci()`). `signal-contacts` cron action
+  `owners` {limit ≤ 40} = owner checks only for unchecked refi targets, 1 Brave query each, outside the contacts DAILY_CAP.
+  Owner parser guards (all from the first live run, each a test in test_contacts_parse.mjs): the company must be named in the SAME
+  sentence as the ownership phrase; an owner sharing a distinctive word with the company is a namesake ("QED Investors"); the company's
+  own BDC lenders are never its owner ("backed by Chicago Atlantic"); "X client Y" = an adviser; data sites / law firms (Crunchbase,
+  Mergr, LLP…) never; glued page junk ("PrevPrevious", ".Read") is a sentence break. First full run: 114 refi targets checked, 56 owners
+  found, 58 left; spot-check ~90% right. A changed owner sets `rules_version` 0 (stale) until bdc-signals re-judges it; `retryStale()`
+  re-judges stale rows at the end of every owners / cron run (fire-and-forget re-judges failed on cold starts: 26 of 114 the first time),
+  and Send today's batch skips `rules_version` 0. Hand-verified owners (TAUC = ICV Partners) are set in SQL with the source URL.
+  BDC name parser: ", Company <Name>" is Varagon's label, not a suffix ("Leisure, Company" was really Taymax Group, L.P.); the stored
+  row keeps the bad name until the next bdc run.
+  Second pass (same day, after spot checks found Ej2 = Flashpoint/Audax, 2KDirect = iPromote/Cohere, Claridge = Skylark all marked "no owner"):
+  pages shorten names, so a page counts if it has the first distinctive word + half the rest (`named()`); the owner query is unquoted
+  distinctive words (the quoted phrase "claridge equipment" never appears); "X and Y invest(s) in" splits into X and Y (Y was the lender).
+  Hand-verified in SQL: Ej2 → Audax, 2KDirect → Cohere Capital, Nephron → none (family-owned; Kayne Anderson was a lender, a false positive).
+  Spot checks: ~3 in 10 "no owner found" were PE-backed before this pass. Known gap: credit investors read as owners ("investment from Kayne").
 - Known gaps: ~55% of borrowers have no maturity in the data (some BDCs put it only in custom tags); names from single-lender rows can keep a
   stray word; BDC debt understates the full facility for big-platform deals.
 - **UCC rules v4 (same day):** demoted. Size floor $30M est. revenue for Target; merchant cash advances count toward Target only at $50M+
@@ -333,6 +383,168 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - **Playbook** (Growth → Playbook, `hq/playbook.js`, engine `hq/scoring.js`, test `node hq/scoring-test.mjs`): each post vs its own account's median, factor effects shrunk toward 0 (K=3),
   predictor, library. SQL twin: view `post_scores`. Directional until ~100 tagged posts; link meetings to posts so "converted" counts.
 - Migrations: `2026-10-09-sync-inbox-tasks.sql`, `-reply-record-scores.sql`, `-reply-routine.sql`, `-reply-personas.sql`, `-reply-outcomes.sql` (`-anthropic-key.sql` unused).
+
+## Daily 3 (Today, admin only; 10 Oct 2026, `hq/daily3.js`)
+- Card under the Today hero: (1) credit targets worked today = `people` rows with source BDC loan / SEC credit / UCC signal created since the
+  2 AM ops-day start, split by their task owner, vs `DAILY3.contact` (20), plus untouched BDC + credit targets and days of backlog; (2) reply
+  queue = `lead_intake` unreviewed, not not_qualified (goal 0) + cleared today (`reviewed_at`); (3) calls booked = `growth_meetings` today vs
+  `DAILY3.calls` (1). Quotas are constants at the top of daily3.js. Tengku's rule: volume first, no new scrapers/rules for 30 days.
+
+## Reason labels, rules page, colour-blind mode (10 Oct 2026; `hq/kinds.js`, `hq/rules.js`)
+- Server rules tag anything that raises the score `good`, which coloured distress (going concern, forbearance, PIK, low marks) green.
+  HQ now relabels every reason client-side by text (`kindOf()` in kinds.js): **Need** (deadline, why we call), **Risk** (distress, harder
+  for Peter's lenders), **Fit**, **Check** (maybe), **Cut**, Info. Each shows symbol + word (▲ ⚠ ✓ ? ✕), never colour alone. Legend above
+  every signal list. If you add a reason in a rules.js, check `kindOf` labels it right (RISK / NEED regexes).
+  Cards show it compactly (`whyBlock`, Tengku: "too much going on"): one ▲ Need line + one ⚠ Risk line of headlines (text before the
+  first ': '), full reasons grouped by label behind "Why · N reasons". Neutral score box, one primary action, quiet secondaries.
+  No per-line chips and no legend bar on the cards; the legend lives on #/rules.
+- **How we qualify** page (`#/rules`, sidebar): every rule for BDC / Credit / UCC / Fund signals with points, plus the focus order.
+  Hand-written from the rules files: change it in the same commit as any rule change. BDC "How it works" modal points fixed to match rules.js.
+- **Colour-blind safe** toggle under the theme switch (`html[data-cb="on"]`, localStorage `hq-cb`): good = blue, bad = orange,
+  warn = amber, need = purple, for light / dark / tan. Tengku is red-green colour-blind: never rely on red vs green alone.
+
+## Signal contacts (10 Oct 2026; `hq/contacts.js`, `supabase/functions/signal-contacts`, `scripts/officers.py`)
+- Contact block on every Credit / BDC / UCC card: CFO / CEO name, LinkedIn, work email (copy), company phone + website, officer-change
+  warning. Table `signal_contacts` (kind credit|bdc|ucc + key: cik / company_key; `people` jsonb). Migration `supabase/2026-10-10-signal-contacts.sql`.
+- Public companies: `scripts/officers.py` (workflow mode `officers`, also daily after credit) reads the "I, <name>, certify" lines in
+  Exhibits 31.1 (CEO) / 31.2 (CFO) of the latest 10-K/10-Q, flags an 8-K Item 5.02 filed after it, takes phone/website from the SEC
+  company file → ingest kinds `officers_todo` / `officers` (x-fund-ingest). Offline test: `python3 -I scripts/tests/test_officers.py`.
+- LinkedIn + website: Brave Search API (`BRAVE_SEARCH_KEY`) in the edge function; pg_cron `signal-contacts` every 30 min looks up 6
+  targets per run, 120/day (BDC best first, then credit, then UCC). SEC-named people are searched by name; others by company + role,
+  parsed from LinkedIn result titles (`parse.js`, test `node scripts/tests/test_contacts_parse.mjs`). Search finds are unconfirmed
+  until someone clicks ✓ Right / ✕ Wrong (action `mark`). Never Google scraping or AI Overviews (Tengku asked; wrong names, CAPTCHAs).
+  Matching rules (10 Oct, after ~half the first BDC finds were wrong): the role must be in the person's OWN LinkedIn title (snippets are
+  often posts about someone else); the employer on the profile (`employerOf`: "at X", a non-role title segment, or "Experience: X") must
+  pass `sameCompany()` = every distinctive brand word present and no distinctive word the company's name lacks (FILLER words ignored), so
+  "Colonnade Advisors" ≠ Colonnade Parent and "Marquis Companies" ≠ Marquis Software; "Vice President" is not a CEO; former / fractional
+  / consultant rejected. Stored `employer` shows in the batch window. Add every bad match to `scripts/tests/test_contacts_parse.mjs`.
+- Email (12 Oct 2026): Apify actor `overpowered/email-finder` on `APIFY_TOKEN` first (10 name patterns checked against the mail server,
+  $0.045 a person, ~25 s; only "Okay to Send"+"Accepted" = valid; run cap $0.10 because $0.05 aborted on the 10th row; the dataset is read
+  whatever the run status). Hunter (`HUNTER_API_KEY`, 50/month) only when Apify finds no valid mailbox. On click only ("Find email", or automatically in the batch); needs
+  the domain from the lookup. All-rejected can be a filtering gateway (Proofpoint at unifi.com rejected every pattern). `email_src` = apify|hunter.
+  **Send today's batch finds emails itself** (12 Oct, Tengku): rows whose person has no email and was never searched (`email_checked`) are
+  let into the batch when the company has a domain; the window runs `findEmail()` (contacts.js) 4 at a time, Send stays disabled until
+  done, and a row that would go email-only with no confirmed email is unticked and locked. Cards and the batch window always state
+  LinkedIn ✓ found / ✕ not found / … not searched yet, and email ✓ confirmed / ? unconfirmed (never emailed) / ✕ none found.
+- **"+ Email for someone else"** (15 Oct 2026, Tengku wanted to test with a name not in the filing): on any card with a domain; type a
+  name + role → action `email` with a name not on the card adds them first (`source: 'manual'`, status confirmed) with the result.
+  Shown on every card; with no domain on file the modal asks for it (saved on the company; acronym domains like ashs.com are never found by search).
+- **Officer changes (15 Oct 2026, Boxlight + ASHS):** distressed companies lose CFOs. The resignation 8-K often comes BEFORE the 10-Q the
+  leaving officer still signs, so `officer_change()` in officers.py flags any 8-K Item 5.02 in the last 180 days (before or after the
+  certification), then reads up to 3 of those 8-Ks and keeps only a CEO / CFO departure or appointment (`change_roles()`, stored as
+  `officer_change.roles`; bare 5.02 flagged 220 of 346, with roles 101: 62 CFO, 50 CEO). SEC officers are re-read every 14 days (was 30);
+  workflow mode `officers` with from=`all` re-reads every target.
+- Keys pasted by an admin in any signal tab → "Contacts setup" (RPC `set_contact_key`, write-only; never enter them for the user).
+- "Add to pipeline" pre-fills name, title and LinkedIn from the best person.
+
+## Scoreboard + sidebar groups (10 Oct 2026; `hq/scoreboard.js`, `supabase/2026-10-10-team-names.sql`)
+- `#/score` (admin): Daily 3 outcomes only. Weekdays hit, 7-day team grid vs `DAILY3` targets (✓ / ✕ symbols, not colour alone),
+  per person (targets by task owner, replies cleared by `reviewed_by`, calls by `growth_meetings.created_by`, mapped with RPC
+  `team_user_names()`), 30-day funnel. Vanity metrics (posts, likes) stay under Growth on purpose.
+- Sidebar grouped: Overview | Daily work (Today, Scoreboard, Schedule) | Deals (Pipeline, Deals, How we qualify) | Marketing (Growth,
+  Resources) | Team (Track record, Team access, old board). Bigger nav text for Peter. Keep new pages inside a group.
+
+## Omnichannel outreach (10 Oct 2026; `hq/outreach.js`, `supabase/functions/outreach`, `supabase/2026-10-10-outreach.sql`)
+- Today → Daily 3 → **Send today's batch**: picks `bdc_per_day` BDC targets (soonest maturity) + `credit_per_day` lendable credit targets
+  (EBITDA > 0, revenue >= $20M, no going concern) that have a contact with LinkedIn or a valid email (Hunter valid / score >= min), not yet
+  enrolled. A person unticks bad rows and clicks Send (the one human gate Tengku agreed to). Edge function `outreach` action `send`:
+  people + task (counts in Daily 3), Prosp `POST /api/v1/leads` (api_key in body, list_id + campaign_id per account in
+  `outreach_settings.prosp`), PlusVibe `POST https://api.plusvibe.ai/api/v1/lead/add` (x-api-key, workspace_id, campaign_id,
+  custom_variables). What we send changed on 11 Oct (see "Prosp fields + personalisation" below). Copy lives in the
+  Prosp / PlusVibe campaigns. Results in `outreach_enrollments` (one per company).
+- Replies: PlusVibe webhook `?hook=plusvibe&token=` (RPC `plusvibe_webhook_url()`) → `lead_intake` (source 'plusvibe') + Prosp
+  `/leads/campaign/delete`. Prosp replies already land in lead_intake (prosp-reply); pg_cron `outreach-cron` every 20 min matches them by
+  LinkedIn slug → PlusVibe `/lead/update/status` COMPLETED, and pulls Prosp `/campaigns/analytics` daily → `outreach_daily`.
+- Keys (PROSP_API_KEY, PLUSVIBE_API_KEY) via Daily 3 → Outreach setup (RPC `set_contact_key`, write-only). Scoreboard counts sends.
+- Untested against the live Prosp / PlusVibe APIs until keys + campaign IDs exist: first real batch is the test; check `outreach_enrollments.*_error`.
+- **LinkedIn first** (Tengku, 10 Oct): with a LinkedIn profile, Prosp gets them on send day and the email is stored (`email_payload`,
+  `plusvibe_status='scheduled'`, `email_due_at` = + `outreach_settings.email_delay_days`, default 3); the cron sends it to PlusVibe only if
+  no LinkedIn reply came in. No LinkedIn = email right away. `{{company}}` (Prosp) / `{{company_name}}` (PlusVibe) get `cleanName()`
+  ("HYDROFARM HOLDINGS GROUP, INC." → "Hydrofarm"). `{{deadline}}` = `deadlineOf()`: "a loan maturing in March 2027" (BDC earliest_maturity), "debt coming due by June 2027" (credit debt_current, period_end + 1y), else null since 11 Oct (no date = plain message). PlusVibe campaign "Private credit – Q4 (HQ)": 3 steps, step 1 A/B (Tengku vs Claude).
+  Migration `supabase/2026-10-10-outreach-linkedin-first.sql`.
+- The batch window sends the exact person shown (`items[].person`); the Send button counts ticked rows.
+- **Prosp fields + personalisation (11 Oct 2026, v7; `supabase/2026-10-11-outreach-variants.sql`):** Prosp's message uses `{{First name}}` = its
+  STANDARD field `firstName` (seen in Prosp's own `api/contacts/get-contacts`: firstName, lastName, name, jobTitle, company, email, phoneNumber,
+  websiteUrl; anything else lands in `custom_columns`). We now send those + one custom field `deadline`. No opener, no need (Tengku: "no pitch"
+  makes people think of a pitch). Prosp fills headline/photo itself when the campaign's "Visit profile" step runs.
+  Personalisation = one true dated fact about THEIR company (`deadlineOf`, null when no future date; past maturities = probably extended, sorted
+  last). Variants: `dated` (account's campaign) / `plain` (`prosp[].plain_campaign_id`, same copy minus the deadline line) / `email_only`.
+  Dated leads split by `outreach_settings.test_split`; undated go plain or email only. `outreach_enrollments.variant` + `deadline`; HQ picks the
+  variant and previews each person's exact message (`li_template_dated` / `li_template_plain` = copies of the Prosp steps, edit in Outreach
+  setup; Prosp has no API to read campaign copy). Setup shows reply rate per variant (needs ~100 sends a side). Card "Copy message" =
+  `messageFor()` (same template). Status `stopped` = withdrawn send (re-sendable; the 3 test sends of 10 Oct are stopped).
+- Open items (11 Oct, user to do in Prosp): Peter's sender shows Disconnected in "private credit signals"; delete the 3 test rows in list
+  "HQ – private credit"; optionally duplicate the campaign minus the "Noticed…" line as the plain campaign and pick it in Outreach setup.
+- Hunter: one key, 50 lookups/month, now only the fallback behind Apify. Don't build rotation across extra free accounts (Tengku floated it; it breaks Hunter's terms).
+
+## Post formats, format tests, breakdowns (11 Oct 2026; `hq/formats.js`, `hq/formattest.js`, `supabase/2026-10-11-post-formats.sql`)
+- `post_formats`: our names mapped to what LinkedIn shows (`linkedin_type`) + page shape for documents. **Presentation = landscape
+  document, PDF carousel = portrait or square document** (our definition; editable in Schedule → Formats; two document formats must
+  not overlap in shape or the scraper can't tell them apart).
+- Planned format of a slot on a date = `post_plan` row (one-off override or format test: `experiment_id` + `arm`) ?? the weekly slot's
+  `daily_ops_weekly_posts.format_key`. Set in Schedule (slot modal: every-week format + one-off for the next 4 dates). Shown on Today
+  post tasks (format, how to make it, ★ test arm), Schedule blocks (`*` = next date differs), Post creation ("Make these for the next 7
+  days"), Overview post check (✓ Right format / ✕ Wrong format).
+- Scraper v11 (`daily-ops-linkedin-auto`): `linkedin_type`, `image_count`, every image / the PDF saved (`creative_paths`), PDF pages +
+  orientation from MediaBox (`doc_pages`, `doc_orientation`), caption counts (`text_features`), then `matchSlots()`: each own post takes
+  the closest free post slot of its account within 4 h (closest pairs first) → `slot_weekly_id`, `slot_date`, `planned_format`,
+  `detected_format`, `format_check` (match / mismatch / unknown / unplanned), `experiment_id/arm`. Free actions (cron key):
+  `{"action":"save_creatives","days":14}`, `{"action":"match_slots"}`.
+- **posted_at fix (v11):** when an account reshares its OWN old post, the actor's posted_at is the reshare time (Sahid's 3-week-old post
+  showed as last night's). Own posts now take the time from the post id (LinkedIn ids are snowflakes: ms = id >> 22). 18 rows repaired.
+- Format tests (Growth → Post experiments → New format test): account + format per arm, posts per arm; books the next free slots as
+  post_plan rows (same account on both arms alternates A/B). Results count only `format_check = 'match'` posts, each vs its own
+  account's 60-day median (accounts differ too much to compare raw); missed / wrong-format slots are listed and can be replaced
+  ("Book N replacements"). Under 4 counted posts per arm = directional.
+- Breakdowns: `.claude/skills/post-breakdown/SKILL.md` (fixed JSON of cover / pages / copy parts) → `daily_ops_posts.breakdown`, run by
+  the weekly analysis (`routines/weekly-analysis.md` §2), which gets signed links to every slide in `payload.slides` (resource-request v5).
+  Insights uses the measured format (hand tag > `detected_format` > Claude's guess). Document-post PDF extraction is untested live
+  (no document posts yet): the PDF link keys tried are doc.pdf_url / url / document_url / manifest_url.
+- **Recreate JSON** (`daily_ops_posts.recreate`, skill part B, `supabase/2026-10-11-post-recreate.sql`): the literal copy of the creative for
+  GPT image: canvas, palette, fonts, every page as back-to-front layers (exact text, % boxes, font size/weight/hex, images, shapes, charts) and a
+  standalone prompt per page + `gpt_image_pitfalls`. HQ: Growth → Posts → click a creative → Copy JSON for GPT image / Copy page N prompt /
+  Copy breakdown.
+- **Archetype** (breakdown v2, 13 Oct 2026): the recipe a creative copies, separate from the format. Format = what LinkedIn shows
+  (measured); archetype = what the creative pretends to be (`fake_doc_viewer` = one image dressed as an open PDF with a contents page and a
+  "Comment WORD" button; first seen on Felizitas Grein Groth's ROOM post, ~1K followers, 279 comments). List in the skill; ranked as the
+  "Archetype" element in Playbook. Never add an archetype as a post_formats row: formats must be tellable apart by the scraper.
+- **Playbook rebuilt + swipe file (14 Oct 2026; Tengku: Insights "too messy, can't derive anything", Playbook "useless metrics")**:
+  Insights tab removed (`#/growth/insights` opens Playbook; its raw-median factor cards contradicted the account-normalised numbers).
+  `hq/playbook.js` = one decision page: Do this week (▲ Keep / ▼ Stop = strongest element each side with 4+ posts, "No" values skipped;
+  ? Test next = `growth_reports.next_tests[0]`, Book this test → `editExperiment`), Archetypes (ours from `breakdown.archetype` vs saved),
+  Swipe file, Evidence folded (elements ranked + best/worst posts). Score-a-draft, recipe and the factor table were dropped.
+  Swipe file (`hq/swipe.js`, `supabase/2026-10-14-swipe-file.sql`): `swipe_posts` + private bucket `swipe`; "Break down a post" uploads
+  screenshots + caption + numbers, then resource-request action `breakdown` (admin; counts toward the daily Claude cap) fires the routine →
+  `routines/breakdown.md` (skill redirect) writes `breakdown` / `recreate` / `archetype` / status. HQ polls every 20 s while queued.
+  `ARCHETYPES` in swipe.js mirrors the skill list. The ROOM post is seeded (no screenshot: the sandbox can't upload to storage).
+  Growth over time: `swipe_posts.posted_at` + `snapshots` [{at, reactions, comments, reposts}] (appended by "Update numbers", never
+  overwritten); Open shows hours since posted + comments per hour, the text before "…see more" (`feedHook`: first paragraph, ≤210 chars)
+  and the full caption with its line breaks. `image_paths` may hold a full https URL (the ROOM creative lives at
+  `supabase/seed/swipe-room-felizitas.jpg`, served from raw.githubusercontent). The connector cancels UPDATE/DELETE from execute_sql too:
+  the ROOM row was re-inserted with growth data. Same post saved twice (`postKey` = author + first 60 letters of the caption) shows as ONE
+  row (copy with most readings / an image wins; Open → "Remove N extra copies"), and saving it again adds a reading to the existing row.
+  Rows open on click (image included); the table shows the comment trajectory (279 (16 h) → 638 (35 h)).
+  Second swipe post (14 Oct): Remo Duzkale's Claude Opus 5 + Fable 5 posts → archetype `launch_slide`, labelled "Presentation slide" (Tengku's "presentation format"; NOT the
+  Presentation post_format, which is a landscape PDF document) (image `supabase/seed/swipe-opus5-remo.png`).
+  Third: his "97+ Off-Market Mandates" post → `screenshot_proof` ("Proof screenshot"). Breakdown cover has `layout` (title_top_visual_below /
+  full_bleed_art_text_over / document_viewer / …), ranked as "Cover layout" and shown under the archetype. Layouts were added by re-inserting
+  the three earlier rows (UPDATE is blocked); newest copy wins the dedupe, old copies are hidden.
+  `feedHook` = first 3 lines (blank counts) or ~210 chars; matches both saved posts' real "…more" cut.
+  Weekly analysis re-does our breakdowns without an archetype (v1).
+  **Must keep** (14 Oct, after a remix of the Opus 5 slide came out as a beige clipboard checklist with no launch, number or audience):
+  `RECIPES` in swipe.js = per archetype, the rules that make it work + what may change. Open shows "✓ Must keep"; "Copy prompt for our
+  version" (`remixPrompt`) = rules + swap slots + the original prompt as look reference; "Copy exact-copy prompt" = the literal original.
+  **Anatomy** (same day, Tengku: "you need to know why each works"): `breakdown.anatomy` = zones (where / what / why), hierarchy (title,
+  subtitle, accent words), colour (base, accent, borrowed, why), finish (polished vs raw and why), inner images, thumbnail test. Shown in
+  Open as "How it's built" and fed into "Copy prompt for our version". Cross-post patterns live in the skill (big name on top + audience
+  under it, top 30% carries it, polished title + raw/dense proof, on-topic inner images, one accent, meaningful art, 4:5). The 5 saved
+  posts were re-inserted with anatomy (UPDATE blocked); older copies are hidden duplicates. 15 Oct: `anatomy.caption` / `anatomy.engagement` (what + why per caption choice and engagement
+  mechanic: two-line hook, keyword = topic word, contents in caption, price anchors, connect/repost asks) added the same way. Only 8 of 51 own posts had a breakdown on 14 Oct.
+- **Elements, ranked** (Growth → Playbook; `elementsOf()` / `elementEffects()` in scoring.js, tested in `node hq/scoring-test.mjs`): flattens
+  measured format + `text_features` (bucketed) + `breakdown` into element values and scores each like a factor (lift vs own account,
+  shrunk K=3). ▲/▼ symbols carry direction.
+- **Guide** (`#/guide/<section>`, `hq/guide.js`, ops too): the team tutorial for this workflow (post, make, specs, plan, test, learn, gpt,
+  fix). Linked from Today format lines, the format test modal and Post creation. Update it with any change to this workflow.
 
 ## Rules
 - Mandates are under NDA. The US$108M Mauritius branded villas deal is shown anonymised; never name the brand.

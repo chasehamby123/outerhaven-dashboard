@@ -9,6 +9,6 @@ if(/type=recovery/.test(location.hash))location.replace('/hq.html'+location.hash
 
   const observer=new IntersectionObserver(entries=>entries.forEach(x=>{
     if(x.isIntersecting)x.target.classList.add('visible');
-  }),{threshold:.12});
+  }),{threshold:0,rootMargin:'0px 0px -8% 0px'});
   document.querySelectorAll('.fadeUp').forEach(el=>observer.observe(el));
 })();

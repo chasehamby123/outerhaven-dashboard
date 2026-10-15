@@ -256,6 +256,10 @@ def candidate(text):
         return ""
     m = SUFFIX_CS.search(t)
     while m:
+        # Varagon writes "Industry Hotels, Restaurants & Leisure, Company Taymax Group, L.P.": ", Company <Name>" is a label, not a suffix.
+        if re.fullmatch(r",\s*Company", m.group(0)) and re.match(r"\s+[A-Z]", t[m.end():]):
+            m = SUFFIX_CS.search(t, m.end())
+            continue
         name = _before_suffix(t, m)
         if name:
             return name
