@@ -105,13 +105,14 @@
   }
   // "You: thanks" / "You sent an attachment" => we spoke last.
   const FROM_US = /^you(:|\s+(sent|replied|shared|reacted|liked|loved|laughed)\b)/i;
-  function rowFromAnchor(a, li, strategy) {
-    const m = (a.getAttribute('href') || '').match(THREAD_RE); if (!m) return null;
+  const nameKey = n => 'name:' + n.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, ' ').trim();
+  function rowFrom(a, li, strategy) {
+    const m = (a?.getAttribute('href') || '').match(THREAD_RE);
     const q = sel => li.querySelector(sel);
     let name = txt(q('.msg-conversation-card__participant-names, .msg-conversation-listitem__participant-names')).split('\n')[0];
     let snippet = txt(q('.msg-conversation-card__message-snippet, .msg-conversation-card__message-snippet-body, .msg-overview-list__snippet'));
     let time = txt(q('time.msg-conversation-listitem__time-stamp, .msg-conversation-card__time-stamp, time'));
-    if (strategy === 'generic' || !name) {
+    if (strategy === 'generic' || (!name && m)) { // no name + no link = not a conversation (e.g. "Load more conversations")
       const lines = txt(li).split('\n').map(x => x.trim()).filter(x => x.length > 2);
       name = name || lines[0] || '';
       const tm = lines.find(l => /^(\d{1,2}:\d{2}\s*[AP]M|mon|tue|wed|thu|fri|sat|sun|yesterday|[A-Z][a-z]{2}\s+\d{1,2})/i.test(l) && l.length < 14);
@@ -119,29 +120,30 @@
       snippet = snippet || lines.slice(1).filter(l => l !== time && l !== name).join(' ');
     }
     snippet = snippet.replace(/\s+/g, ' ').trim();
+    if (name && snippet.startsWith(name.split(/\s+/)[0])) snippet = snippet.replace(/^[^:]{1,60}:\s*/, ''); // "Steven: …" = their message
     const unread = !!(q('.msg-conversation-card__unread-count, .notification-badge--show') || /--unread|is-unread/.test(li.className) || /^\d+\s+unread/i.test(txt(li)));
-    if (!name) return null;
-    return { thread_key: 'thread:' + m[1], thread_url: 'https://www.linkedin.com/messaging/thread/' + m[1] + '/', name: name.slice(0, 120),
+    if (!name) return null; // also skips the empty placeholders LinkedIn keeps below the visible part of the list
+    return { thread_key: m ? 'thread:' + m[1] : nameKey(name), thread_url: m ? 'https://www.linkedin.com/messaging/thread/' + m[1] + '/' : null, name: name.slice(0, 120),
       last_from: FROM_US.test(snippet) ? 'us' : 'them', snippet: snippet.replace(FROM_US, '').replace(/^:\s*/, '').trim().slice(0, 300), ts: listTime(time), unread };
   }
   function readInboxList() {
     const out = new Map(); let strategy = 'classic';
+    // LinkedIn's list items (Oct 2026) have no thread link: the item itself is clickable. Key those by name instead.
     const items = [...document.querySelectorAll('li.msg-conversation-listitem, li.msg-conversation-card, .msg-conversations-container__conversations-list li')];
     for (const li of items) {
-      const a = li.querySelector('a[href*="/messaging/thread/"]'); if (!a) continue;
-      const r = rowFromAnchor(a, li, 'classic'); if (r) out.set(r.thread_key, r);
+      const r = rowFrom(li.querySelector('a[href*="/messaging/thread/"]'), li, 'classic'); if (r && !out.has(r.thread_key)) out.set(r.thread_key, r);
     }
     if (!out.size) {
       strategy = 'generic';
       for (const a of document.querySelectorAll('a[href*="/messaging/thread/"]')) {
         const li = a.closest('li') || a.parentElement; if (!li || li.querySelector('.msg-s-message-list')) continue;
-        const r = rowFromAnchor(a, li, 'generic'); if (r && !out.has(r.thread_key)) out.set(r.thread_key, r);
+        const r = rowFrom(a, li, 'generic'); if (r && !out.has(r.thread_key)) out.set(r.thread_key, r);
       }
     }
     return { rows: [...out.values()], strategy };
   }
   function listScroller() {
-    const a = document.querySelector('a[href*="/messaging/thread/"]'); if (!a) return null;
+    const a = document.querySelector('li.msg-conversation-listitem, a[href*="/messaging/thread/"]'); if (!a) return null;
     for (let el = a.parentElement; el && el !== document.body; el = el.parentElement) {
       const cs = getComputedStyle(el); if (/(auto|scroll)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 4) return el;
     }
