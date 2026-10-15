@@ -431,7 +431,9 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   Shown on every card; with no domain on file the modal asks for it (saved on the company; acronym domains like ashs.com are never found by search).
 - **Officer changes (15 Oct 2026, Boxlight + ASHS):** distressed companies lose CFOs. The resignation 8-K often comes BEFORE the 10-Q the
   leaving officer still signs, so `officer_change()` in officers.py flags any 8-K Item 5.02 in the last 180 days (before or after the
-  certification). SEC officers are re-read every 14 days (was 30); workflow mode `officers` with from=`all` re-reads every target.
+  certification), then reads up to 3 of those 8-Ks and keeps only a CEO / CFO departure or appointment (`change_roles()`, stored as
+  `officer_change.roles`; bare 5.02 flagged 220 of 346, with roles 101: 62 CFO, 50 CEO). SEC officers are re-read every 14 days (was 30);
+  workflow mode `officers` with from=`all` re-reads every target.
 - Keys pasted by an admin in any signal tab → "Contacts setup" (RPC `set_contact_key`, write-only; never enter them for the user).
 - "Add to pipeline" pre-fills name, title and LinkedIn from the best person.
 
