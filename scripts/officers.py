@@ -136,20 +136,48 @@ def officers(cik):
             continue
         seen[name] = p
     out["people"] = list(seen.values())
-    out["officer_change"] = officer_change(rows, cik)
+    docs = dict(zip(recent.get("accessionNumber", []), recent.get("primaryDocument", []) or []))
+    for c in officer_changes(rows, cik)[:3]:   # read the newest 5.02 8-Ks; flag only a CEO / CFO change
+        a = c["acc"]
+        doc = docs.get(a)
+        if not doc:
+            continue
+        roles = change_roles(text_of(sec_get(f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{a.replace('-', '')}/{doc}")))
+        if roles:
+            out["officer_change"] = {"date": c["date"], "url": c["url"], "roles": roles}
+            break
     return out
 
 
-def officer_change(rows, cik, today=None, days=180):
-    """Newest 8-K Item 5.02 (officer / director change) filed in the last `days` days, before OR after the certification.
+def officer_changes(rows, cik, today=None, days=180):
+    """8-K Item 5.02 filings in the last `days` days, newest first, before OR after the certification.
     15 Oct 2026: Boxlight's CFO resignation 8-K (4 Aug) came BEFORE the 10-Q he still signed (14 Aug), and ASHS named an interim
     CFO the same way; checking only 8-Ks after the certification missed both."""
     import datetime as dt
     since = ((today or dt.date.today()) - dt.timedelta(days=days)).isoformat()
-    for f, a, d, items in rows:   # submissions JSON lists newest first
-        if f in ("8-K", "8-K/A") and d >= since and "5.02" in (items or ""):
-            return {"date": d, "url": f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{a.replace('-', '')}/{a}-index.htm"}
-    return None
+    return [{"acc": a, "date": d, "url": f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{a.replace('-', '')}/{a}-index.htm"}
+            for f, a, d, items in rows if f in ("8-K", "8-K/A") and d >= since and "5.02" in (items or "")]
+
+
+ROLE_WORDS = [("cfo", re.compile(r"chief financial officer|principal financial officer|\bCFO\b", re.I)),
+              ("ceo", re.compile(r"chief executive officer|principal executive officer|\bCEO\b", re.I))]
+CHANGE = re.compile(r"resign|depart|terminat|step(?:ped|s)? down|retire|separat|will not continue|appoint|(?:been|was) named|named (?:as|the|its|interim)|succeed|interim|promot|transition", re.I)
+
+
+def change_roles(text):
+    """Which top roles an 8-K Item 5.02 changes: a sentence naming the CFO / CEO role AND a change word. Item 5.02 also covers
+    director changes and pay plans (5.02(e)): on the first full run 220 of 346 targets had a 5.02 8-K, so the bare item number
+    is too noisy to warn on."""
+    i = text.find("5.02")
+    body = text[i:i + 6000] if i >= 0 else text[:6000]
+    out = []
+    for sentence in re.split(r"(?<=[.;])\s+", body):
+        if not CHANGE.search(sentence):
+            continue
+        for role, rx in ROLE_WORDS:
+            if rx.search(sentence) and role not in out:
+                out.append(role)
+    return out
 
 
 def post(body):
