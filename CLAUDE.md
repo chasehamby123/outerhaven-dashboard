@@ -330,7 +330,12 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - **Extension v2.1 "Sync inbox"** (HQ pill on linkedin.com/messaging): scrolls the conversation LIST only (never opens/sends), reads name,
   preview ("You:" prefix = we spoke last), time, unread, then POSTs `dm-capture` action `inbox_sync` (x-capture-key) → `inbox_threads`
   (one row per account+thread_key, `name_key` via trigger/`ohq_name_key`), `inbox_syncs` (log; first sync per account = baseline, so
-  "new conversations" ignore it). Parser has a classic-selector pass and a generic anchor fallback; LinkedIn selectors are unverified live, fixture-tested only.
+  "new conversations" ignore it). Parser has a classic-selector pass and a generic anchor fallback.
+  **v2.5 (15 Oct 2026, tested on a real saved page from Chase's inbox):** list items no longer contain `/messaging/thread/` links, so rows
+  without a link are keyed `name:<lowercased name>` (thread_url null); the open chat still keys by the thread id in the URL, and
+  `reply_outcomes` also matches on `name_key`. LinkedIn renders ~10 items and keeps empty placeholders below; "Load more conversations" is skipped.
+  The manifest has a fixed `key` (ID ohpkiflfhhdchkofpolafncldooanccb) so AdsPower updates replace the extension instead of installing a copy.
+  Never commit a saved LinkedIn page as a fixture: the repo is public and it holds real inbox content.
 - **Responder** per inbox: `inbox_owners` (seed: Peter/Chase/Tengku → Chase, everyone else → Anaz; admin edits it in the Overview card).
 - **Missed commenters** `missed_commenters(p_days)`: audience comment (scraper) with no team reply, and the author's name not in that inbox's threads.
   Verdict: missed (inbox synced after the comment) / unverified (synced before) / unsynced / in_inbox (not missed). Needs the comment scraper on.
