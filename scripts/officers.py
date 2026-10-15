@@ -2,7 +2,7 @@
 
 Every 10-K and 10-Q carries two certifications signed by name: Exhibit 31.1 (principal executive officer, the CEO) and
 Exhibit 31.2 (principal financial officer, the CFO). They start "I, <name>, certify that ...". This reads them from each
-target's latest 10-K / 10-Q, flags an 8-K Item 5.02 (officer change) filed after it, and takes the company phone and website
+target's latest 10-K / 10-Q, flags an 8-K Item 5.02 (officer change) from the last 180 days, and takes the company phone and website
 from the SEC company file. Sends results to the signal-contacts edge function (kind 'officers'); LinkedIn and email are found
 there (Brave Search, Hunter).
 
@@ -136,12 +136,20 @@ def officers(cik):
             continue
         seen[name] = p
     out["people"] = list(seen.values())
-    # Officer change announced after the certification: the names above may be out of date.
-    for f, a, d, items in rows:
-        if f in ("8-K", "8-K/A") and d > filed and "5.02" in (items or ""):
-            out["officer_change"] = {"date": d, "url": f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{a.replace('-', '')}/{a}-index.htm"}
-            break
+    out["officer_change"] = officer_change(rows, cik)
     return out
+
+
+def officer_change(rows, cik, today=None, days=180):
+    """Newest 8-K Item 5.02 (officer / director change) filed in the last `days` days, before OR after the certification.
+    15 Oct 2026: Boxlight's CFO resignation 8-K (4 Aug) came BEFORE the 10-Q he still signed (14 Aug), and ASHS named an interim
+    CFO the same way; checking only 8-Ks after the certification missed both."""
+    import datetime as dt
+    since = ((today or dt.date.today()) - dt.timedelta(days=days)).isoformat()
+    for f, a, d, items in rows:   # submissions JSON lists newest first
+        if f in ("8-K", "8-K/A") and d >= since and "5.02" in (items or ""):
+            return {"date": d, "url": f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{a.replace('-', '')}/{a}-index.htm"}
+    return None
 
 
 def post(body):
@@ -162,7 +170,8 @@ def post(body):
 def main():
     if not KEY:
         sys.exit("FUND_INGEST_KEY missing")
-    todo = post({"kind": "officers_todo"}).get("items") or []
+    # Workflow mode officers with from=all re-reads every target (after a rule change); otherwise only stale ones.
+    todo = post({"kind": "officers_todo", "all": os.environ.get("IN_FROM") == "all"}).get("items") or []
     log(f"{len(todo)} credit targets need SEC officers")
     batch, found, failed = [], 0, 0
     for i, it in enumerate(todo, 1):

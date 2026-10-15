@@ -158,9 +158,15 @@ async function hunterEmail(domain: string, first: string, last: string, hk: stri
 }
 
 // Work email for one named person at the company's domain (on demand). Apify first; Hunter only when Apify has no valid mailbox.
-async function email(kind: string, key: string, name: string, role = "") {
-  const row = await getRow(kind, key);
-  if (!row?.domain) throw new Error("No company website found yet. Run Find contacts first.");
+async function email(kind: string, key: string, name: string, role = "", typed = "") {
+  let row = await getRow(kind, key);
+  // A domain typed by the team (search finds no website for acronym domains like ashs.com) is saved on the company.
+  const dom = String(typed || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/[\/?#].*$/, "");
+  if (dom && !row?.domain) {
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(dom)) throw new Error("That doesn't look like a domain (e.g. acme.com).");
+    await save(kind, key, { domain: dom, website: `https://${dom}` }); row = await getRow(kind, key);
+  }
+  if (!row?.domain) throw new Error("No company website found yet. Type the company's email domain.");
   const parts = String(name).replace(/[,.]/g, " ").trim().split(/\s+/).filter(w => !/^(jr|sr|ii|iii|iv)$/i.test(w));
   const first = parts[0], last = parts[parts.length - 1];
   let d: any = await apifyEmail(row.domain, first, last);
@@ -210,7 +216,7 @@ async function cron() {
 async function ingest(body: any) {
   if (body.kind === "officers_todo") {
     const rows = (await sb.from("credit_signals").select("cik,company_name").in("verdict", ["target", "maybe"]).in("status", ["new", "added"]).limit(2000)).data || [];
-    const cut = Date.now() - 30 * 864e5;
+    const cut = body.all ? Infinity : Date.now() - 14 * 864e5;   // officers change often at distressed companies: re-read every 2 weeks
     const have = new Map(((await sb.from("signal_contacts").select("key,sec_checked_at").eq("kind", "credit")).data || []).map((r: any) => [r.key, r.sec_checked_at]));
     return { items: (rows as any[]).filter(r => { const t = have.get(String(r.cik)); return !t || Date.parse(t) < cut; }).map(r => ({ cik: String(r.cik), company_name: r.company_name })) };
   }
@@ -251,7 +257,7 @@ Deno.serve(async (req) => {
     const kind = String(body.kind || ""), key = String(body.key || "");
     if (!TABLE[kind] || !key) return json({ ok: false, error: "kind and key needed" }, 400);
     if (body.action === "lookup") return json(await lookup(kind, key));
-    if (body.action === "email") return json(await email(kind, key, String(body.name || "").trim(), String(body.role || "")));
+    if (body.action === "email") return json(await email(kind, key, String(body.name || "").trim(), String(body.role || ""), String(body.domain || "")));
     if (body.action === "mark") {
       const row = await getRow(kind, key); if (!row) return json({ ok: false, error: "No contacts stored" }, 404);
       const who = (user.email || "").split("@")[0];

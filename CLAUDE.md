@@ -428,6 +428,10 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   LinkedIn ✓ found / ✕ not found / … not searched yet, and email ✓ confirmed / ? unconfirmed (never emailed) / ✕ none found.
 - **"+ Email for someone else"** (15 Oct 2026, Tengku wanted to test with a name not in the filing): on any card with a domain; type a
   name + role → action `email` with a name not on the card adds them first (`source: 'manual'`, status confirmed) with the result.
+  Shown on every card; with no domain on file the modal asks for it (saved on the company; acronym domains like ashs.com are never found by search).
+- **Officer changes (15 Oct 2026, Boxlight + ASHS):** distressed companies lose CFOs. The resignation 8-K often comes BEFORE the 10-Q the
+  leaving officer still signs, so `officer_change()` in officers.py flags any 8-K Item 5.02 in the last 180 days (before or after the
+  certification). SEC officers are re-read every 14 days (was 30); workflow mode `officers` with from=`all` re-reads every target.
 - Keys pasted by an admin in any signal tab → "Contacts setup" (RPC `set_contact_key`, write-only; never enter them for the user).
 - "Add to pipeline" pre-fills name, title and LinkedIn from the best person.
 

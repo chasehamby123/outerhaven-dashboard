@@ -46,7 +46,7 @@ export function contactHtml(kind, key, s) {
   const extra = [c?.phone ? `<a class="ctLink" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : '', c?.website ? `<a class="ctLink" href="${esc(c.website)}" target="_blank" rel="noopener">${esc(c.domain || 'Website')} ↗</a>` : ''].filter(Boolean).join('');
   const change = c?.officer_change ? `<a class="ctWarn" href="${esc(c.officer_change.url)}" target="_blank" rel="noopener">⚠ Board or officer change filed ${esc(c.officer_change.date)} (8-K 5.02): check the name is current</a>` : '';
   const action = (people.length && c?.looked_up_at ? '' : `<button type="button" class="ctLink muted" data-ctlookup="${esc(key)}">${c?.looked_up_at ? 'Search again' : people.length ? 'Find LinkedIn' : 'Find contacts'}</button>`)
-    + (c?.domain ? `<button type="button" class="ctLink muted" data-ctother title="Type any name: finds and checks their email at ${esc(c.domain)}">+ Email for someone else</button>` : '');
+    + `<button type="button" class="ctLink muted" data-ctother title="Type any name: finds and checks their work email">+ Email for someone else</button>`;
   const none = !people.length ? `<span class="ctNone">${esc(c?.lookup_note || (c?.looked_up_at ? 'No CFO / CEO found.' : 'No contact yet.'))}</span>` : '';
   return `<div class="ct" data-ctkey="${esc(key)}">${people.map(p => personHtml(kind, key, p, c)).join('')}${none || extra || action || change ? `<div class="ctMeta">${none}${extra}${action}${change}</div>` : ''}</div>`;
 }
@@ -57,8 +57,8 @@ async function call(body) {
   return data;
 }
 // Find one person's work email (Apify, Hunter fallback) and refresh the cache. Returns the stored person.
-export async function findEmail(kind, key, name, role) {
-  const r = await call({ action: 'email', kind, key, name, role });
+export async function findEmail(kind, key, name, role, domain) {
+  const r = await call({ action: 'email', kind, key, name, role, domain });
   await refresh(kind, key);
   return { ...r, person: live(get(kind, key)).find(p => p.name === name) || null };
 }
@@ -85,14 +85,15 @@ export function bindContacts(root, kind, redraw) {
   $$('[data-ctother]', root).forEach(b => b.onclick = () => {
     const key = keyOf(b), dom = get(kind, key)?.domain;
     modal({
-      title: `Find an email at ${dom}`, submit: 'Find email',
-      body: `<div class="form"><label class="field">Full name<input class="input" name="name" required autocomplete="off" placeholder="First Last"></label>
+      title: dom ? `Find an email at ${dom}` : 'Find a work email', submit: 'Find email',
+      body: `<div class="form">${dom ? '' : '<label class="field">Company email domain<input class="input" name="domain" required autocomplete="off" placeholder="acme.com"><span class="s muted">No website found for this company yet. Type the part after the @ (saved on the card).</span></label>'}
+        <label class="field">Full name<input class="input" name="name" required autocomplete="off" placeholder="First Last"></label>
         <label class="field">Role<select class="input" name="role"><option value="cfo">CFO</option><option value="ceo">CEO</option><option value="other">Other</option></select></label>
-        <p class="s muted" style="margin:0">Tries 10 name patterns against the company's mail server (~$0.05), Hunter if none is confirmed. Takes ~30 s. The person is saved on this card.</p></div>`,
+        <p class="s muted" style="margin:0">Also try the name they use publicly (e.g. a married name): each name is a separate check. Tries 10 name patterns against the company's mail server (~$0.05), Hunter if none is confirmed. Takes ~30 s. The person is saved on this card.</p></div>`,
       async onSubmit(fd) {
         const name = String(fd.get('name') || '').trim(); if (name.split(/\s+/).length < 2) { toast('Type first and last name'); return false; }
         toast('Checking the mail server…');
-        try { const r = await findEmail(kind, key, name, String(fd.get('role'))); toast(r.email ? `${r.email} (${r.status === 'valid' ? 'confirmed by the mail server' : 'unconfirmed: not emailed'})` : `No email found for ${name}`); }
+        try { const r = await findEmail(kind, key, name, String(fd.get('role')), dom ? '' : String(fd.get('domain') || '').trim()); toast(r.email ? `${r.email} (${r.status === 'valid' ? 'confirmed by the mail server' : 'unconfirmed: not emailed'})` : `No email found for ${name}`); }
         catch (e) { toast(e.message); }
         redraw();
       },
