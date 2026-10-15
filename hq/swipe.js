@@ -52,7 +52,7 @@ const anat = s => {
   const a = s.breakdown?.anatomy; if (!a) return '';
   return `How the original is built and why (keep the reasons, change the subject):
 ${(a.zones || []).map(z => `- ${z.box}: ${z.what}. Why: ${z.why}`).join('\n')}
-${a.colour ? `- Colour: ${a.colour.base}; accent ${a.colour.accent}. Why: ${a.colour.why}\n` : ''}${a.finish ? `- Finish: polished ${a.finish.where_polished}; raw ${a.finish.where_raw}. Why: ${a.finish.why}\n` : ''}
+${a.colour ? `- Colour: ${a.colour.base}; accent ${a.colour.accent}. Why: ${a.colour.why}\n` : ''}${a.finish ? `- Finish: polished ${a.finish.where_polished}; raw ${a.finish.where_raw}. Why: ${a.finish.why}\n` : ''}${[...(a.caption || []), ...(a.engagement || [])].map(x => `- ${x.what}. Why: ${x.why}\n`).join('')}
 `;
 };
 export function remixPrompt(s) {
@@ -214,6 +214,8 @@ function anatomyBlock(a) {
     ${c.base ? row('Colour', [c.base, c.accent && `accent: ${c.accent}`, c.borrowed && `borrowed: ${c.borrowed}`].filter(Boolean).join(' · '), c.why) : ''}
     ${f.level ? row(`Finish: ${f.level}`, [f.where_polished && `polished: ${f.where_polished}`, f.where_raw && `raw: ${f.where_raw}`].filter(Boolean).join(' · '), f.why) : ''}
     ${a.inner_images ? row('Inside the images', a.inner_images, '') : ''}
+    ${(a.caption || []).map(x => row('Caption', x.what, x.why)).join('')}
+    ${(a.engagement || []).map(x => row('Engagement', x.what, x.why)).join('')}
     ${a.thumbnail_test ? row('At thumbnail size', a.thumbnail_test, '') : ''}
   </tbody></table>`;
 }

@@ -530,7 +530,8 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   subtitle, accent words), colour (base, accent, borrowed, why), finish (polished vs raw and why), inner images, thumbnail test. Shown in
   Open as "How it's built" and fed into "Copy prompt for our version". Cross-post patterns live in the skill (big name on top + audience
   under it, top 30% carries it, polished title + raw/dense proof, on-topic inner images, one accent, meaningful art, 4:5). The 5 saved
-  posts were re-inserted with anatomy (UPDATE blocked); older copies are hidden duplicates. Only 8 of 51 own posts had a breakdown on 14 Oct.
+  posts were re-inserted with anatomy (UPDATE blocked); older copies are hidden duplicates. 15 Oct: `anatomy.caption` / `anatomy.engagement` (what + why per caption choice and engagement
+  mechanic: two-line hook, keyword = topic word, contents in caption, price anchors, connect/repost asks) added the same way. Only 8 of 51 own posts had a breakdown on 14 Oct.
 - **Elements, ranked** (Growth → Playbook; `elementsOf()` / `elementEffects()` in scoring.js, tested in `node hq/scoring-test.mjs`): flattens
   measured format + `text_features` (bucketed) + `breakdown` into element values and scores each like a factor (lift vs own account,
   shrunk K=3). ▲/▼ symbols carry direction.

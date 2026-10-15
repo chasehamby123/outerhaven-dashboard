@@ -112,7 +112,9 @@ Use exactly these keys. Enum values are listed after the key; pick one. `null` w
     "finish": {"level": "polished | mixed | raw", "where_polished": "...", "where_raw": "...",
                "why": "why that split works (e.g. raw = looks real, dense = value + zoom)"},
     "inner_images": "what sits inside screenshots / panels / art and why each was chosen (topic-matched sidebar items, file icons, cut-off slides)",
-    "thumbnail_test": "what still reads at feed thumbnail size, which is the only part that has to"
+    "thumbnail_test": "what still reads at feed thumbnail size, which is the only part that has to",
+    "caption": [{"what": "a caption choice (hook lines, line breaks, body shape, emoji/caps, price anchors, CTA or none)", "why": "the job it does"}],
+    "engagement": [{"what": "an engagement mechanic (keyword choice, comment gate, connect/follow ask, repost race, what is given vs gated)", "why": "the job it does"}]
   },
   "why_it_might_work": ["one line each, max 3, tied to a part above"],
   "why_it_might_not": ["max 3"],
@@ -170,6 +172,19 @@ is unfinished. Compare against these patterns from the saved posts (14 Oct 2026)
 - **Alternating colour lines** (Felizitas ROOM): a 4-line title split black / accent / black / accent. The black lines make the accent
   look more vivid than a fully coloured title would, the stripes give rhythm, and the accent lines alone read as the message (the big
   name + the audience). Record the colour of EVERY title line in `recreate` (`emphasis`) and the reason in `anatomy.hierarchy.accent_words`.
+- **Caption and engagement are half the post.** Every big caption choice and every engagement mechanic gets a what + why in
+  `anatomy.caption` / `anatomy.engagement`, same as the visual zones. Saved patterns (all hypotheses until our own tests prove them):
+  - Two-line visible hook: line 1 = news / pain / villain, blank line, line 2 = the offer (free + number + audience). That is exactly
+    what the feed shows before "…more", so both halves of the pitch are seen without a click.
+  - Keyword = the topic word (DECK, ROOM, Opus, Fable): every comment repeats the topic, so the thread itself advertises it, and each
+    commenter's network sees "X commented on this". That is how a ~1K-follower account gets 400-600 comments: reach comes from
+    commenters, not followers.
+  - Give the contents away in the caption (numbered sections), gate the file: value without commenting, longer reading time, and
+    proof the file is real. The image holds the gate.
+  - Price anchors on free things ($300K/yr deal team, $350K brokers, $990 bonus): free feels big next to a real cost.
+  - "Connect (mandatory)": the file is sent by DM, which needs a connection; it also grows his network with exactly this audience.
+    "First 15 reposts get it" = paid distribution in attention. Both read as growth-hacking to senior readers (a cost, note it).
+  - 🚨 / CAPS ("NOW", "STOP"): pattern interrupt in a feed of calm text; also the cheapest-looking part of the post.
 - **Art that means something.** The Opus eggs form the numeral 5; the Fable butterflies echo the name. Decorative icons (a clipboard,
   a checklist) carry nothing.
 - **Button at the bottom, after the proof** (comment-gated posts), filling the width; the keyword is the only other emphasis.
