@@ -31,11 +31,13 @@ export const RECIPES = {
     'The caption opens with the news ("🚨 X just launched & it now…") so the first visible line matches the slide.',
   ], swap: 'the launch (this week\'s), the dollar number, the audience, the art subject' },
   fake_doc_viewer: { keep: [
-    'It must look like a document already open in a viewer (file bar, page thumbnails, page counter), so the reader feels they are one click from having it.',
-    'Title in 4 short lines alternating black / accent colour / black / accent colour (black "The Ultimate", blue "Claude Guide", black "to Every Document", blue "Investors Ask For"). The black lines frame the colour so it looks brighter, the stripe rhythm makes the title feel designed, and reading only the coloured lines still gives the message (big name + audience).',
-    'The visible page is a numbered contents list that promises specific deliverables.',
-    'The "Comment WORD" button is drawn inside the image; the word is short and on-topic.',
-  ], swap: 'the document title, the contents lines, the keyword' },
+    'It must look like a real PDF open in a viewer: a WHITE page (never a dark or coloured page: dark reads as a poster, not a document), a file bar on top with a red PDF icon + a real file name ("investor-ready-data-room.pdf") + search / download icons, and a DARK navy rail of page thumbnails on the left. Light page + dark rail is what makes it read as a viewer.',
+    'The title names a tool everyone knows (Claude) and the audience: "The Ultimate Claude Guide to Every Document Investors Ask For". A topic-only title ("The Finance Reporting Guide") loses the borrowed attention.',
+    'Title in 4 short lines, ONE colour per whole line, alternating black / accent / black / accent, bold grotesk sans (not serif). The black lines frame the colour so it looks brighter, and the accent lines alone read as the message (big name + audience). Never switch colour mid-line.',
+    'Under the title: a spaced-caps kicker above it ("FUNDRAISING"), a caps subtitle with the number ("30 SKILLS FOR …"), and one plain promise line. The number sets the size of the gift.',
+    'Contents = 25-30 numbered lines in TWO columns with dotted leaders and page numbers. Density is the value signal; 6 lines looks thin.',
+    'One accent colour for the title and numbers; the keyword on the button is the ONLY other colour (ROOM is yellow on a black button). The button sits at the bottom, after the contents, with an arrow. Ask = comment only.',
+  ], swap: 'the document title (keep Claude + the audience in it), the file name, the kicker, the number, the contents lines (same count), the keyword' },
   tool_in_action: { keep: [
     'Top ~30% is clean and huge: a serif title that starts with a tool everyone knows ("Claude for Investor Pitch Decks", the audience word in the one accent colour), then a logo line ("Claude + PowerPoint"). It must read at thumbnail size on its own.',
     'The middle ~60% is deliberately messy: a full, real-looking app window, chat on the left with the input files attached, the finished deliverable on the right running off the bottom ("1 / 12"). Dense and tiny on purpose: it looks real, looks like a lot of work done for you, and people zoom in.',
@@ -63,7 +65,7 @@ export function remixPrompt(s) {
 Keep all of these. They are why the original went viral; a version without them fails:
 ${r.keep.map(k => `- ${k}`).join('\n')}
 
-Change only: ${r.swap}. Keep the canvas size, layout, palette and type style of the original.
+Start from the original below and keep it as it is: same canvas, layout, background and panel colours, fonts, sizes, number of items. Change only the words in: ${r.swap}. Do not restyle, recolour or simplify anything.
 
 ${anat(s)}The original, for look and layout only:
 ${pages.map(p => p.prompt).join('\n\n')}
