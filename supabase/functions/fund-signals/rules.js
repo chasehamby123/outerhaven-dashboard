@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 19;
+export const RULES_VERSION = 20;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -121,12 +121,19 @@ export function classify(s, now = Date.now()) {
     }
     if (!s.first_sale) add('good', 'Filed before taking any money: the earliest possible contact', 15);
     else if (months != null && months <= 1.5) add('good', 'Started raising in the last 6 weeks', 12);
-    if (months != null && months >= 6 && pctSold != null && pctSold < 0.3 && s.first_sale) add('good', `Stuck: only ${pctTxt(pctSold)} raised in ${Math.round(months)} months. They need help, but ask why investors are passing (a stall is also a weaker story)`, 20);
+    // 19 Oct 2026 (Tengku, Schutte Capital II: 4% in 50 months ranked #1). Past 2 years under 30% is a dead raise or an
+    // always-open vehicle, not a GP mid-raise; same line as the fund1 list's "open over 2 years" rule.
+    if (months != null && months > 24 && pctSold != null && pctSold < 0.3 && s.first_sale) add('maybe', `Open ${Math.round(months)} months with only ${pctTxt(pctSold)} raised: a stalled raise or an always-open vehicle, not a live fundraise`, -15);
+    else if (months != null && months >= 6 && pctSold != null && pctSold < 0.3 && s.first_sale) add('good', `Stuck: only ${pctTxt(pctSold)} raised in ${Math.round(months)} months. They need help, but ask why investors are passing (a stall is also a weaker story)`, 20);
     else if (months != null && months >= 12 && pctSold == null && s.first_sale) add('good', `Still raising ${Math.round(months)} months after the first sale`, 20);
     // 19 Oct 2026 (Tengku, Future Labs Fund II: $6.5M of $65M in 19 months, Fund I closed $22.6M of $65M). Motivation is not the
     // problem mid-raise: a stuck GP wants help most. Placeability is. Re-ups come first in any raise, so a Fund II far below
     // Fund I after a year means Fund I's own investors aren't coming back, and a Fund I that missed its target is a weak story.
     const n = s.fund_no || 0, myStart = s.first_sale || s.filing_date;
+    // A higher-numbered fund by the same people that started first (Schutte III 2021, II 2022): the numbers are labels on
+    // parallel vehicles, so "Fund II, the hardest raise" is wrong.
+    const later = (s.history || []).find(h => h.fund_no > n && h.first && myStart && h.first <= myStart);
+    if (later) add('maybe', `Fund numbers out of order: ${later.name} started ${later.first}, before this one. Parallel vehicles, not a new fund`, -10);
     const prior = (s.history || []).filter(h => h.fund_no === n - 1 && h.first && myStart && h.first < myStart).sort((a, b) => b.sold - a.sold)[0];
     if (prior && prior.sold > 0) {
       const pFull = prior.offering > 0 ? prior.sold / prior.offering : null, pNm = `Fund ${romanOf(prior.fund_no) || 'I'}`;

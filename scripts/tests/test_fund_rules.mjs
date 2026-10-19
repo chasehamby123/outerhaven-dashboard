@@ -37,3 +37,12 @@ r = classify({ ...fl, sold: 25e6, history: [{ name: 'Future Labs Capital Fund I,
 assert.ok(r.reasons.some(x => /coming back/.test(x.text)));
 
 console.log('fund rules ok');
+
+// Schutte Capital (19 Oct 2026): II opened 2022 with 4% raised, III opened 2021 with 17%. Both are maybe, not top targets.
+const sch = [{ name: 'Schutte Capital III LP', fund_no: 3, first: '2021-03-22', sold: 16.7e6, offering: 100e6 }, { name: 'Schutte Capital II LP', fund_no: 2, first: '2022-08-10', sold: 3.6e6, offering: 100e6 }];
+const schBase = { list: 'live', state: 'CO', executives: [{ name: 'Daniel Schutte' }], offering: 100e6, filing_date: '2026-07-27', history: sch };
+r = classify({ ...schBase, fund_no: 2, company_name: 'Schutte Capital II LP', first_sale: '2022-08-10', sold: 3.6e6 }, now);
+assert.equal(r.verdict, 'maybe'); assert.ok(r.reasons.some(x => /out of order/.test(x.text))); assert.ok(r.reasons.some(x => /stalled/.test(x.text)));
+r = classify({ ...schBase, fund_no: 3, company_name: 'Schutte Capital III LP', first_sale: '2021-03-22', sold: 16.7e6 }, now);
+assert.equal(r.verdict, 'maybe'); assert.ok(!r.reasons.some(x => /out of order/.test(x.text)));
+console.log('schutte ok');
