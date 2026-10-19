@@ -6,6 +6,7 @@ import { opsDate } from './today.js';
 import { renderCreation } from './creation.js';
 import { renderTeamTasks } from './tasks.js';
 import { loadFormats, formatList, fmtLabel, fmtIcon, fmtOf, loadPlans, nextDates, editFormats } from './formats.js';
+import { kindOfCode, KIND_LABEL } from './insights.js';
 
 // The slider at the top of Schedule: posting calendar vs the weekend post creation batch.
 const viewToggle = on => `<div class="viewSw" data-on="${on}" role="tablist"><a href="#/schedule" class="${on === 'post' ? 'on' : ''}">Posting</a><a href="#/schedule/creation" class="${on === 'create' ? 'on' : ''}">Post creation</a><a href="#/schedule/tasks" class="${on === 'tasks' ? 'on' : ''}">Team tasks</a><i></i></div>`;
@@ -20,8 +21,7 @@ const TZ = 'Asia/Singapore';
 let root, posts = [], accounts = [], loaded = false, channel = null, scrolled = false, spot = null, plans = new Map();
 
 // What a post is, from its content code: lead magnet versions (A, B, C…), video, or a credibility ("human") post.
-const kind = code => /vid/i.test(code || '') ? 'vid' : /cred|human|life|personal/i.test(code || '') ? 'cred' : 'lm';
-const KIND_LABEL = { lm: 'Lead magnet', vid: 'Video', cred: 'Credibility' };
+const kind = kindOfCode;
 const PLAY = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1l7 4-7 4z"/></svg>';
 const codeHtml = p => { const k = kind(p.content_code); return k === 'vid' ? `${PLAY}Video` : k === 'cred' ? 'Cred' : esc(p.content_code || 'Post'); };
 // Minutes Malaysia is ahead of New York right now (12 in summer, 13 in winter): the audience clock under each hour.

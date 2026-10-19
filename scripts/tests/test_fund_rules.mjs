@@ -25,4 +25,15 @@ assert.equal(r.stage, 'raising'); assert.equal(r.verdict, 'maybe');
 r = classify(fund({ first_sale: ago(14), sold: 0 }), now);
 assert.equal(r.stage, 'stuck'); assert.equal(r.verdict, 'maybe');
 
+// Live raise, stuck, weak Fund I and little re-up (Future Labs Capital Fund II, 19 Oct 2026) -> maybe, not target.
+const fl = { list: 'live', fund_no: 2, company_name: 'Future Labs Capital Fund II, L.P.', state: 'NY', executives: [{ name: 'Jo Smith' }],
+  offering: 65e6, sold: 6.5e6, first_sale: ago(19), filing_date: ago(1), investors: 25 };
+r = classify({ ...fl, history: [{ name: 'Future Labs Capital Fund I, L.P.', fund_no: 1, first: ago(64), sold: 22.6e6, offering: 65e6 }] }, now);
+assert.equal(r.verdict, 'maybe'); assert.ok(r.reasons.some(x => /re-upping/.test(x.text))); assert.ok(r.reasons.some(x => /35% of its/.test(x.text)));
+// Same raise without history: unchanged (target).
+assert.equal(classify(fl, now).verdict, 'target');
+// Investors coming back: Fund II already past Fund I.
+r = classify({ ...fl, sold: 25e6, history: [{ name: 'Future Labs Capital Fund I, L.P.', fund_no: 1, first: ago(64), sold: 22.6e6, offering: 25e6 }] }, now);
+assert.ok(r.reasons.some(x => /coming back/.test(x.text)));
+
 console.log('fund rules ok');

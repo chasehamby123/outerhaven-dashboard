@@ -104,9 +104,9 @@ export function elementsOf(post) {
   add('pages', 'Structure', pretty(b.structure)); add('pages', 'Value given', pretty(b.value_given)); add('pages', 'Data', pretty(b.data_specificity));
   add('pages', 'Last page CTA', pretty(b.last_page_cta)); add('pages', 'Production', pretty(b.production)); add('pages', 'Design consistency', pretty(b.design_consistency));
   // Copy (Claude)
-  add('copy', 'Hook type', pretty(cp.hook_type)); add('copy', 'Hook', pretty(cp.hook_specificity)); add('copy', 'Curiosity gap', yn(cp.curiosity_gap));
-  add('copy', 'Calls out an audience', cp.audience_callout === undefined ? null : yn(!!cp.audience_callout)); add('copy', 'Line 2', pretty(cp.rehook));
-  add('copy', 'Body', pretty(cp.body_structure)); add('copy', 'Proof', pretty(cp.proof)); add('copy', 'Tone', pretty(cp.tone));
+  add('copy', 'Hook type', pretty(cp.hook_type)); add('copy', 'How specific the hook is', pretty(cp.hook_specificity)); add('copy', 'Curiosity gap', yn(cp.curiosity_gap));
+  add('copy', 'Calls out an audience', cp.audience_callout === undefined ? null : yn(!!cp.audience_callout)); add('copy', 'Second line (re-hook)', pretty(cp.rehook));
+  add('copy', 'Body structure', pretty(cp.body_structure)); add('copy', 'Proof', pretty(cp.proof)); add('copy', 'Tone', pretty(cp.tone));
   add('copy', 'Reading grade', bucket(cp.reading_grade, [6, 8, 10], ['≤6', '7-8', '9-10', '11+'])); add('copy', 'Point of view', cp.point_of_view ? String(cp.point_of_view).toUpperCase() : null);
   add('copy', 'Jargon', pretty(cp.jargon)); add('copy', 'Emotion', pretty(cp.emotion)); add('copy', 'CTA', pretty(cp.cta)); add('copy', 'Ask size', pretty(cp.ask_size));
   add('copy', 'Lead magnet', cp.lead_magnet === undefined ? null : yn(!!cp.lead_magnet)); add('copy', 'Caption vs creative', pretty(cp.caption_vs_creative));
@@ -115,10 +115,10 @@ export function elementsOf(post) {
     add('counts', 'Caption length', bucket(f.chars, [400, 1200], ['Short (<400)', 'Medium (400-1,200)', 'Long (1,200+)']));
     add('counts', 'Hook words', bucket(f.hook_words, [6, 12], ['1-6', '7-12', '13+'])); add('counts', 'Number in hook', yn(f.hook_number));
     add('counts', 'Question in hook', yn(f.hook_question)); add('counts', 'Hook starts with I / we', yn(f.hook_first_person)); add('counts', 'Negative hook', yn(f.hook_negative));
-    add('counts', 'Cut by "see more"', yn(f.see_more_cut)); add('counts', 'List lines', bucket(f.list_lines, [0, 4], ['0', '1-4', '5+']));
-    add('counts', 'Emojis', bucket(f.emojis, [0, 3], ['0', '1-3', '4+'])); add('counts', 'Hashtags', bucket(f.hashtags, [0, 3], ['0', '1-3', '4+']));
-    add('counts', 'Link in caption', yn(f.links > 0)); add('counts', 'Comment-keyword CTA', yn(!!f.cta_keyword)); add('counts', 'P.S.', yn(f.ps));
-    add('counts', 'Words per line', bucket(f.avg_line_words, [8, 15], ['≤8', '9-15', '16+']));
+    add('counts', 'Hook cut off by "…see more"', yn(f.see_more_cut)); add('counts', 'Bullet / numbered lines in caption', bucket(f.list_lines, [0, 4], ['none', '1-4', '5 or more']));
+    add('counts', 'Emojis', bucket(f.emojis, [0, 3], ['none', '1-3', '4 or more'])); add('counts', 'Hashtags', bucket(f.hashtags, [0, 3], ['none', '1-3', '4 or more']));
+    add('counts', 'Link in caption', yn(f.links > 0)); add('counts', 'Comment-keyword CTA', yn(!!f.cta_keyword)); add('counts', 'Ends with a P.S.', yn(f.ps));
+    add('counts', 'Average words per line', bucket(f.avg_line_words, [8, 15], ['8 or fewer', '9-15', '16 or more']));
   }
   return out;
 }
@@ -160,7 +160,7 @@ export function selfTest() {
   const ex = explain({ hook: 'Story' }, fx); assert(ex.helps.length + ex.hurts.length + ex.neutral.length === 1, 'explain buckets');
   const el = elementsOf({ tags: { format: 'Presentation' }, breakdown: { archetype: 'fake_doc_viewer', cover: { layout: 'full_bleed_art_text_over', has_number: true, promise: 'number_list' }, pages: [{}, {}, {}], copy: { reading_grade: 6 } }, features: { chars: 900, hook_words: 5, emojis: 0 } });
   const has = (l, v) => el.some(e => e.label === l && e.value === v);
-  assert(has('Number on cover', 'Yes') && has('Cover promise', 'Number list') && has('Page count', '2-5') && has('Reading grade', '≤6') && has('Caption length', 'Medium (400-1,200)') && has('Emojis', '0') && has('Format', 'Presentation') && has('Archetype', 'Fake doc viewer') && has('Cover layout', 'Full bleed art text over'), 'elementsOf flattens breakdown + counts');
+  assert(has('Number on cover', 'Yes') && has('Cover promise', 'Number list') && has('Page count', '2-5') && has('Reading grade', '≤6') && has('Caption length', 'Medium (400-1,200)') && has('Emojis', 'none') && has('Format', 'Presentation') && has('Archetype', 'Fake doc viewer') && has('Cover layout', 'Full bleed art text over'), 'elementsOf flattens breakdown + counts');
   const ee = elementEffects(scorePosts([1, 2, 3, 4].map(i => ({ id: 'e' + i, account: 'A', meetings: 0, tags: {}, features: { chars: i > 2 ? 1500 : 100 }, m: { comments: i > 2 ? 30 : 5, reactions: 0, reposts: 0 } }))));
   const longC = ee.find(e => e.label === 'Caption length' && e.value === 'Long (1,200+)'), shortC = ee.find(e => e.label === 'Caption length' && e.value === 'Short (<400)');
   assert(longC.effect > 0 && shortC.effect < 0 && longC.n === 2, 'elementEffects ranks within account');

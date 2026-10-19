@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 18;
+export const RULES_VERSION = 19;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -123,6 +123,17 @@ export function classify(s, now = Date.now()) {
     else if (months != null && months <= 1.5) add('good', 'Started raising in the last 6 weeks', 12);
     if (months != null && months >= 6 && pctSold != null && pctSold < 0.3 && s.first_sale) add('good', `Stuck: only ${pctTxt(pctSold)} raised in ${Math.round(months)} months. They need help, but ask why investors are passing (a stall is also a weaker story)`, 20);
     else if (months != null && months >= 12 && pctSold == null && s.first_sale) add('good', `Still raising ${Math.round(months)} months after the first sale`, 20);
+    // 19 Oct 2026 (Tengku, Future Labs Fund II: $6.5M of $65M in 19 months, Fund I closed $22.6M of $65M). Motivation is not the
+    // problem mid-raise: a stuck GP wants help most. Placeability is. Re-ups come first in any raise, so a Fund II far below
+    // Fund I after a year means Fund I's own investors aren't coming back, and a Fund I that missed its target is a weak story.
+    const n = s.fund_no || 0, myStart = s.first_sale || s.filing_date;
+    const prior = (s.history || []).filter(h => h.fund_no === n - 1 && h.first && myStart && h.first < myStart).sort((a, b) => b.sold - a.sold)[0];
+    if (prior && prior.sold > 0) {
+      const pFull = prior.offering > 0 ? prior.sold / prior.offering : null, pNm = `Fund ${romanOf(prior.fund_no) || 'I'}`;
+      if (pFull != null && pFull < 0.6) add('maybe', `${pNm} closed at ${pctTxt(pFull)} of its ${money(prior.offering)} target (${money(prior.sold)}): new investors will ask why${s.offering && prior.offering && s.offering >= prior.offering ? ', and this fund asks for the same or more' : ''}`, -10);
+      if (months >= 12 && sold < 0.5 * prior.sold) add('maybe', `${money(sold)} in after ${Math.round(months)} months vs ${money(prior.sold)} for ${pNm}: its own investors aren't re-upping much. Ask why before pitching`, -10);
+      else if (sold >= prior.sold) add('good', `Already past ${pNm}'s ${money(prior.sold)}: investors are coming back`, 5);
+    }
   } else {
     // Next-fund watch (list 'fund1' holds Fund Is AND Fund IIs since 5 Oct 2026): a manager whose last fund is old enough
     // that the next one is due. Fund II managers raising a Fund III are in scope too.
@@ -277,7 +288,8 @@ export function managerHistory(s, peers) {
     if (!same) continue;
     // A fund's start = its earliest first sale; a filing date only when no filing gives one (a fund can file before any money).
     const key = `${fundFamily(p.company_name)}#${p.fund_no || 0}`, sold = Number(p.sold) || 0;
-    const f = fams.get(key) || { name: p.company_name, fund_no: p.fund_no || 0, base: base(p.company_name), sale: null, filed: null, sold: 0, investors: null };
+    const f = fams.get(key) || { name: p.company_name, fund_no: p.fund_no || 0, base: base(p.company_name), sale: null, filed: null, sold: 0, investors: null, offering: null };
+    if (Number(p.offering) > (f.offering || 0)) f.offering = Number(p.offering);
     if (p.first_sale && (!f.sale || p.first_sale < f.sale)) f.sale = p.first_sale;
     if (p.filing_date && (!f.filed || p.filing_date < f.filed)) f.filed = p.filing_date;
     f.first = f.sale || f.filed;
