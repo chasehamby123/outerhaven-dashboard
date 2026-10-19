@@ -115,12 +115,29 @@ async function peersOf(rows: any[]) {
 }
 async function judge(rows: any[]) {
   const peers = await peersOf(rows);
-  for (let i = 0; i < rows.length; i += 20) await Promise.all(rows.slice(i, i + 20).map(s => {
+  const now = new Date().toISOString();
+  const out = rows.map(s => {
     const history = s.list === "fund1" || s.list === "live" ? managerHistory(s, peers.get(s.manager_key) || []) : null;
     const c = classify({ ...s, history });
-    return sb.from("fund_signals").update({ verdict: c.verdict, score: c.score, reasons: c.reasons, stage: c.stage, strategy: c.strategy, next_expected: c.next_expected,
-      history, rules_version: RULES_VERSION, updated_at: new Date().toISOString() }).eq("id", s.id);
-  }));
+    // Only the judged columns (+ the NOT NULL keys the upsert needs), so a check result, star or note saved meanwhile is never overwritten.
+    return { id: s.id, accession: s.accession, list: s.list, company_name: s.company_name, verdict: c.verdict, score: c.score, reasons: c.reasons, stage: c.stage, strategy: c.strategy, next_expected: c.next_expected,
+      history, rules_version: RULES_VERSION, updated_at: now };
+  });
+  // Upserted 500 at a time (19 Oct 2026): one update call per row took ~3 hours for 16K rows at 1,500 a run.
+  for (let i = 0; i < out.length; i += 500) {
+    const r = await sb.from("fund_signals").upsert(out.slice(i, i + 500), { onConflict: "id" });
+    if (r.error) throw new Error(`re-judge write failed: ${r.error.message}`);
+  }
+}
+// Re-judge every stale row, a page at a time (PostgREST returns at most 1,000 rows per call), best first, inside a time budget.
+async function judgeStale(budgetMs = 100_000) {
+  const t0 = Date.now(); let n = 0;
+  while (Date.now() - t0 < budgetMs) {
+    const page = (await sb.from("fund_signals").select("*").lt("rules_version", RULES_VERSION).order("score", { ascending: false }).limit(1000)).data || [];
+    if (!page.length) break;
+    await judge(page); n += page.length;
+  }
+  return n;
 }
 
 // ---- Storing results (shared by Apify runs and the GitHub edgartools job) ----
@@ -385,11 +402,10 @@ Deno.serve(async req => {
     if (cron) {
       if (cron !== await secret("FUND_CRON_SECRET")) return json({ ok: false, error: "bad cron secret" }, 401);
       const p = await poll();
-      const stale = (await sb.from("fund_signals").select("*").lt("rules_version", RULES_VERSION).order("score", { ascending: false }).limit(1500)).data || []; // best rows first, so the lists HQ shows refresh in the first pass
-      if (stale.length) await judge(stale);
+      const stale = await judgeStale();
       const staleCredit = (await sb.from("credit_signals").select("*").lt("rules_version", CREDIT_RULES_VERSION).limit(500)).data || [];
       if (staleCredit.length) await judgeCredit(staleCredit);
-      return json({ ok: true, poll: p, rejudged: stale.length + staleCredit.length, weekly: await weekly() });
+      return json({ ok: true, poll: p, rejudged: stale + staleCredit.length, weekly: await weekly() });
     }
     const user = await admin(req);
     if (!user) return json({ ok: false, error: "Admins only." }, 403);

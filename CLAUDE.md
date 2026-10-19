@@ -120,7 +120,8 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   The sandbox and the DB can't reach sec.gov (blocked), so test the parser offline (`edgar.offerings.exempt.formd.FormD.from_xml`).
 - Python only fetches and maps to the item shape; edge function `fund-signals` (verify_jwt=false) action `ingest` (header `x-fund-ingest`)
   stores and judges with `supabase/functions/fund-signals/rules.js` (pure JS; every verdict stores `reasons`; bump `RULES_VERSION` and the
-  15-min cron re-judges). Check = same CIK later filings (amendment numbers) + EFTS full-text search on the manager name (higher fund
+  15-min cron re-judges every stale row in one run: pages of 1,000, upserted 500 at a time, judged columns only, 100 s budget; before 19 Oct
+  it was one update per row, 1,500 a run, ~3 hours for a rules bump). Check = same CIK later filings (amendment numbers) + EFTS full-text search on the manager name (higher fund
   number = cut). HQ "Check" queues (`action: queue`); the hourly job picks queued up. Deploy index.ts + rules.js together.
   The check also searches every named person on the Fund I filing (`person_filings`): a later pooled fund under ANY name naming the same
   people = "next" (strong: 2+ shared people, same city, or a one-person filing; else "unsure"). Names with >60 filings are skipped.
