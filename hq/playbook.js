@@ -6,7 +6,8 @@ import { store } from './data.js';
 import { scorePosts, elementEffects, CONF_TEXT, ELEMENT_GROUPS } from './scoring.js';
 import { ARCHETYPES, archLabel, loadSwipe, swipeRows, swipeTable, bindSwipe, addSwipeModal, per1k } from './swipe.js';
 
-const view = { arch: '', egroup: '', libOut: 'best' };
+// kind: lead magnets and credibility posts have different jobs (comments that become leads vs trust), so they're never pooled.
+const view = { arch: '', egroup: '', libOut: 'best', kind: 'lm' };
 const signed = x => (x >= 0 ? '+' : '') + Math.round(x * 100) + '%';
 const confWord = c => c === 'solid' ? 'solid' : c === 'early' ? 'early signal' : 'anecdote';
 let report = null, editExperiment = null, loaded = false;
@@ -20,7 +21,8 @@ function decisions(scored) {
 export function playbookView(body, deps = {}) {
   editExperiment = deps.editExperiment || editExperiment;
   const draw = () => {
-    const posts = store.posts, scored = scorePosts(posts, 'engagement'), sw = swipeRows();
+    const n = k => store.posts.filter(p => p.kind === k).length, untyped = n(null);
+    const posts = view.kind ? store.posts.filter(p => p.kind === view.kind) : store.posts, scored = scorePosts(posts, 'engagement'), sw = swipeRows();
     const broken = posts.filter(p => p.breakdown).length, meetings = posts.reduce((n, p) => n + (p.meetings || 0), 0);
     const { keep, stop } = decisions(scored);
     const test = report?.next_tests?.[0];
@@ -42,7 +44,9 @@ export function playbookView(body, deps = {}) {
     const list = view.arch ? sw.filter(s => s.archetype === view.arch) : sw;
 
     body.innerHTML = `
-    <p class="s muted pbStatus">${posts.length} of our posts · ${broken} broken down by Claude · ${meetings} meeting${meetings === 1 ? '' : 's'} linked to a post. Each post is compared with its own account's usual post. Under 4 posts = anecdote.</p>
+    <div class="row pbKind" style="gap:6px;margin-bottom:8px">${[['lm', 'Lead magnet posts', n('lm')], ['cred', 'Credibility posts', n('cred')], ['', 'All posts', store.posts.length]].map(([k, l, c]) => `<button class="btn sm ${view.kind === k ? '' : 'ghost'}" data-kind="${k}" aria-pressed="${view.kind === k}">${l} <b>${c}</b></button>`).join('')}</div>
+    ${untyped ? `<p class="s muted" style="margin:0 0 6px">${untyped} post${untyped === 1 ? ' has' : 's have'} no type yet (posted before posts were matched to schedule slots): they only show under All. Set "Lead magnet: Yes / No" on them in Growth → Posts.</p>` : ''}
+    <p class="s muted pbStatus">${posts.length} ${view.kind === 'cred' ? 'credibility' : view.kind === 'lm' ? 'lead magnet' : 'of our'} post${posts.length === 1 ? '' : 's'} · ${broken} broken down by Claude · ${meetings} meeting${meetings === 1 ? '' : 's'} linked to a post. Each post is compared with its own account's usual post. Under 4 posts = anecdote.</p>
 
     <section class="card"><header><div><h2>Do this week</h2><p>${report ? `From the posts so far and Claude's analysis of ${fmtDate(report.week_start)}.` : 'From the posts so far.'}</p></div>
       ${state.role === 'admin' ? `<button class="btn sm" id="pbRun">Run Claude's analysis</button>` : ''}</header>
@@ -68,6 +72,7 @@ export function playbookView(body, deps = {}) {
     </details>`;
 
     $('#pbAdd', body).onclick = () => addSwipeModal(refresh);
+    $$('[data-kind]', body).forEach(b => b.onclick = () => { view.kind = b.dataset.kind; draw(); });
     $('#pbAll', body)?.addEventListener('click', () => { view.arch = ''; draw(); });
     $$('[data-arch]', body).forEach(b => b.onclick = () => { view.arch = view.arch === b.dataset.arch ? '' : b.dataset.arch; draw(); });
     $$('[data-eg]', body).forEach(b => b.onclick = e => { e.preventDefault(); view.egroup = b.dataset.eg; draw(); body.querySelector('.pbEvidence').open = true; });

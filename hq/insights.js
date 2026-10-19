@@ -39,7 +39,10 @@ const minN = (...ns) => Math.min(...ns);
 const FORMAT_FROM_TYPE = { text: 'Text only', image: 'Single image', multi_image: 'Multi-image', document: 'Carousel / document', video: 'Video', article: 'Article', poll: 'Poll' };
 const FORMAT_FROM_KEY = { text: 'Text only', image: 'Single image', multi_image: 'Multi-image', presentation: 'Presentation', pdf: 'PDF carousel', video: 'Video', article: 'Article', poll: 'Poll' };
 const measuredFormat = row => FORMAT_FROM_KEY[row.detected_format] || FORMAT_FROM_TYPE[row.linkedin_type] || FORMAT_FROM_TYPE[row.content_type];
-export function toPost(row, accountName, meetingCount = 0, resharedBy = []) {
+// What a post is, from its schedule slot's content code: lead magnet versions (A, B, C…), video, or a credibility ("human") post.
+export const kindOfCode = code => /vid/i.test(code || '') ? 'vid' : /cred|human|life|personal/i.test(code || '') ? 'cred' : 'lm';
+export const KIND_LABEL = { lm: 'Lead magnet', vid: 'Video', cred: 'Credibility' };
+export function toPost(row, accountName, meetingCount = 0, resharedBy = [], slotCode = null) {
   const ai = row.ai_tags || {}, manual = row.tags || {}, m = row.metrics || {};
   // Hand tags win; Claude's weekly tags fill the gaps.
   const t = { ...Object.fromEntries(Object.keys(DIMENSIONS).filter(k => ai[k]).map(k => [k, ai[k]])), ...Object.fromEntries(Object.entries(manual).filter(([, v]) => v !== '' && v != null)) };
@@ -50,6 +53,8 @@ export function toPost(row, accountName, meetingCount = 0, resharedBy = []) {
   const hour = posted ? (posted.getUTCHours() + 8) % 24 : null;
   const boosted = [...new Set([...(Array.isArray(t.boosted_by) ? t.boosted_by : []), ...resharedBy])];
   return {
+    // Type: hand / Claude "Lead magnet" tag > the schedule slot it was posted in > Claude's breakdown naming a lead magnet. null = unknown.
+    kind: t.leadMagnet === 'Yes' ? 'lm' : t.leadMagnet === 'No' ? 'cred' : slotCode ? kindOfCode(slotCode) : row.breakdown?.copy?.lead_magnet ? 'lm' : null,
     breakdown: row.breakdown || null, features: row.text_features || null, recreate: row.recreate || null,
     id: row.id, name: row.post_name || row.post_key || 'LinkedIn post', url: row.linkedin_post_url || null,
     account: accountName || '—', date: row.posted_at || row.work_date || null, text: row.post_text || '',

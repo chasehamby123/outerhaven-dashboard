@@ -156,6 +156,10 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   and under 60% raised +10; >=60% raised -10 info; nothing raised = maybe -10; open 2+ years under 30% = maybe -10. Raising under
   12 months stays maybe. Fund I stuck = maybe (no fund track record; ask for attributable deals), Fund II stuck = target.
   HQ chip "Stuck raising". Test: `node scripts/tests/test_fund_rules.mjs`.
+- **Live raises vs the previous fund (19 Oct 2026, Tengku on Future Labs Capital Fund II; RULES_VERSION 19):** mid-raise is when a GP wants
+  help most, so motivation isn't the filter; placeability is. Live rows now get `history` too (index.ts judges live + fund1; `offering`
+  added to HIST_COLS, history entries and stored `prior_funds`). Previous fund closed under 60% of its target = maybe −10; 12+ months in
+  and under half of what the previous fund raised = maybe −10 ("its own investors aren't re-upping"); already past it = +5.
 - **Rules audit (8 Oct 2026, RULES_VERSION 15 / CREDIT_RULES_VERSION 4):** judge() attaches `history` = `managerHistory(s, peers)` (stored rows
   with the same manager_key + `prior_funds`, the earlier funds `scripts/adviser_aum.py` found on EDGAR; now fetched for every Fund II on
   the next-fund list, `adviser_todo` returns `prior_checked`). Timing: next fund expected at a 50/50 blend of the manager's own gap
@@ -545,6 +549,11 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   under it, top 30% carries it, polished title + raw/dense proof, on-topic inner images, one accent, meaningful art, 4:5). The 5 saved
   posts were re-inserted with anatomy (UPDATE blocked); older copies are hidden duplicates. 15 Oct: `anatomy.caption` / `anatomy.engagement` (what + why per caption choice and engagement
   mechanic: two-line hook, keyword = topic word, contents in caption, price anchors, connect/repost asks) added the same way. Only 8 of 51 own posts had a breakdown on 14 Oct.
+- **Post types in Playbook (19 Oct 2026, Tengku: lead magnet posts and credibility posts have different jobs; he handles the credibility ones):**
+  engine posts carry `kind` ('lm' | 'cred' | 'vid' | null): hand / Claude "Lead magnet" tag > the schedule slot's content code
+  (`kindOfCode()` in insights.js, shared with schedule.js; data.js loads `daily_ops_weekly_posts` id → content_code) > breakdown naming a
+  lead magnet. Playbook switches Lead magnet / Credibility / All (default lead magnets) and never pools them; untyped posts (scraped before
+  slot matching) only show under All. Element labels were reworded for people ("List lines 5+" → "Bullet / numbered lines in caption: 5 or more").
 - **Elements, ranked** (Growth → Playbook; `elementsOf()` / `elementEffects()` in scoring.js, tested in `node hq/scoring-test.mjs`): flattens
   measured format + `text_features` (bucketed) + `breakdown` into element values and scores each like a factor (lift vs own account,
   shrunk K=3). ▲/▼ symbols carry direction.

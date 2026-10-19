@@ -98,9 +98,9 @@ async function check(ids: string[], by: string | null) {
 
 // Each row is judged with its manager's own funds (stored rows with the same manager_key + earlier funds the adviser job
 // found on EDGAR), so timing can use the manager's own pace, and the step-up between funds can be scored.
-const HIST_COLS = "id,manager_key,company_name,fund_no,cik,first_sale,filing_date,sold,investors,executives,city";
+const HIST_COLS = "id,manager_key,company_name,fund_no,cik,first_sale,filing_date,sold,offering,investors,executives,city";
 async function peersOf(rows: any[]) {
-  const keys = [...new Set(rows.filter(r => r.list === "fund1" && r.manager_key).map(r => r.manager_key))];
+  const keys = [...new Set(rows.filter(r => (r.list === "fund1" || r.list === "live") && r.manager_key).map(r => r.manager_key))];
   const out: any[] = [];
   for (let i = 0; i < keys.length; i += 100) {
     for (let from = 0; ; from += 1000) {
@@ -116,7 +116,7 @@ async function peersOf(rows: any[]) {
 async function judge(rows: any[]) {
   const peers = await peersOf(rows);
   for (let i = 0; i < rows.length; i += 20) await Promise.all(rows.slice(i, i + 20).map(s => {
-    const history = s.list === "fund1" ? managerHistory(s, peers.get(s.manager_key) || []) : null;
+    const history = s.list === "fund1" || s.list === "live" ? managerHistory(s, peers.get(s.manager_key) || []) : null;
     const c = classify({ ...s, history });
     return sb.from("fund_signals").update({ verdict: c.verdict, score: c.score, reasons: c.reasons, stage: c.stage, strategy: c.strategy, next_expected: c.next_expected,
       history, rules_version: RULES_VERSION, updated_at: new Date().toISOString() }).eq("id", s.id);
@@ -298,7 +298,7 @@ async function ingest(body: any) {
         manager_formd_total: fd.total || null, manager_formd_funds: fd.funds || null,
         // Earlier funds found on EDGAR, kept for the manager history (own pace, step-up). Only when this run looked them up.
         ...(extras ? { prior_funds: extras.map((x: any) => ({ company_name: x.company_name, manager_key: x.manager_key, fund_no: x.fund_no, cik: x.cik, first_sale: x.first_sale,
-          filing_date: x.filing_date, sold: x.sold, investors: x.investors, executives: x.executives, city: x.city })) } : {}) }).eq("id", a.id);
+          filing_date: x.filing_date, sold: x.sold, offering: x.offering, investors: x.investors, executives: x.executives, city: x.city })) } : {}) }).eq("id", a.id);
     }));
     await judge((await sb.from("fund_signals").select("*").in("id", rows.map((x: any) => x.id))).data || []);
     return { updated: rows.length };
