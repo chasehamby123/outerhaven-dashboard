@@ -109,3 +109,4 @@
 .peopleList .plainListRow{align-items:baseline;padding:26px 0}.peopleList strong{font:400 28px/1.15 var(--serif);color:var(--navy);letter-spacing:-.01em}.peopleList small{display:block;font-size:11px;font-weight:500;letter-spacing:.24em;text-transform:uppercase;color:var(--bronze)}.peopleList p{margin:10px 0 0;font-size:var(--fs-body);line-height:1.7;color:var(--text-2);max-width:560px}
 @media(max-width:760px){.peopleList .plainListRow{grid-template-columns:1fr;gap:8px}}
 .kwStatic span{display:block;padding:17px 0;border-bottom:1px solid var(--line);font-size:var(--fs-body);color:var(--navy)}.pageHero.kwHero{min-height:600px}
+.kwStatsGrid:has(>div:nth-child(4)){grid-template-columns:repeat(4,1fr)}.kwStatsGrid:has(>div:nth-child(4)) strong{font-size:clamp(38px,3.8vw,56px)}@media(max-width:1000px){.kwStatsGrid:has(>div:nth-child(4)){grid-template-columns:1fr 1fr}}
