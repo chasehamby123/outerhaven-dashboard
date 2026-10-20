@@ -9,7 +9,7 @@ Read this first in any session on this repo. It is the hand-off from the session
 - **HQ** (internal app): `hq.html` + `hq/*.js` (ES modules, no build step) + `hq/app.css`. Pages: Overview, Today,
   Schedule, Pipeline, Growth (scraper, posts, experiments, insights, meetings, sheet), Resources.
 - **Legacy**: everything else at the root (`originator-*`, `pipeline*`, `daily-ops-*`, `shared.html`). Don't extend it.
-- Hosting: Vercel static deploy from `main` (https://outerhaven-dashboard.vercel.app). `.vercelignore` keeps
+- Hosting: Vercel static deploy from `main` (https://www.outerhaven.group; apex 308s to www; https://outerhaven-dashboard.vercel.app still works). `.vercelignore` keeps
   `.claude`, `routines`, `supabase`, `sheets` off the site. Pushing to `main` deploys.
 
 ## Access (already set up; don't ask the user to redo it)
