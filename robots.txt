@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /hq
+Disallow: /originator
+Disallow: /team/
+Sitemap: https://www.outerhaven.group/sitemap.xml
