@@ -283,7 +283,8 @@ async function ingest(body: any) {
     for (let from = 0; ; from += 1000) {
       const r = await sb.from("fund_signals").select("id,list,fund_no,cik,company_name,manager_key,check_keyword,executives_text,state,city,adviser_checked_at,manager_formd_total,prior_checked:prior_funds").in("list", ["live", "fund1"]).neq("verdict", "cut").range(from, from + 999);
       if (r.error) throw new Error(r.error.message);
-      out.push(...(r.data || []).map((x: any) => ({ ...x, prior_checked: x.prior_checked != null })));
+      // Checked = earlier funds found. An empty lookup is retried: a Fund II always has a Fund I somewhere (21 Oct 2026).
+      out.push(...(r.data || []).map((x: any) => ({ ...x, prior_checked: Array.isArray(x.prior_checked) && x.prior_checked.length > 0 })));
       if ((r.data || []).length < 1000) break;
     }
     return { rows: out };
@@ -291,7 +292,7 @@ async function ingest(body: any) {
   if (body.kind === "adviser") {
     const rows = (Array.isArray(body.rows) ? body.rows.slice(0, 300) : []).filter((x: any) => x && x.id);
     if (!rows.length) return { updated: 0 };
-    const sigs = (await sb.from("fund_signals").select("id,manager_key,executives,city,manager_formd_total,manager_formd_funds").in("id", rows.map((x: any) => x.id))).data || [];
+    const sigs = (await sb.from("fund_signals").select("id,manager_key,company_name,executives,city,manager_formd_total,manager_formd_funds,prior_funds").in("id", rows.map((x: any) => x.id))).data || [];
     const keys = [...new Set(sigs.map((x: any) => x.manager_key).filter(Boolean))];
     const peers: any[] = [];
     for (let i = 0; i < keys.length; i += 100) peers.push(...((await sb.from("fund_signals").select("id,manager_key,company_name,fund_no,sold,executives,city").in("manager_key", keys.slice(i, i + 100))).data || []));
@@ -300,7 +301,9 @@ async function ingest(body: any) {
       const s = sigs.find((x: any) => x.id === a.id); if (!s) return;
       // Earlier funds found on EDGAR by the GitHub job (extras): same manager name AND a shared named person, judged by formDTotal.
       const extras = Array.isArray(a.extras) ? a.extras.slice(0, 40).filter((it: any) => it && it.companyName).map((it: any) => ({ id: `x:${it.accessionNumber || it.companyName}`, ...normalize(it, "fund1") })) : null;
-      const got = formDTotal(s, extras ? [...peers, ...extras] : peers);
+      // No lookup this run: still count the earlier funds found before (21 Oct 2026: Fund II totals left out Fund I).
+      const stored = (s.prior_funds || []).map((x: any, i: number) => ({ id: `p:${i}`, ...x }));
+      const got = formDTotal(s, extras ? [...peers, ...extras] : [...peers, ...stored]);
       // Without an EDGAR lookup this run, keep the larger total found before (a daily run never shrinks it).
       const keep = !extras && (Number(s.manager_formd_total) || 0) > got.total;
       const fd = keep ? { total: Number(s.manager_formd_total), funds: s.manager_formd_funds || got.funds } : got;

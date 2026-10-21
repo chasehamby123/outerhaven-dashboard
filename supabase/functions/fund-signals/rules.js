@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 21;
+export const RULES_VERSION = 22;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -301,11 +301,19 @@ function sharedPeople(ours, theirs) {
 // firms with similar names never mix. peers = our stored rows with the same manager_key + earlier funds the adviser job
 // found on EDGAR (s.prior_funds).
 const base = name => fundFamily(name).replace(/\b[ivx]+\b/g, ' ').replace(/\s+/g, ' ').trim();
+// Same fund name apart from the number, and one filing names no people (21 Oct 2026, Tengku: Fund II rows showing no Fund I,
+// e.g. DBDK Venture Fund I filed with no executives, so the shared-person test dropped it). Only when people can't be compared:
+// two filings that both name people and share none stay apart. Short or generic names never match on name alone.
+function twinName(s, p) {
+  const a = base(s.company_name);
+  if (!a || a !== base(p.company_name) || (a.length < 8 && !a.includes(' '))) return false;
+  return !personKeys(s.executives).size || !personKeys(p.executives).size;
+}
 export function managerHistory(s, peers) {
   const ours = personKeys(s.executives), city = String(s.city || '').toLowerCase(), fams = new Map();
   for (const p of [...(peers || []), ...(s.prior_funds || [])]) {
     if (!p || !p.company_name || VEHICLE.test(p.company_name)) continue;
-    const same = p.id === s.id || (s.cik && p.cik && Number(s.cik) === Number(p.cik)) || [...personKeys(p.executives)].some(k => ours.has(k)) || (!ours.size && city && String(p.city || '').toLowerCase() === city);
+    const same = p.id === s.id || (s.cik && p.cik && Number(s.cik) === Number(p.cik)) || [...personKeys(p.executives)].some(k => ours.has(k)) || (!ours.size && city && String(p.city || '').toLowerCase() === city) || twinName(s, p);
     if (!same) continue;
     // A fund's start = its earliest first sale; a filing date only when no filing gives one (a fund can file before any money).
     const key = `${fundFamily(p.company_name)}#${p.fund_no || 0}`, sold = Number(p.sold) || 0;
@@ -330,7 +338,7 @@ export function formDTotal(s, peers) {
   for (const p of peers || []) {
     if (p.manager_key !== s.manager_key) continue;
     const theirs = personKeys(p.executives);
-    const same = p.id === s.id || [...theirs].some(k => ours.has(k)) || (!ours.size && city && String(p.city || '').toLowerCase() === city);
+    const same = p.id === s.id || [...theirs].some(k => ours.has(k)) || (!ours.size && city && String(p.city || '').toLowerCase() === city) || twinName(s, p);
     if (!same) continue;
     const fam = `${fundFamily(p.company_name)}#${p.fund_no || 0}`, v = Number(p.sold) || 0;
     if (v > (best.get(fam) || 0)) best.set(fam, v);

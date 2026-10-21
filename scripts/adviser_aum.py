@@ -242,7 +242,7 @@ def manager_funds(kw, own_cik):
                     continue
                 if str(r.cik) not in newest or str(r.filed) > str(newest[str(r.cik)].filed):
                     newest[str(r.cik)] = r
-            items = []
+            items, failed = [], 0
             for r in sorted(newest.values(), key=lambda r: str(r.filed), reverse=True)[:15]:
                 try:
                     f = fs.sec(r.get_filing)
@@ -250,8 +250,10 @@ def manager_funds(kw, own_cik):
                     if it.get("industryGroup") in (None, "", "Pooled Investment Fund"):
                         items.append(it)
                 except Exception as e:  # noqa: BLE001
+                    failed += 1
                     log("  could not open", r.company, str(e)[:80])
-            FUNDS[kw] = items
+            # An unreadable filing is never "no earlier fund" (21 Oct 2026: Fund IIs stored with no Fund I): retry next run.
+            FUNDS[kw] = None if failed else items
     got = FUNDS[kw]
     return None if got is None else [it for it in got if str(it.get("cik") or "").lstrip("0") != str(own_cik or "").lstrip("0")]
 
@@ -284,7 +286,8 @@ def run(full=False):
         # time a fund is sized. Kept on the row, so daily runs without the lookup don't shrink the total.
         # Also every Fund II on the next-fund list whose earlier funds were never looked up (8 Oct 2026): the edge function keeps
         # them as prior_funds, so the rules can use the manager's own pace and the step-up from Fund I to Fund II.
-        need_hist = s.get("list") == "fund1" and (s.get("fund_no") or 0) >= 2 and not s.get("prior_checked")
+        # Every Fund II+ on either list (live raises too, 21 Oct 2026) until an earlier fund is found: a Fund II has a Fund I.
+        need_hist = (s.get("fund_no") or 0) >= 2 and not s.get("prior_checked")
         if full is not None and s.get("check_keyword") and (need_hist or (not (rec and (rec.get("raum") or rec.get("gav"))) and (full or not s.get("adviser_checked_at")))):
             ex = manager_funds(s["check_keyword"], s.get("cik"))
             if ex is not None:

@@ -168,6 +168,13 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   `payOf(base, ageMonths)` in rules.js = fee income (2%, 1.5% if 5+ years old) and 25% of it per month for fundraising help → offer
   tier: $12.5K+/month retainer, $4–12.5K milestones, under $4K success fee only. Next-fund list keeps its old points (−8 under $400K fees,
   +5 above); live list states it as info only (base = max(manager_total, earlier funds' sold + this fund's sold)), so no score changes there.
+- **Earlier funds fixed (21 Oct 2026, Tengku: Fund IIs with no Fund I and a manager total = Fund II alone; RULES_VERSION 22):** audit found
+  ~half of non-cut Fund II+ rows with no earlier fund. Causes + fixes: (1) live Fund IIs were never looked up (`need_hist` was fund1-only)
+  → now every Fund II+; (2) a lookup with any unreadable filing stored a partial/empty list for good → `manager_funds` returns None (retry);
+  `adviser_todo` treats an empty `prior_funds` as unchecked, so it is retried each adviser run; (3) a Fund I Form D naming no people
+  failed the shared-person test (DBDK) → `twinName()`: same name minus the fund number (8+ chars or 2+ words) counts when either
+  filing names no people; both naming different people stay apart (Nudel); (4) the adviser ingest recomputed the Form D total without
+  the stored `prior_funds` → it now counts them. Tests in test_fund_rules.mjs.
 - **Rules audit (8 Oct 2026, RULES_VERSION 15 / CREDIT_RULES_VERSION 4):** judge() attaches `history` = `managerHistory(s, peers)` (stored rows
   with the same manager_key + `prior_funds`, the earlier funds `scripts/adviser_aum.py` found on EDGAR; now fetched for every Fund II on
   the next-fund list, `adviser_todo` returns `prior_checked`). Timing: next fund expected at a 50/50 blend of the manager's own gap

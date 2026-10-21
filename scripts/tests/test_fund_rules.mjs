@@ -56,3 +56,18 @@ assert.equal(hmR.score, classify(hm, now).score, 'pay line on live rows adds no 
 // Retainer-ready: $30M+ under management.
 assert.ok(classify({ ...hm, manager_total: 40e6 }, now).reasons.some(x => /retainer-ready/.test(x.text)));
 console.log('pay ok');
+
+// Earlier funds (21 Oct 2026, Tengku: Fund IIs showing no Fund I and a manager total of just Fund II).
+import { managerHistory, formDTotal } from '../../supabase/functions/fund-signals/rules.js';
+// DBDK: Fund I's Form D names no people, so the shared-person test dropped it. Same name minus the number = same manager.
+const dbdk = { id: 'a', company_name: 'DBDK Venture Fund II, L.P.', manager_key: 'dbdk venture', fund_no: 2, executives: [{ name: 'Meredith McPherron' }], first_sale: '2024-08-15', sold: 28.75e6 };
+const dbdk1 = { company_name: 'DBDK VENTURE FUND I, L.P.', manager_key: 'dbdk venture', fund_no: 1, executives: [], first_sale: '2021-02-18', sold: 10e6 };
+assert.ok(managerHistory({ ...dbdk, prior_funds: [dbdk1] }, [dbdk]).some(h => h.fund_no === 1), 'DBDK Fund I linked');
+assert.equal(formDTotal(dbdk, [dbdk, dbdk1]).total, 38.75e6, 'manager total counts Fund I');
+// Same name but both filings name different people: still two managers (Nudel Holdings).
+const nud = { id: 'n', company_name: 'Nudel Holdings II, LLC', manager_key: 'nudel', fund_no: 2, executives: [{ name: 'Paul Jaminet' }], filing_date: '2023-07-28' };
+assert.ok(!managerHistory({ ...nud, prior_funds: [{ company_name: 'Nudel Holdings, LLC', manager_key: 'nudel', fund_no: 0, executives: [{ name: 'Richard Thoms' }], first_sale: '2020-09-11', sold: 4.5e6 }] }, [nud]).some(h => h.fund_no === 0), 'different people stay apart');
+// Short generic names never match on name alone.
+const sh = { id: 's', company_name: 'Surf II LP', manager_key: 'surf', fund_no: 2, executives: [] };
+assert.ok(!managerHistory({ ...sh, prior_funds: [{ company_name: 'Surf I LP', manager_key: 'surf', fund_no: 1, executives: [], first_sale: '2020-01-01', sold: 1e6 }] }, [sh]).some(h => h.fund_no === 1), 'short name not matched');
+console.log('earlier funds ok');
