@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 20;
+export const RULES_VERSION = 21;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -23,6 +23,16 @@ const ENTITY = /\b(llc|l\.?l\.?c|l\.?p\.?|inc|ltd|limited|gp|partners|management
 export const num = v => { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(/[$,\s]/g, '')); return Number.isFinite(n) ? n : null; };
 export const money = n => n == null ? '—' : n >= 1e9 ? '$' + +(n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? '$' + +(n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? '$' + Math.round(n / 1e3) + 'K' : '$' + Math.round(n);
 const pctTxt = x => Math.round(x * 100) + '%';
+// Can they pay us? (21 Oct 2026, Tengku, after HI Mark Capital: $6M Fund I = ~$120K fees a year, couldn't pay $15K upfront.)
+// Fee income ~2% of capital managed (1.5% once a fund is 5+ years old: fees step down). A small GP spends most of it on
+// salaries, admin, audit and legal, so ~25% is the most it can put toward fundraising help. Offer tiers = our current terms.
+export function payOf(base, ageMonths = 0) {
+  const fee = base * (ageMonths > 60 ? 0.015 : 0.02), month = fee * 0.25 / 12;
+  const offer = month >= 12.5e3 ? 'retainer-ready, lead with the $12.5K/month retainer'
+    : month >= 4e3 ? 'lead with milestones ($15K upfront, paid per meeting batch)'
+    : 'success fee only, or wait until the new fund has money in';
+  return { fee, month, text: `Fee income about ${money(fee)} a year, so about ${money(month)}/month it could spend on a placement adviser: ${offer}` };
+}
 const isoDate = v => /^\d{4}-\d{2}-\d{2}/.test(String(v || '')) ? String(v).slice(0, 10) : null;
 
 // "Ground Game Venture Fund I, L.P." → { fund_no: 1, manager_key: 'ground game', keyword: 'Ground Game' }
@@ -141,6 +151,10 @@ export function classify(s, now = Date.now()) {
       if (months >= 12 && sold < 0.5 * prior.sold) add('maybe', `${money(sold)} in after ${Math.round(months)} months vs ${money(prior.sold)} for ${pNm}: its own investors aren't re-upping much. Ask why before pitching`, -10);
       else if (sold >= prior.sold) add('good', `Already past ${pNm}'s ${money(prior.sold)}: investors are coming back`, 5);
     }
+    // Ability to pay, stated only (no points): fees come from earlier funds plus what this one has raised so far.
+    const earlierSold = (s.history || []).filter(h => h.fund_no < n && h.first && myStart && h.first < myStart).reduce((t, h) => t + (h.sold || 0), 0);
+    const payBase = Math.max(Number(s.manager_total) || 0, earlierSold + sold);
+    if (payBase > 0) add('info', payOf(payBase).text);
   } else {
     // Next-fund watch (list 'fund1' holds Fund Is AND Fund IIs since 5 Oct 2026): a manager whose last fund is old enough
     // that the next one is due. Fund II managers raising a Fund III are in scope too.
@@ -235,11 +249,11 @@ export function classify(s, now = Date.now()) {
     else if (avg != null && avg >= 1e6) add('good', `Average cheque about ${money(avg)} across ${inv} investors: family-office-sized backers`, 6);
     else if (avg != null && avg < 250e3) add('info', `Average cheque about ${money(avg)} across ${inv} investors: mostly individuals. A weaker story, but they need us to reach family offices`);
 
-    // Can they pay? Annual management fee is about 2% of the fund. Our retainer is $25-50K (Peter).
+    // Can they pay? Same points as before (-8 under $400K fees, +5 above); the text now states the budget and which offer to lead with.
     if (size) {
-      const fee = size * 0.02;
-      if (fee < 400e3) add('info', `Fee income about ${money(fee)} a year: tight budget for a $25-50K retainer`, -8);
-      else add('good', `Fee income about ${money(fee)} a year: can afford a retainer`, 5);
+      const pay = payOf(size, months);
+      if (pay.fee < 400e3) add('info', pay.text, -8);
+      else add('good', pay.text, 5);
       // The ask for the next fund: managers usually aim 1.5-2x bigger; existing investors re-up roughly 60% of what they put in.
       if (stage !== 'raising' && stage !== 'stuck') add('info', `Likely ${nextNm}: ${money(size * 1.5)}-${money(size * 2)}, of which roughly ${money(size * 0.9)}-${money(size * 1.4)} has to come from new investors`);
     }

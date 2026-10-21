@@ -46,3 +46,13 @@ assert.equal(r.verdict, 'maybe'); assert.ok(r.reasons.some(x => /out of order/.t
 r = classify({ ...schBase, fund_no: 3, company_name: 'Schutte Capital III LP', first_sale: '2021-03-22', sold: 16.7e6 }, now);
 assert.equal(r.verdict, 'maybe'); assert.ok(!r.reasons.some(x => /out of order/.test(x.text)));
 console.log('schutte ok');
+
+// HI Mark Capital (21 Oct 2026): Fund II raising, Fund I $6M -> ~$120K fees, couldn't pay $15K upfront. Stated, no points.
+const hm = { list: 'live', fund_no: 2, company_name: 'HI Mark Capital Fund II, LP', state: 'SC', executives: [{ name: 'Herbert Drayton' }],
+  offering: 75e6, sold: 0, filing_date: ago(1) };
+const hmR = classify({ ...hm, history: [{ name: 'HI Mark Capital Fund I, LP', fund_no: 1, first: ago(54), sold: 6e6, offering: 6e6 }] }, now);
+assert.ok(hmR.reasons.some(x => /Fee income about \$120K.*\$3K\/month.*success fee only/.test(x.text)), 'HI Mark pay line');
+assert.equal(hmR.score, classify(hm, now).score, 'pay line on live rows adds no points');
+// Retainer-ready: $30M+ under management.
+assert.ok(classify({ ...hm, manager_total: 40e6 }, now).reasons.some(x => /retainer-ready/.test(x.text)));
+console.log('pay ok');

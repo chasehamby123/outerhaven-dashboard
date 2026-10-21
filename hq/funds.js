@@ -217,7 +217,7 @@ function prep(s) {
     q.push(`What do investors push back on in meetings so far?`);
   }
   if (s.strategy === 'real_estate') q.push('Real estate is crowded: what makes them different from every other manager raising now?');
-  q.push('Who helps them raise today (placement agent, IR hire, nobody)? Would they pay a retainer ($25-50K) plus a success fee?');
+  q.push('Who helps them raise today (placement agent, IR hire, nobody)? Who pays for fundraising help: the management company, a co-GP or sponsor? (See the fee income line for what they can likely afford.)');
   return q;
 }
 

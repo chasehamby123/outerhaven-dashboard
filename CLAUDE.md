@@ -164,6 +164,10 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
 - **Live stalls + out-of-order numbers (19 Oct 2026, Tengku on Schutte Capital II at #1 with 4% in 50 months; RULES_VERSION 20):** live
   raise open 2+ years under 30% = maybe −15 (the stuck +20 now only applies 6–24 months); a higher-numbered fund by the same people
   that started first (Schutte III 2021, II 2022) = maybe −10 "parallel vehicles, not a new fund". Tests in test_fund_rules.mjs.
+- **Ability to pay, stated on every card (21 Oct 2026, Tengku after HI Mark Capital: $6M Fund I, couldn't pay $15K upfront; RULES_VERSION 21):**
+  `payOf(base, ageMonths)` in rules.js = fee income (2%, 1.5% if 5+ years old) and 25% of it per month for fundraising help → offer
+  tier: $12.5K+/month retainer, $4–12.5K milestones, under $4K success fee only. Next-fund list keeps its old points (−8 under $400K fees,
+  +5 above); live list states it as info only (base = max(manager_total, earlier funds' sold + this fund's sold)), so no score changes there.
 - **Rules audit (8 Oct 2026, RULES_VERSION 15 / CREDIT_RULES_VERSION 4):** judge() attaches `history` = `managerHistory(s, peers)` (stored rows
   with the same manager_key + `prior_funds`, the earlier funds `scripts/adviser_aum.py` found on EDGAR; now fetched for every Fund II on
   the next-fund list, `adviser_todo` returns `prior_checked`). Timing: next fund expected at a 50/50 blend of the manager's own gap
