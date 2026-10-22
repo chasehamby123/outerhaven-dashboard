@@ -3,7 +3,7 @@
 // Every verdict carries its reasons, so HQ can show exactly why a fund was kept or cut.
 
 // Bump when the rules change: the cron re-judges every stored signal on the old version.
-export const RULES_VERSION = 22;
+export const RULES_VERSION = 23;
 export const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
 export const romanOf = n => Object.keys(ROMAN).find(k => ROMAN[k] === n) || '';
 const US = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
@@ -336,8 +336,9 @@ export function formDTotal(s, peers) {
   const ours = personKeys(s.executives), city = String(s.city || '').toLowerCase();
   const best = new Map();
   for (const p of peers || []) {
-    if (p.manager_key !== s.manager_key) continue;
     const theirs = personKeys(p.executives);
+    // A renamed earlier fund (found by searching the people) counts when it shares a named person (22 Oct 2026).
+    if (p.manager_key !== s.manager_key && ![...theirs].some(k => ours.has(k))) continue;
     const same = p.id === s.id || [...theirs].some(k => ours.has(k)) || (!ours.size && city && String(p.city || '').toLowerCase() === city) || twinName(s, p);
     if (!same) continue;
     const fam = `${fundFamily(p.company_name)}#${p.fund_no || 0}`, v = Number(p.sold) || 0;

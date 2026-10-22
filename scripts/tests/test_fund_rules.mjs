@@ -71,3 +71,8 @@ assert.ok(!managerHistory({ ...nud, prior_funds: [{ company_name: 'Nudel Holding
 const sh = { id: 's', company_name: 'Surf II LP', manager_key: 'surf', fund_no: 2, executives: [] };
 assert.ok(!managerHistory({ ...sh, prior_funds: [{ company_name: 'Surf I LP', manager_key: 'surf', fund_no: 1, executives: [], first_sale: '2020-01-01', sold: 1e6 }] }, [sh]).some(h => h.fund_no === 1), 'short name not matched');
 console.log('earlier funds ok');
+// Renamed Fund I found by searching people (22 Oct 2026): counts in the total when it shares a named person.
+const rb = { id: 'r', company_name: 'Roers Income Fund II, LLC', manager_key: 'roers income', fund_no: 2, executives: [{ name: 'Brian Roers' }], sold: 74.6e6 };
+assert.equal(formDTotal(rb, [rb, { company_name: 'Roers Multifamily Fund, LLC', manager_key: 'roers multifamily', fund_no: 0, executives: [{ name: 'Brian Roers' }], sold: 20e6 }]).total, 94.6e6);
+assert.equal(formDTotal(rb, [rb, { company_name: 'Other Fund I', manager_key: 'other', fund_no: 1, executives: [{ name: 'Jo Smith' }], sold: 20e6 }]).total, 74.6e6, 'strangers never add up');
+console.log('renamed ok');

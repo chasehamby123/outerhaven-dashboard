@@ -222,40 +222,60 @@ def match(s, by_crd, by_name):
 FUNDS = {}
 
 
-def manager_funds(kw, own_cik):
-    """Every pooled fund on EDGAR whose name carries the manager's name (Fund I before our scan window, renamed funds too):
-    the newest filing per fund (cumulative amount raised). The server keeps only those sharing a named person with this
-    fund (formDTotal), so a stranger with a similar name never adds up. None = lookup failed or the name is too common."""
+NUM = re.compile(r"\b(?:fund\s+)?(?:[ivx]{1,4}|\d{1,2})\b.*$", re.I)
+
+
+def full_name(company):
+    """"Portal Ventures Fund II, LP" -> "Portal Ventures". The one-word check_keyword ("Portal", "Alliance", "Collab")
+    matched 150+ filings and was skipped as too generic (22 Oct 2026 audit: 217 Fund IIs with no earlier fund)."""
+    n = re.sub(r"\([^)]*\)", " ", company or "")
+    n = NUM.sub("", n)
+    n = re.sub(r"[,.]", " ", n)
+    n = re.sub(r"\s+(fund|lp|llc|l p|ltd|scsp)\s*$", "", n.strip(), flags=re.I)
+    return re.sub(r"\s+", " ", n).strip()
+
+
+def manager_funds(s):
+    """Every pooled fund on EDGAR by this manager (Fund I before our scan window, renamed funds too): searched by the full
+    manager name, then the short keyword, then the people on the filing (a Fund I under another name). The server keeps only
+    filings that share a named person (or the same name minus the fund number), so strangers never add up.
+    None = a lookup failed (retried next run)."""
     import fund_signals as fs  # edgartools + SEC retries + full-text search (one form per call)
-    if kw not in FUNDS:
+    key = s.get("id")
+    if key in FUNDS:
+        return FUNDS[key]
+    newest, failed = {}, 0
+    for q in dict.fromkeys(x for x in (full_name(s.get("company_name")), s.get("check_keyword")) if x and len(x) >= 4):
         try:
-            total, results = fs.efts(f'"{kw}"', None, limit=100)
+            total, results = fs.efts(f'"{q}"', None, limit=100)
         except Exception as e:  # noqa: BLE001
-            log("  EDGAR search failed", kw, str(e)[:80])
+            log("  EDGAR search failed", q, str(e)[:80])
             return None
-        if total > 150:
-            FUNDS[kw] = None  # too generic a name to add up safely
-        else:
-            newest = {}
-            for r in results:
-                if kw.lower() not in (r.company or "").lower():
-                    continue
-                if str(r.cik) not in newest or str(r.filed) > str(newest[str(r.cik)].filed):
-                    newest[str(r.cik)] = r
-            items, failed = [], 0
-            for r in sorted(newest.values(), key=lambda r: str(r.filed), reverse=True)[:15]:
-                try:
-                    f = fs.sec(r.get_filing)
-                    it = fs.item_from(f, fs.sec(f.obj))
-                    if it.get("industryGroup") in (None, "", "Pooled Investment Fund"):
-                        items.append(it)
-                except Exception as e:  # noqa: BLE001
-                    failed += 1
-                    log("  could not open", r.company, str(e)[:80])
-            # An unreadable filing is never "no earlier fund" (21 Oct 2026: Fund IIs stored with no Fund I): retry next run.
-            FUNDS[kw] = None if failed else items
-    got = FUNDS[kw]
-    return None if got is None else [it for it in got if str(it.get("cik") or "").lstrip("0") != str(own_cik or "").lstrip("0")]
+        if not total or total > 150:
+            continue  # nothing, or too generic to add up safely
+        for r in results:
+            if q.lower() in (r.company or "").lower() and (str(r.cik) not in newest or str(r.filed) > str(newest[str(r.cik)].filed)):
+                newest[str(r.cik)] = r
+        if newest:
+            break
+    items = []
+    for r in sorted(newest.values(), key=lambda r: str(r.filed), reverse=True)[:15]:
+        try:
+            f = fs.sec(r.get_filing)
+            items.append(fs.item_from(f, fs.sec(f.obj)))
+        except Exception as e:  # noqa: BLE001
+            failed += 1
+            log("  could not open", r.company, str(e)[:80])
+    if not items and s.get("executives"):
+        # No fund under the manager's name: the people on this filing, any fund name (person_filings skips common names).
+        n0 = len(fs.GATHER_ERRORS)
+        items = fs.person_filings(s, None, set(), cap=8)
+        failed += len(fs.GATHER_ERRORS) - n0
+    own = str(s.get("cik") or "").lstrip("0")
+    items = [it for it in items if it.get("industryGroup") in (None, "", "Pooled Investment Fund") and str(it.get("cik") or "").lstrip("0") != own]
+    # An unreadable filing is never "no earlier fund" (21 Oct 2026): retry next run.
+    FUNDS[key] = None if failed else items
+    return FUNDS[key]
 
 
 def run(full=False):
@@ -289,7 +309,7 @@ def run(full=False):
         # Every Fund II+ on either list (live raises too, 21 Oct 2026) until an earlier fund is found: a Fund II has a Fund I.
         need_hist = (s.get("fund_no") or 0) >= 2 and not s.get("prior_checked")
         if full is not None and s.get("check_keyword") and (need_hist or (not (rec and (rec.get("raum") or rec.get("gav"))) and (full or not s.get("adviser_checked_at")))):
-            ex = manager_funds(s["check_keyword"], s.get("cik"))
+            ex = manager_funds(s)
             if ex is not None:
                 batch[-1]["extras"] = ex
                 stats["edgar"] = stats.get("edgar", 0) + 1

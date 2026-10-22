@@ -281,7 +281,7 @@ async function ingest(body: any) {
   if (body.kind === "adviser_todo") {
     const out: any[] = [];
     for (let from = 0; ; from += 1000) {
-      const r = await sb.from("fund_signals").select("id,list,fund_no,cik,company_name,manager_key,check_keyword,executives_text,state,city,adviser_checked_at,manager_formd_total,prior_checked:prior_funds").in("list", ["live", "fund1"]).neq("verdict", "cut").range(from, from + 999);
+      const r = await sb.from("fund_signals").select("id,list,fund_no,cik,company_name,manager_key,check_keyword,executives,executives_text,state,city,adviser_checked_at,manager_formd_total,prior_checked:prior_funds").in("list", ["live", "fund1"]).neq("verdict", "cut").range(from, from + 999);
       if (r.error) throw new Error(r.error.message);
       // Checked = earlier funds found. An empty lookup is retried: a Fund II always has a Fund I somewhere (21 Oct 2026).
       out.push(...(r.data || []).map((x: any) => ({ ...x, prior_checked: Array.isArray(x.prior_checked) && x.prior_checked.length > 0 })));

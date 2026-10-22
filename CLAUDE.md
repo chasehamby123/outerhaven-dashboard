@@ -175,6 +175,11 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   failed the shared-person test (DBDK) → `twinName()`: same name minus the fund number (8+ chars or 2+ words) counts when either
   filing names no people; both naming different people stay apart (Nudel); (4) the adviser ingest recomputed the Form D total without
   the stored `prior_funds` → it now counts them. Tests in test_fund_rules.mjs.
+  **Second pass (22 Oct 2026, after the first run: still 351 / 76 with no earlier fund, 217 / 53 never found anything):** the search used
+  the one-word `check_keyword` ("Portal", "Alliance", "Collab"), which hits 150+ filings and was skipped as too generic. `manager_funds(s)`
+  now searches `full_name()` (company name minus fund number and suffix: "Portal Ventures") first, then the keyword, then the people on the
+  filing (`fs.person_filings`, start None, cap 8) for a Fund I under another name; `adviser_todo` sends `executives`. `formDTotal` counts a
+  differently named fund when it shares a named person (RULES_VERSION 23). Tests: test_full_name.py, test_fund_rules.mjs.
 - **Rules audit (8 Oct 2026, RULES_VERSION 15 / CREDIT_RULES_VERSION 4):** judge() attaches `history` = `managerHistory(s, peers)` (stored rows
   with the same manager_key + `prior_funds`, the earlier funds `scripts/adviser_aum.py` found on EDGAR; now fetched for every Fund II on
   the next-fund list, `adviser_todo` returns `prior_checked`). Timing: next fund expected at a 50/50 blend of the manager's own gap
