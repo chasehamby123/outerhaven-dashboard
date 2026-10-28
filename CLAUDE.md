@@ -463,6 +463,8 @@ Today, Schedule, Resources (no one holds it right now, the role still exists). R
   certification), then reads up to 3 of those 8-Ks and keeps only a CEO / CFO departure or appointment (`change_roles()`, stored as
   `officer_change.roles`; bare 5.02 flagged 220 of 346, with roles 101: 62 CFO, 50 CEO). SEC officers are re-read every 14 days (was 30);
   workflow mode `officers` with from=`all` re-reads every target.
+- **New CFO + debt** (29 Oct 2026, Tengku): Credit tab view = targets whose `officer_change.roles` has 'cfo' (`cfoChanged()` in contacts.js;
+  62 of 323 targets that day). Send today's batch puts them first among credit picks.
 - Keys pasted by an admin in any signal tab → "Contacts setup" (RPC `set_contact_key`, write-only; never enter them for the user).
 - "Add to pipeline" pre-fills name, title and LinkedIn from the best person.
 

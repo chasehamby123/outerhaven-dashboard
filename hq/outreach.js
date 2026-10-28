@@ -5,7 +5,7 @@
 // message before sending. Personalisation = one true, dated fact about THEIR company; no AI icebreakers, no opener.
 // Variant test (11 Oct): dated vs plain (same message without the date line) when an account has a plain campaign.
 import { sb, esc, $, $$, toast, modal, opts } from './core.js';
-import { loadContacts, bestPerson, contactOf, findEmail } from './contacts.js';
+import { loadContacts, bestPerson, contactOf, findEmail, cfoChanged } from './contacts.js';
 import { needLine } from './kinds.js';
 
 // Same rules as the outreach function (cleanName / deadlineOf), so the preview is what Prosp sends.
@@ -63,7 +63,7 @@ async function picks(st) {
   const b = (bdc.data || []).filter(s => !done.has(`bdc:${s.company_key}`)).map(s => ({ kind: 'bdc', key: s.company_key, s, p: usable('bdc', s.company_key) }))
     .filter(x => x.p).sort((x, y) => ahead(x.s.earliest_maturity) - ahead(y.s.earliest_maturity) || y.s.score - x.s.score);
   const c = (cr.data || []).filter(s => !done.has(`credit:${String(Number(s.cik))}`) && s.ebitda > 0 && s.revenue >= 20e6 && !(s.flags || {}).going_concern)
-    .map(s => ({ kind: 'credit', key: String(Number(s.cik)), s, p: usable('credit', String(Number(s.cik))) })).filter(x => x.p).sort((x, y) => y.s.score - x.s.score);
+    .map(s => ({ kind: 'credit', key: String(Number(s.cik)), s, p: usable('credit', String(Number(s.cik))) })).filter(x => x.p).sort((x, y) => cfoChanged(y.key) - cfoChanged(x.key) || y.s.score - x.s.score);   // new CFO first (29 Oct 2026)
   const waiting = { bdc: (bdc.data || []).length, credit: (cr.data || []).length };
   // A lead is sendable when it has a date to cite (dated message), or a plain campaign exists, or it has a valid email.
   const anyPlain = (st.prosp || []).some(a => a.plain_campaign_id);

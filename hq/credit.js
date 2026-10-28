@@ -4,7 +4,7 @@
 import { sb, state, esc, $, $$, toast, fail, modal, opts, firstName } from './core.js';
 import { messageFor } from './outreach.js';
 import { whyBlock } from './kinds.js';
-import { loadContacts, contactHtml, bindContacts, bestPerson, contactsSetup } from './contacts.js';
+import { loadContacts, contactHtml, bindContacts, bestPerson, contactsSetup, cfoChanged } from './contacts.js';
 import { markBtns, markLine, bindMarks, MARK_VIEWS, inMarkView } from './marks.js';
 import { me } from './tasks.js';
 
@@ -36,16 +36,17 @@ export async function renderCredit(target, countCb) {
 
 function draw() {
   if (rows === null) { el.innerHTML = '<div class="empty">The credit signals table isn\'t set up yet.</div>'; return; }
-  const counts = { target: 0, maybe: 0, cut: 0, added: 0, dismissed: 0, starred: 0, flagged: 0 };
-  rows.forEach(s => { counts[bucket(s)]++; if (s.starred_at) counts.starred++; if (s.flagged_at) counts.flagged++; });
-  const shown = rows.filter(s => inMarkView(view, s) ?? bucket(s) === view).sort((a, b) => b.score - a.score);
+  const counts = { target: 0, newcfo: 0, maybe: 0, cut: 0, added: 0, dismissed: 0, starred: 0, flagged: 0 };
+  const newCfo = s => bucket(s) === 'target' && cfoChanged(String(Number(s.cik)));
+  rows.forEach(s => { counts[bucket(s)]++; if (newCfo(s)) counts.newcfo++; if (s.starred_at) counts.starred++; if (s.flagged_at) counts.flagged++; });
+  const shown = rows.filter(s => view === 'newcfo' ? newCfo(s) : inMarkView(view, s) ?? bucket(s) === view).sort((a, b) => b.score - a.score);
   const last = runs[0];
   onCount(counts.target);
   el.innerHTML = `<div class="fs">
     <div class="fsTop"><p class="pHint" style="padding:0;margin:0;max-width:640px">Small US public companies with debt they must refinance, a lender losing patience, or a going-concern warning. For Peter: private credit is their natural next lender.</p>
       <div class="row fsBtns"><a class="btn sm ghost" href="${GH_RUN}" target="_blank" rel="noopener">Run a scan on GitHub ↗</a><button class="btn sm ghost" id="crHow">How it works</button><a class="btn sm ghost" href="#/rules">How we qualify</a><button class="btn sm ghost" id="ctSetup">Contacts setup</button></div></div>
     <p class="pHint">Source: SEC XBRL financials and full-text search (edgartools), refreshed daily on GitHub, free.${last ? ` Last run <b>${new Date(last.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b>${last.params?.period ? ` · balance sheets ${esc(last.params.period)}` : ''}.` : ' Not run yet: on GitHub choose Run workflow, mode <b>credit</b>.'}</p>
-    <div class="fsViews">${[['target', 'Targets'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed'], ...MARK_VIEWS].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
+    <div class="fsViews">${[['target', 'Targets'], ['newcfo', 'New CFO + debt'], ['maybe', 'Maybe'], ['cut', 'Cut'], ['added', 'In pipeline'], ['dismissed', 'Dismissed'], ...MARK_VIEWS].map(([k, l]) => `<button type="button" data-view="${k}" class="${view === k ? 'on' : ''}" data-tone="${k === 'target' ? 'good' : k === 'cut' ? 'bad' : ''}">${l} <b>${counts[k]}</b></button>`).join('')}</div>
     <div class="fsList">${shown.length ? shown.slice(0, 200).map(rowHtml).join('') : `<div class="empty">${rows.length ? 'Nothing here.' : 'No companies yet. Run the credit scan on GitHub (mode credit); it takes about 5–10 minutes.'}</div>`}</div>
     ${shown.length > 200 ? `<p class="pHint">Showing the top 200 of ${shown.length}.</p>` : ''}
   </div>`;

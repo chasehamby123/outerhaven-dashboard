@@ -21,6 +21,8 @@ export function loadContacts(kind, fresh = false) {
 }
 const get = (kind, key) => cache[kind]?.get(String(key)) || null;
 export const contactOf = get;
+// New CFO (8-K Item 5.02 in the last 180 days, officers.py) on a credit target: a CFO who inherited debt coming due (29 Oct 2026).
+export const cfoChanged = key => (get('credit', key)?.officer_change?.roles || []).includes('cfo');
 const live = c => (c?.people || []).filter(p => p.status !== 'wrong');
 export const bestPerson = (kind, key) => live(get(kind, key))[0] || null;
 
