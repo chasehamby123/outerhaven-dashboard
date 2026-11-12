@@ -1,3 +1,6 @@
+> **MOVED (7 Nov 2026): this repo is no longer used. Work and push ONLY in HyperionLLAMA/outerhaven-dashboard (Tengku's fork).
+> Never push here. If a session opened on this repo, stop and ask the user to start one from HyperionLLAMA.**
+
 # OuterHaven dashboard: notes for Claude
 
 Read this first in any session on this repo. It is the hand-off from the sessions that built HQ (Sept 2026).
